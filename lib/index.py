@@ -34,12 +34,17 @@ def index(redis_client, key, locus, bucket, prefix, only=None, exclude=None):
             length = len(line)
 
             # extract the locus from the row
-            locus = locus_class(*(row.get(col) for col in locus_cols if col))
-            records[locus] = (table_id, offset, length)
+            try:
+                locus = locus_class(*(row.get(col) for col in locus_cols if col))
+                records[locus] = (table_id, offset, length)
+
+                # tally record
+                n += 1
+            except ValueError:
+                pass
 
             # increase offset to next record
             offset += length
-            n += 1
 
         # add them all in a single batch
         redis_client.insert_records(key, records)

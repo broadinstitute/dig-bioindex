@@ -11,21 +11,15 @@ class Locus(abc.ABC):
     """
     chromosome: str
 
+    @abc.abstractmethod
+    def __str__(self):
+        pass
+
     def __post_init__(self):
         """
         Validate the chromosome is valid, and normalize it.
         """
         self.chromosome = parse_chromosome(self.chromosome)
-
-    @abc.abstractmethod
-    def __str__(self):
-        pass
-
-    def __hash__(self):
-        """
-        Hash this locus using the string representation of it.
-        """
-        return hash(str(self))
 
 
 @dataclasses.dataclass(eq=True)
@@ -34,6 +28,12 @@ class SNPLocus(Locus):
 
     def __str__(self):
         return '%s:%d' % (self.chromosome, self.position)
+
+    def __hash__(self):
+        """
+        Hash this locus using the string representation of it.
+        """
+        return hash(str(self))
 
 
 @dataclasses.dataclass(eq=True)
@@ -44,6 +44,12 @@ class RegionLocus(Locus):
     def __str__(self):
         return '%s:%d-%d' % (self.chromosome, self.start, self.stop)
 
+    def __hash__(self):
+        """
+        Hash this locus using the string representation of it.
+        """
+        return hash(str(self))
+
 
 def parse_chromosome(s):
     """
@@ -52,7 +58,7 @@ def parse_chromosome(s):
     match = re.fullmatch(r'(?:chr)?(\d{1,2}|x|y|xy|m)', s)
 
     if not match:
-        raise ValueError('Failed to match chromosome against %s', s)
+        raise ValueError('Failed to match chromosome against %s' % s)
 
     return match.group(1).upper()
 

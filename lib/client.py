@@ -1,5 +1,4 @@
 import msgpack
-import pickle
 import redis
 
 from .locus import *

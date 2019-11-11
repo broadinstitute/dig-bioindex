@@ -1,6 +1,5 @@
 import concurrent.futures
 import json
-import msgpack
 
 from .s3 import *
 
