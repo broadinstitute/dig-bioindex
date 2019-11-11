@@ -21,7 +21,7 @@ def index(redis_client, key, locus, bucket, prefix, only=None, exclude=None):
         logging.info('Indexing records from %s...', obj)
 
         # register the table in the db
-        table_id = redis_client.register_table(bucket, obj, locus.encode('utf8'))
+        table_id = redis_client.register_table(bucket, obj, locus)
 
         # open the input table and read each record
         fp = smart_open.open(s3_uri(bucket, obj))
@@ -35,8 +35,8 @@ def index(redis_client, key, locus, bucket, prefix, only=None, exclude=None):
 
             # extract the locus from the row
             try:
-                locus = locus_class(*(row.get(col) for col in locus_cols if col))
-                records[locus] = (table_id, offset, length)
+                locus_obj = locus_class(*(row.get(col) for col in locus_cols if col))
+                records[locus_obj] = (table_id, offset, length)
 
                 # tally record
                 n += 1
