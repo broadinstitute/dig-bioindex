@@ -21,7 +21,7 @@ def index(redis_client, key, locus, bucket, prefix, only=None, exclude=None):
         logging.info('Indexing records from %s...', obj)
 
         # register the table in the db
-        table_id = redis_client.register_table(bucket, obj, locus)
+        table_id = redis_client.register_table(bucket, obj, locus.encode('utf8'))
 
         # open the input table and read each record
         fp = smart_open.open(s3_uri(bucket, obj))

@@ -52,6 +52,11 @@ def s3_list_objects(bucket, prefix, only=None, exclude=None):
             key = obj['Key']
             file = os.path.basename(key)
 
+            # ignore any files beginning with _
+            if file[0] == '_':
+                continue
+
+            # filter by --only and --exclude
             if only and not fnmatch.fnmatch(file, only):
                 continue
             if exclude and fnmatch.fnmatch(file, exclude):
