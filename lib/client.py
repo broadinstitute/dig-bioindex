@@ -91,11 +91,30 @@ class Client:
             # insert all values atomically
             pipe.execute()
 
+    def count_records(self, key, chromosome, start, stop):
+        """
+        Count the number of records overlapped by a given locus.
+        """
+        chr_key = '%s:%s' % (key, chromosome)
+
+        # does the chromosome maps to an ordered set (SNP records)?
+        if self._r.type(chr_key) == b'zset':
+            n = self._r.zcount(chr_key, start, stop)
+        else:
+            n = 0
+
+            # query records across the bucket range
+            for i in range(start // 20000, stop // 20000 + 1):
+                key = '%s:%d' % (chr_key, i)
+                n += self._r.scard(key)
+
+        return n
+
     def query_records(self, key, chromosome, start, stop):
         """
         Queries all the records overlapped by a given locus. Uses the type of the
-        storied key to determine the query type. Returns both the list of records
-        and the set of tables holding those records.
+        key to determine the query type. Returns both the set of tables holding
+        the records and the list of records.
         """
         chr_key = '%s:%s' % (key, chromosome)
         tables = set()

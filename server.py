@@ -22,7 +22,7 @@ def server_count(key, locus):
         chromosome, start, stop = parse_locus(locus)
 
         # perform the query and time it
-        results, index_s = profile(query, client, key, chromosome, start, stop)
+        n, index_s = profile(client.count_records, key, chromosome, start, stop)
 
         return {
             'cont_token': None,
@@ -31,7 +31,7 @@ def server_count(key, locus):
             },
             'key': key,
             'locus': locus,
-            'count': sum(1 for _ in results),
+            'count': n,
         }
     except ValueError as e:
         flask.abort(400, str(e))
