@@ -27,19 +27,14 @@ def query(redis_client, key, chromosome, start, stop):
     # download the record from the table
     def read_records(coalesced_range):
         tid, (offset, length) = coalesced_range
-
-        # lookup table info
         table = tables[tid]
-        table_bucket = table[b'bucket'].decode('utf-8')
-        table_key = table[b'key'].decode('utf-8')
-        table_locus = table[b'locus'].decode('utf-8')
-
-        # parse the table locus into columns
-        locus_cols = parse_locus_columns(table_locus)
 
         # parse all the records from the table
-        stream = io.BytesIO(s3_read_object(table_bucket, table_key, offset, length).read())
+        stream = io.BytesIO(s3_read_object(table.bucket, table.path, offset, length).read())
         records = map(json.loads, stream.readlines())
+
+        # parse the table locus into columns
+        locus_cols = parse_locus_columns(table.locus)
 
         # tests to see if the record is overlapped by the region
         def overlapped(r):

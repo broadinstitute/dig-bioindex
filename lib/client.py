@@ -2,6 +2,7 @@ import msgpack
 import redis
 
 from .locus import *
+from .table import *
 
 
 class Client:
@@ -28,31 +29,51 @@ class Client:
         if not exc_value:
             self._r.save()
 
-    def register_table(self, bucket, key, locus_str):
+    def register_table(self, table):
         """
-        Add a table key to the database if it doesn't exist, return the ID of it.
+        Add a table key to the database if it doesn't exist, return the ID of it. The
+        key parameter is the redis key this table will index to (e.g. 'variants').
         """
-        table_index = 'table:%s/%s' % (bucket, key)
-        table_id = self._r.get(table_index)
+        table_uri = 'table.uri:%s/%s' % (table.bucket, table.path)
 
-        if table_id is None:
-            table_id = self._r.incr('table_id')
+        # ensure the table isn't already indexed
+        table_id = self._r.get(table_uri)
+        if table_id:
+            raise AssertionError('Table already indexed; delete before re-indexing')
 
-            # define the table with the given id
-            self._r.hset('table:%d' % table_id, 'bucket', bucket)
-            self._r.hset('table:%d' % table_id, 'key', key)
-            self._r.hset('table:%d' % table_id, 'locus', locus_str)
+        # get the next table id
+        table_id = self._r.incr('table_id')
 
-            # index the table name to its value (can ensure unique tables)
-            self._r.set(table_index, table_id)
+        # define the table with the given id
+        self._r.hset('table:%d' % table_id, 'bucket', table.bucket)
+        self._r.hset('table:%d' % table_id, 'path', table.path)
+        self._r.hset('table:%d' % table_id, 'key', table.key)
+        self._r.hset('table:%d' % table_id, 'locus', table.locus)
+
+        # index the table name to its value (can ensure unique tables)
+        self._r.set(table_uri, table_id)
 
         return table_id
+
+    def scan_tables(self):
+        """
+        Returns a generator of table IDs.
+        """
+        for key in self._r.scan_iter("table:*"):
+            yield int(key.split(b':')[1])
 
     def get_table(self, table_id):
         """
         Returns a map of the table entry for the given id.
         """
-        return self._r.hgetall('table:%d' % table_id)
+        table = self._r.hgetall('table:%d' % table_id)
+
+        return Table(
+            bucket=table[b'bucket'].decode('utf-8'),
+            path=table[b'path'].decode('utf-8'),
+            key=table[b'key'].decode('utf-8'),
+            locus=table[b'locus'].decode('utf-8'),
+        )
 
     def delete_table(self, table_id):
         """

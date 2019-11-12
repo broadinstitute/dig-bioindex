@@ -4,6 +4,7 @@ import smart_open
 from .locus import *
 from .s3 import *
 from .schema import *
+from .table import *
 
 
 def index(redis_client, key, locus, bucket, prefix, only=None, exclude=None):
@@ -17,14 +18,15 @@ def index(redis_client, key, locus, bucket, prefix, only=None, exclude=None):
     n = 0
 
     # list all the input tables
-    for obj in s3_list_objects(bucket, prefix, only=only, exclude=exclude):
-        logging.info('Indexing %s...', obj)
+    for path in s3_list_objects(bucket, prefix, only=only, exclude=exclude):
+        logging.info('Indexing %s...', path)
 
         # register the table in the db
-        table_id = redis_client.register_table(bucket, obj, locus)
+        table = Table(bucket, path, key, locus)
+        table_id = redis_client.register_table(table)
 
         # open the input table and read each record
-        fp = smart_open.open(s3_uri(bucket, obj))
+        fp = smart_open.open(s3_uri(bucket, path))
         offset = 0
         records = {}
 

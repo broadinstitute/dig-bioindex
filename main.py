@@ -4,6 +4,7 @@ import time
 
 from lib.client import *
 from lib.index import *
+from lib.integrity import *
 from lib.locus import *
 from lib.query import *
 from lib.s3 import *
@@ -16,7 +17,7 @@ def cli():
 
 @click.command(name='index')
 @click.option('--host', default='localhost', help='redis host')
-@click.option('--port', default=6379, help='redis port')
+@click.option('--port', default=6379, type=int, help='redis port')
 @click.option('--only', help='only process s3 keys matching the pattern')
 @click.option('--exclude', help='exclude s3 keys matching the pattern')
 @click.argument('key')
@@ -39,7 +40,7 @@ def cli_index(host, port, only, exclude, key, locus, source):
 
 @click.command(name='query')
 @click.option('--host', default='localhost', help='redis host')
-@click.option('--port', default=6379, help='redis port')
+@click.option('--port', default=6379, type=int, help='redis port')
 @click.option('--count', is_flag=True, help='count overlapping records')
 @click.argument('key')
 @click.argument('locus')
@@ -60,10 +61,21 @@ def cli_query(host, port, count, key, locus):
                 print(record)
 
 
+@click.command(name='check')
+@click.option('--host', default='localhost', help='redis host')
+@click.option('--port', default=6379, type=int, help='redis port')
+@click.option('--delete', is_flag=True, help='delete bad keys')
+def cli_check(host, port, delete):
+    logging.info('Checking tables...')
+
+    with Client(host=host, port=port) as client:
+        check_tables(client, delete=delete)
+
+
 # initialize the cli
 cli.add_command(cli_index)
 cli.add_command(cli_query)
-
+cli.add_command(cli_check)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)-5s - %(message)s')

@@ -1,5 +1,6 @@
 import boto3
 import botocore.config
+import botocore.errorfactory
 import fnmatch
 import os.path
 import urllib.parse
@@ -10,11 +11,11 @@ s3_session = boto3.session.Session()
 s3_client = s3_session.client('s3', config=s3_config)
 
 
-def s3_uri(bucket, key):
+def s3_uri(bucket, path):
     """
-    Returns an s3 URI for a given key in a bucket.
+    Returns an s3 URI for a given path in a bucket.
     """
-    return 's3://%s/%s' % (bucket, key)
+    return 's3://%s/%s' % (bucket, path)
 
 
 def s3_parse_url(uri):
@@ -47,10 +48,10 @@ def s3_list_objects(bucket, prefix, only=None, exclude=None):
         if resp.get('KeyCount', 0) == 0:
             break
 
-        # yield all keys that matches only and not exclude
+        # yield all paths that matches only and not exclude
         for obj in resp.get('Contents', []):
-            key = obj['Key']
-            file = os.path.basename(key)
+            path = obj['Key']
+            file = os.path.basename(path)
 
             # ignore any files beginning with _
             if file[0] == '_':
@@ -62,13 +63,13 @@ def s3_list_objects(bucket, prefix, only=None, exclude=None):
             if exclude and fnmatch.fnmatch(file, exclude):
                 continue
 
-            yield key
+            yield path
 
         # recursively search the common prefixes
         for common_prefix in resp.get('CommonPrefixes', []):
             yield from s3_list_objects(bucket, common_prefix['Prefix'], only=only, exclude=exclude)
 
-        # no more keys?
+        # no more paths?
         if not resp['IsTruncated']:
             break
 
@@ -76,13 +77,13 @@ def s3_list_objects(bucket, prefix, only=None, exclude=None):
         resp = s3_client.list_objects_v2(ContinuationToken=resp['NextContinuationToken'], **kwargs)
 
 
-def s3_read_object(bucket, key, offset=None, length=None):
+def s3_read_object(bucket, path, offset=None, length=None):
     """
     Open an s3 object and return a streaming portion of it.
     """
     kwargs = {
         'Bucket': str(bucket),
-        'Key': str(key),
+        'Key': str(path),
     }
 
     # specify the range parameter
@@ -95,3 +96,14 @@ def s3_read_object(bucket, key, offset=None, length=None):
 
     # download the object
     return s3_client.get_object(**kwargs).get('Body')
+
+
+def s3_test_object(bucket, path):
+    """
+    Checks to see if the path exists in the bucket.
+    """
+    try:
+        s3_client.head_object(Bucket=bucket, Key=path)
+        return True
+    except botocore.errorfactory.ClientError:
+        return False
