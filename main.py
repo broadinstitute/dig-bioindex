@@ -5,7 +5,6 @@ import time
 from lib.client import *
 from lib.index import *
 from lib.integrity import *
-from lib.locus import *
 from lib.query import *
 from lib.s3 import *
 
@@ -26,7 +25,7 @@ def cli():
 @click.argument('source')
 def cli_index(host, port, only, exclude, new, key, locus, source):
     """
-    Index table records in s3 to redis.
+    Index s3 table records in to a redis key.
     """
     bucket, prefix = s3_parse_url(source)
     t0 = time.time()
@@ -46,7 +45,7 @@ def cli_index(host, port, only, exclude, new, key, locus, source):
 @click.argument('locus')
 def cli_count(host, port, key, locus):
     """
-    Query redis db and count objects that a region overlaps.
+    Count and output the number of key records that overlap a locus.
     """
     chromosome, start, stop = parse_locus(locus)
 
@@ -62,7 +61,7 @@ def cli_count(host, port, key, locus):
 @click.argument('locus')
 def cli_query(host, port, key, locus):
     """
-    Query redis db for all objects that a region overlaps.
+    Query redis db and print key records that overlaps a locus.
     """
     chromosome, start, stop = parse_locus(locus)
 
@@ -77,7 +76,13 @@ def cli_query(host, port, key, locus):
 @click.option('--port', default=6379, type=int, help='redis port')
 @click.option('--delete', is_flag=True, help='delete bad keys')
 def cli_check(host, port, delete):
-    logging.info('Checking tables...')
+    """
+    Check integrity, ensuring s3 tables exist and delete orphaned records.
+    """
+    if delete:
+        logging.warning('Are you sure? [y/N] ')
+        if input().lower() != 'y':
+            return
 
     with Client(readonly=not delete, host=host, port=port) as client:
         check_tables(client, delete=delete)
@@ -88,6 +93,7 @@ cli.add_command(cli_index)
 cli.add_command(cli_count)
 cli.add_command(cli_query)
 cli.add_command(cli_check)
+
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)-5s - %(message)s')

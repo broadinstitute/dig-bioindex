@@ -8,9 +8,7 @@ def check_tables(redis_client, delete=False):
     """
     for table_id in redis_client.scan_tables():
         table = redis_client.get_table(table_id)
-        table_uri = '%s/%s...' % (table.bucket, table.path)
-
-        logging.info('Checking %s...', table_uri)
+        table_uri = '%s/%s' % (table.bucket, table.path)
 
         # if the table object exists in s3, continue to the next one
         if table.exists():
@@ -22,4 +20,5 @@ def check_tables(redis_client, delete=False):
             logging.warning('Table %s... ERROR; use --delete to remove', table_uri)
             continue
 
-        # TODO: delete
+        # remove all records for this table and the table itself
+        redis_client.delete_table(table_id)

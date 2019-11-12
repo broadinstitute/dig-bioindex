@@ -60,7 +60,7 @@ class Client:
         """
         Returns a generator of table IDs.
         """
-        for key in self._r.scan_iter("table:*"):
+        for key in self._r.scan_iter('table:*'):
             yield int(key.split(b':')[1])
 
     def get_table(self, table_id):
@@ -68,6 +68,8 @@ class Client:
         Returns a map of the table entry for the given id.
         """
         table = self._r.hgetall('table:%d' % table_id)
+        if not table:
+            raise KeyError('Table %d does not exist' % table_id)
 
         return Table(
             bucket=table[b'bucket'].decode('utf-8'),
@@ -76,11 +78,43 @@ class Client:
             locus=table[b'locus'].decode('utf-8'),
         )
 
-    def delete_table(self, table_id):
+    def delete_table(self, table_id, batch_size=100):
         """
-        Remove a table and ALL records that reference it.
+        Remove a table and ALL records that reference it. Returns the number
+        of record keys deleted. The table_uri and table keys aren't deleted
+        until all keys referencing have also been unlinked, so if something
+        interrupts this process it can pick up from where it left off.
         """
-        pass
+        table = self.get_table(table_id)
+        table_uri = 'table.uri:%s/%s' % (table.bucket, table.path)
+        keys = []
+        n = 0
+
+        # scan all records in the key space for the table
+        for k in self._r.scan_iter('%s:*' % table.key):
+            record = msgpack.loads(self._r.get(k))
+            if record[0] != table_id:
+                continue
+
+            keys.append(k)
+            n += 1
+
+            if len(keys) < batch_size:
+                continue
+
+            # perform the unlink, clear list
+            self._r.unlink(*keys)
+            keys.clear()
+
+        # unlink any keys left
+        if len(keys) > 0:
+            self._r.unlink(*keys)
+
+        # delete the table_uri and table keys
+        self._r.delete(table_uri)
+        self._r.delete('table:%d' % table_id)
+
+        return n
 
     def insert_records(self, base_key, records):
         """
