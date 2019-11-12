@@ -1,4 +1,6 @@
 import click
+import datetime
+import time
 
 from lib.client import *
 from lib.index import *
@@ -25,12 +27,14 @@ def cli_index(host, port, only, exclude, key, locus, source):
     Index table records in s3 to redis.
     """
     bucket, prefix = s3_parse_url(source)
+    t0 = time.time()
 
     with Client(host=host, port=port) as client:
         n = index(client, key, locus, bucket, prefix, only=only, exclude=exclude)
+        dt = datetime.timedelta(seconds=time.time() - t0)
 
         # done output report
-        logging.info('%d records indexed', n)
+        logging.info('%d records indexed in %s', n, str(dt))
 
 
 @click.command(name='query')

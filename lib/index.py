@@ -18,7 +18,7 @@ def index(redis_client, key, locus, bucket, prefix, only=None, exclude=None):
 
     # list all the input tables
     for obj in s3_list_objects(bucket, prefix, only=only, exclude=exclude):
-        logging.info('Indexing records from %s...', obj)
+        logging.info('Indexing %s...', obj)
 
         # register the table in the db
         table_id = redis_client.register_table(bucket, obj, locus)
