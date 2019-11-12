@@ -20,10 +20,11 @@ def cli():
 @click.option('--port', default=6379, type=int, help='redis port')
 @click.option('--only', help='only process s3 keys matching the pattern')
 @click.option('--exclude', help='exclude s3 keys matching the pattern')
+@click.option('--new', is_flag=True, help='index new tables not already indexed')
 @click.argument('key')
 @click.argument('locus')
 @click.argument('source')
-def cli_index(host, port, only, exclude, key, locus, source):
+def cli_index(host, port, only, exclude, new, key, locus, source):
     """
     Index table records in s3 to redis.
     """
@@ -31,7 +32,7 @@ def cli_index(host, port, only, exclude, key, locus, source):
     t0 = time.time()
 
     with Client(host=host, port=port) as client:
-        n = index(client, key, locus, bucket, prefix, only=only, exclude=exclude)
+        n = index(client, key, locus, bucket, prefix, only=only, exclude=exclude, new=new)
         dt = datetime.timedelta(seconds=time.time() - t0)
 
         # done output report

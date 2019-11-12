@@ -31,15 +31,15 @@ class Client:
 
     def register_table(self, table):
         """
-        Add a table key to the database if it doesn't exist, return the ID of it. The
-        key parameter is the redis key this table will index to (e.g. 'variants').
+        Create a new table key if it doesn't exist yet. Returns the ID and a flag
+        indicating whether the table already existed (True).
         """
         table_uri = 'table.uri:%s/%s' % (table.bucket, table.path)
 
         # ensure the table isn't already indexed
         table_id = self._r.get(table_uri)
         if table_id:
-            raise AssertionError('Table already indexed; delete before re-indexing')
+            return table_id, True
 
         # get the next table id
         table_id = self._r.incr('table_id')
@@ -53,7 +53,7 @@ class Client:
         # index the table name to its value (can ensure unique tables)
         self._r.set(table_uri, table_id)
 
-        return table_id
+        return table_id, False
 
     def scan_tables(self):
         """
