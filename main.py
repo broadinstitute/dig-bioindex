@@ -39,13 +39,28 @@ def cli_index(host, port, only, exclude, new, key, locus, source):
         logging.info('%d records indexed in %s', n, str(dt))
 
 
+@click.command(name='count')
+@click.option('--host', default='localhost', help='redis host')
+@click.option('--port', default=6379, type=int, help='redis port')
+@click.argument('key')
+@click.argument('locus')
+def cli_count(host, port, key, locus):
+    """
+    Query redis db and count objects that a region overlaps.
+    """
+    chromosome, start, stop = parse_locus(locus)
+
+    # open the db in read-only mode
+    with Client(host=host, port=port) as client:
+        print(client.count_records(key, chromosome, start, stop))
+
+
 @click.command(name='query')
 @click.option('--host', default='localhost', help='redis host')
 @click.option('--port', default=6379, type=int, help='redis port')
-@click.option('--count', is_flag=True, help='count overlapping records')
 @click.argument('key')
 @click.argument('locus')
-def cli_query(host, port, count, key, locus):
+def cli_query(host, port, key, locus):
     """
     Query redis db for all objects that a region overlaps.
     """
@@ -53,13 +68,8 @@ def cli_query(host, port, count, key, locus):
 
     # open the db in read-only mode
     with Client(host=host, port=port) as client:
-        records = query(client, key, chromosome, start, stop)
-
-        if count:
-            print(len(records))
-        else:
-            for record in records:
-                print(record)
+        for record in query(client, key, chromosome, start, stop):
+            print(record)
 
 
 @click.command(name='check')
@@ -75,6 +85,7 @@ def cli_check(host, port, delete):
 
 # initialize the cli
 cli.add_command(cli_index)
+cli.add_command(cli_count)
 cli.add_command(cli_query)
 cli.add_command(cli_check)
 
