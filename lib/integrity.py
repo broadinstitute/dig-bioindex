@@ -12,13 +12,16 @@ def check_tables(redis_client, delete=False):
 
         # if the table object exists in s3, continue to the next one
         if table.exists():
-            logging.info('Table %s... OK', table_uri)
+            logging.info('%s... OK', table_uri)
             continue
 
         # just warn unless the delete flag is present
         if not delete:
-            logging.warning('Table %s... ERROR; use --delete to remove', table_uri)
+            logging.warning('%s... MISSING; use --delete to remove', table_uri)
             continue
+
+        # indicate a delete it going to happen
+        logging.info('%s... MISSING; deleting orphaned records...', table_uri)
 
         # remove all records for this table and the table itself
         redis_client.delete_table(table_id)
