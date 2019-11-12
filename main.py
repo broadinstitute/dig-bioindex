@@ -51,7 +51,7 @@ def cli_count(host, port, key, locus):
     chromosome, start, stop = parse_locus(locus)
 
     # open the db in read-only mode
-    with Client(host=host, port=port) as client:
+    with Client(readonly=True, host=host, port=port) as client:
         print(client.count_records(key, chromosome, start, stop))
 
 
@@ -67,7 +67,7 @@ def cli_query(host, port, key, locus):
     chromosome, start, stop = parse_locus(locus)
 
     # open the db in read-only mode
-    with Client(host=host, port=port) as client:
+    with Client(readonly=True, host=host, port=port) as client:
         for record in query(client, key, chromosome, start, stop):
             print(record)
 
@@ -79,7 +79,7 @@ def cli_query(host, port, key, locus):
 def cli_check(host, port, delete):
     logging.info('Checking tables...')
 
-    with Client(host=host, port=port) as client:
+    with Client(readonly=not delete, host=host, port=port) as client:
         check_tables(client, delete=delete)
 
 

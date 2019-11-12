@@ -10,11 +10,12 @@ class Client:
     Create a new Redis client.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, readonly=False, **kwargs):
         """
         Connect to Redis server.
         """
         self._r = redis.Redis(**kwargs)
+        self._readonly = readonly
 
     def __enter__(self):
         """
@@ -26,7 +27,7 @@ class Client:
         """
         Close the connection and commit any changes.
         """
-        if not exc_value:
+        if not self._readonly and not exc_value:
             self._r.save()
 
     def register_table(self, table):
