@@ -8,7 +8,7 @@ def query(redis_client, key, chromosome, start, stop):
     """
     Query redis db for all objects that a region overlaps.
     """
-    ex = concurrent.futures.ThreadPoolExecutor(max_workers=50)
+    ex = concurrent.futures.ThreadPoolExecutor(max_workers=10)
 
     # results are locus -> record pairs
     table_ids, records = redis_client.query_records(key, chromosome, start, stop)
