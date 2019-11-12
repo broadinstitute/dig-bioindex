@@ -1,7 +1,6 @@
 import concurrent.futures
 import io
 import json
-import logging
 
 from .locus import *
 from .s3 import *
@@ -38,27 +37,25 @@ def query(redis_client, key, chromosome, start, stop):
         # parse the table locus into columns
         locus_cols = parse_locus_columns(table_locus)
 
-        logging.info('Fetching %s (%d bytes)...', table_key, length)
+        # parse all the records from the table
+        stream = io.BytesIO(s3_read_object(table_bucket, table_key, offset, length).read())
+        records = map(json.loads, stream.readlines())
 
-        # return the locus columns and the s3 body
-        return locus_cols, s3_read_object(table_bucket, table_key, offset, length)
+        # tests to see if the record is overlapped by the region
+        def overlapped(r):
+            return Locus.from_record(r, *locus_cols). \
+                overlaps(chromosome, start, stop)
+
+        # final record list
+        return filter(overlapped, records)
 
     # create a thread pool to load records in parallel
-    ex = concurrent.futures.ThreadPoolExecutor(max_workers=10)
+    ex = concurrent.futures.ThreadPoolExecutor(max_workers=20)
 
-    # fetch the records from s3 in parallel
-    for locus_cols, s3_body in ex.map(read_records, ranges):
-        text = io.BytesIO(s3_body.read())
-
-        for record in text:
-            record = json.loads(record)
-
-            # Due to region buckets and coalescing, not all regions returned
-            # by the query and read are guaranteed to be overlapped by the
-            # input region.
-
-            if Locus.from_record(record, *locus_cols).overlaps(chromosome, start, stop):
-                yield record
+    # each job (downloaded range of records) returns a record iterator
+    for record_list in ex.map(read_records, ranges):
+        for record in record_list:
+            yield record
 
 
 def coalesce_ranges(ranges):
