@@ -11,6 +11,16 @@ class Locus(abc.ABC):
     """
     chromosome: str
 
+    @staticmethod
+    def from_record(record, chromosome_col, start_col, stop_col=None):
+        """
+        Create either a SNPLocus or a RegionLocus for the record.
+        """
+        if not stop_col:
+            return SNPLocus(record[chromosome_col], record[start_col])
+
+        return RegionLocus(record[chromosome_col], record[start_col], record[stop_col])
+
     @abc.abstractmethod
     def __str__(self):
         pass
@@ -20,6 +30,10 @@ class Locus(abc.ABC):
         Validate the chromosome is valid, and normalize it.
         """
         self.chromosome = parse_chromosome(self.chromosome)
+
+    @abc.abstractmethod
+    def overlaps(self, chromosome, start, stop):
+        pass
 
 
 @dataclasses.dataclass(eq=True)
@@ -35,6 +49,12 @@ class SNPLocus(Locus):
         """
         return hash(str(self))
 
+    def overlaps(self, chromosome, start, stop):
+        """
+        True if this locus is overlapped by the region.
+        """
+        return self.chromosome == chromosome and start <= self.position < stop
+
 
 @dataclasses.dataclass(eq=True)
 class RegionLocus(Locus):
@@ -49,6 +69,12 @@ class RegionLocus(Locus):
         Hash this locus using the string representation of it.
         """
         return hash(str(self))
+
+    def overlaps(self, chromosome, start, stop):
+        """
+        True if this locus is overlapped by the region.
+        """
+        return self.chromosome == chromosome and stop > self.start and start < self.stop
 
 
 def parse_chromosome(s):

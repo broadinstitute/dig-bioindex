@@ -48,16 +48,11 @@ class Client:
 
         return table_id
 
-    def get_tables(self, ids):
+    def get_table(self, table_id):
         """
-        Given a list of table IDs, return the mapping of table ID to table.
+        Returns a map of the table entry for the given id.
         """
-        tables = {}
-
-        for table_id in ids:
-            tables[table_id] = self._r.hgetall('table:%d' % table_id)
-
-        return tables
+        return self._r.hgetall('table:%d' % table_id)
 
     def delete_table(self, table_id):
         """
@@ -112,13 +107,11 @@ class Client:
 
     def query_records(self, key, chromosome, start, stop):
         """
-        Queries all the records overlapped by a given locus. Uses the type of the
-        key to determine the query type. Returns both the set of tables holding
-        the records and the list of records.
+        Queries all the records overlapped by a given locus. Uses the type of the key
+        to determine the query type. Returns a map of table_id -> [(offset, length)].
         """
         chr_key = '%s:%s' % (key, chromosome)
-        tables = set()
-        records = list()
+        results = dict()
 
         # does the chromosome maps to an ordered set (SNP records)?
         if self._r.type(chr_key) == b'zset':
@@ -138,9 +131,9 @@ class Client:
         for r in query_results:
             record = msgpack.loads(r)
 
-            # TODO: record may overlap bucket but not locus!!
+            # NOTE: record may overlap bucket but not locus!!
 
-            records.append(record)
-            tables.add(record[0])
+            results.setdefault(record[0], list()). \
+                append((record[1], record[2]))
 
-        return tables, records
+        return results
