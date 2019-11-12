@@ -1,6 +1,7 @@
 import concurrent.futures
 import io
 import json
+import logging
 
 from .locus import *
 from .s3 import *
@@ -36,6 +37,8 @@ def query(redis_client, key, chromosome, start, stop):
 
         # parse the table locus into columns
         locus_cols = parse_locus_columns(table_locus)
+
+        logging.info('Fetching %s (%d bytes)...', table_key, length)
 
         # return the locus columns and the s3 body
         return locus_cols, s3_read_object(table_bucket, table_key, offset, length)
