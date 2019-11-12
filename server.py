@@ -12,6 +12,31 @@ client = Client()
 app = flask.Flask(__name__)
 
 
+@app.route('/count/<key>/<locus>')
+def server_count(key, locus):
+    """
+    Query the redis database for records overlapping the region and return the
+    count of them without fetching.
+    """
+    try:
+        chromosome, start, stop = parse_locus(locus)
+
+        # perform the query and time it
+        results, index_s = profile(query, client, key, chromosome, start, stop)
+
+        return {
+            'cont_token': None,
+            'profile': {
+                'index': index_s,
+            },
+            'key': key,
+            'locus': locus,
+            'count': sum(1 for _ in results),
+        }
+    except ValueError as e:
+        flask.abort(400, str(e))
+
+
 @app.route('/query/<key>/<locus>')
 def server_query(key, locus):
     """
