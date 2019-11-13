@@ -15,23 +15,37 @@ def cli():
     pass
 
 
+@click.command(name='test')
+def cli_test():
+    """
+    Test connections to redis and the aws s3 bucket.
+    """
+    logging.info('Testing redis connection...')
+    with Client(readonly=True) as client:
+        pass
+
+    logging.info('Testing aws s3 credentials and bucket...')
+    bucket = os.getenv('S3_BUCKET')
+
+    # only get the first object in the bucket and ensure access
+    first = next(s3_list_objects(bucket, '/'))
+    assert s3_test_object(bucket, first), 'Failed to access s3 bucket %s' % bucket
+
+
 @click.command(name='index')
 @click.option('--only', help='only process s3 keys matching the pattern')
 @click.option('--exclude', help='exclude s3 keys matching the pattern')
 @click.option('--new', is_flag=True, help='skip tables already indexed')
 @click.option('--update', is_flag=True, help='update tables already indexed')
 @click.argument('key')
-@click.argument('locus')
 @click.argument('prefix')
-def cli_index(only, exclude, new, update, key, locus, prefix):
+@click.argument('locus')
+def cli_index(only, exclude, new, update, key, prefix, locus):
     """
     Index s3 table records in to a redis key.
     """
     bucket = os.getenv('S3_BUCKET')
     t0 = time.time()
-
-    # fix the prefix to be something valid for s3
-    prefix = prefix.strip('/') + '/'
 
     if new and update:
         raise AssertionError('Cannot provide both --new and --update')
@@ -72,7 +86,7 @@ def cli_query(key, locus):
     # open the db in read-only mode
     with Client(readonly=True) as client:
         for record in query(client, key, chromosome, start, stop, bucket):
-            print(record)
+            print(json.dumps(record))
 
 
 @click.command(name='check')
@@ -97,6 +111,7 @@ def cli_check(delete):
 
 
 # initialize the cli
+cli.add_command(cli_test)
 cli.add_command(cli_index)
 cli.add_command(cli_count)
 cli.add_command(cli_query)
