@@ -2,6 +2,7 @@ import boto3
 import botocore.config
 import botocore.errorfactory
 import fnmatch
+import os
 import os.path
 import urllib.parse
 

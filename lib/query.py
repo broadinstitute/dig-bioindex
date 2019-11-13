@@ -6,7 +6,7 @@ from .locus import *
 from .s3 import *
 
 
-def query(redis_client, key, chromosome, start, stop):
+def query(redis_client, key, chromosome, start, stop, bucket):
     """
     Query redis db for all objects that a region overlaps.
     """
@@ -30,7 +30,7 @@ def query(redis_client, key, chromosome, start, stop):
         table = tables[tid]
 
         # parse all the records from the table
-        stream = io.BytesIO(s3_read_object(table.bucket, table.path, offset, length).read())
+        stream = io.BytesIO(s3_read_object(bucket, table.path, offset, length).read())
         records = map(json.loads, stream.readlines())
 
         # parse the table locus into columns

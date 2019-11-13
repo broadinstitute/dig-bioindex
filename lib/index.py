@@ -7,7 +7,7 @@ from .schema import *
 from .table import *
 
 
-def index(redis_client, key, locus, bucket, prefix, only=None, exclude=None, new=False):
+def index(redis_client, key, locus, bucket, prefix, only=None, exclude=None, new=False, update=False):
     """
     Index table records in s3 to redis.
     """
@@ -22,14 +22,17 @@ def index(redis_client, key, locus, bucket, prefix, only=None, exclude=None, new
         logging.info('Indexing %s...', path)
 
         # register the table in the db
-        table = Table(bucket, path, key, locus)
+        table = Table(path, key, locus)
         table_id, already_exists = redis_client.register_table(table)
 
         # skip already existing tables or die
         if already_exists:
-            if not new:
-                raise AssertionError('Table %s already exists and --new not provided' % path)
-            continue
+            if update:
+                redis_client.delete_records(table_id)
+            elif not new:
+                raise AssertionError('Table %s already exists and --new/update not provided' % path)
+            else:
+                continue
 
         # open the input table and read each record
         fp = smart_open.open(s3_uri(bucket, path))

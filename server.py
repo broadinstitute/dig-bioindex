@@ -8,8 +8,15 @@ from lib.profile import *
 from lib.query import *
 
 
-client = Client()
+# create flask app; this will load .env
 app = flask.Flask(__name__)
+
+# connect to redis and get bucket from .env
+client = Client()
+bucket = os.getenv('S3_BUCKET')
+
+# verify environment
+assert bucket, 'S3_BUCKET not set in environment or .env'
 
 
 @app.route('/count/<key>/<locus>')
@@ -51,7 +58,7 @@ def server_query(key, locus):
         limit = flask.request.args.get('limit', type=int)
 
         # perform the query and time it
-        results, index_s = profile(query, client, key, chromosome, start, stop)
+        results, index_s = profile(query, client, key, chromosome, start, stop, bucket)
         records, fetch_s = profile(fetch_records, results, limit=limit, sort_col=sort_col)
 
         # optionally generate a continuation token

@@ -1,4 +1,5 @@
 import msgpack
+import os
 import redis
 
 from .locus import *
@@ -14,7 +15,11 @@ class Client:
         """
         Connect to Redis server.
         """
-        self._r = redis.Redis(**kwargs)
+        host = os.getenv('REDIS_HOST', 'localhost')
+        port = os.getenv('REDIS_PORT', 6379)
+
+        # connect to redis server
+        self._r = redis.Redis(host=host, port=int(port), **kwargs)
         self._readonly = readonly
 
     def __enter__(self):
@@ -35,32 +40,31 @@ class Client:
         Create a new table key if it doesn't exist yet. Returns the ID and a flag
         indicating whether the table already existed (True).
         """
-        table_uri = 'table.uri:%s/%s' % (table.bucket, table.path)
+        table_path = 'table/%s' % table.path
 
         # ensure the table isn't already indexed
-        table_id = self._r.get(table_uri)
+        table_id = self._r.get(table_path)
         if table_id:
-            return table_id, True
+            return int(table_id), True
 
         # get the next table id
         table_id = self._r.incr('table_id')
 
         # define the table with the given id
-        self._r.hset('table:%d' % table_id, 'bucket', table.bucket)
         self._r.hset('table:%d' % table_id, 'path', table.path)
         self._r.hset('table:%d' % table_id, 'key', table.key)
         self._r.hset('table:%d' % table_id, 'locus', table.locus)
 
         # index the table name to its value (can ensure unique tables)
-        self._r.set(table_uri, table_id)
+        self._r.set(table_path, table_id)
 
         return table_id, False
 
-    def scan_tables(self):
+    def scan_tables(self, prefix=None):
         """
         Returns a generator of table IDs.
         """
-        for key in self._r.scan_iter('table:*'):
+        for key in self._r.scan_iter('table:%s*' % prefix if prefix else ''):
             yield int(key.split(b':')[1])
 
     def get_table(self, table_id):
@@ -72,49 +76,51 @@ class Client:
             raise KeyError('Table %d does not exist' % table_id)
 
         return Table(
-            bucket=table[b'bucket'].decode('utf-8'),
             path=table[b'path'].decode('utf-8'),
             key=table[b'key'].decode('utf-8'),
             locus=table[b'locus'].decode('utf-8'),
         )
 
-    def delete_table(self, table_id, batch_size=100):
+    def delete_table(self, table_id):
         """
-        Remove a table and ALL records that reference it. Returns the number
-        of record keys deleted. The table_uri and table keys aren't deleted
-        until all keys referencing have also been unlinked, so if something
-        interrupts this process it can pick up from where it left off.
+        Removes all records associated with a table (via delete_records) and
+        then removes the table as well. The table ID will no longer be valid
+        after this call and will need to be re-registered with a new ID if
+        it needs to be added back.
         """
-        table = self.get_table(table_id)
-        table_uri = 'table.uri:%s/%s' % (table.bucket, table.path)
-        keys = []
-        n = 0
+        self.delete_records(table_id)
 
-        # scan all records in the key space for the table
-        for k in self._r.scan_iter('%s:*' % table.key):
-            record = msgpack.loads(self._r.get(k))
-            if record[0] != table_id:
-                continue
+        # lookup the path to delete the reverse lookup key
+        path = self._r.hget('table:%d' % table_id, 'path').decode('utf-8')
 
-            keys.append(k)
-            n += 1
-
-            if len(keys) < batch_size:
-                continue
-
-            # perform the unlink, clear list
-            self._r.unlink(*keys)
-            keys.clear()
-
-        # unlink any keys left
-        if len(keys) > 0:
-            self._r.unlink(*keys)
-
-        # delete the table_uri and table keys
-        self._r.delete(table_uri)
+        # delete the table key and path
+        self._r.delete('table/%s' % path)
         self._r.delete('table:%d' % table_id)
 
-        return n
+    def delete_records(self, table_id):
+        """
+        Delete all records associated with a given table. The table remains in
+        the database as a valid ID which can be used. Useful for updating all
+        the records of a table.
+        """
+        table = self.get_table(table_id)
+
+        # extracts records from this table
+        def filter_records(records):
+            return filter(lambda r: msgpack.loads(r)[0] == table_id, records)
+
+        # scan all records in the key space for the table
+        with self._r.pipeline() as pipe:
+            pipe.multi()
+
+            for k in self._r.scan_iter('%s:*' % table.key):
+                if self._r.type(k) == b'zset':
+                    pipe.zrem(k, *filter_records(self._r.zrange(k, 0, -1)))
+                else:
+                    pipe.srem(k, *filter_records(self._r.smembers(k)))
+
+            # do it
+            pipe.execute()
 
     def insert_records(self, base_key, records):
         """
