@@ -97,15 +97,62 @@ $ python3 main.py index genes path/to/genes/ chrom:start-stop
 
 ### Querying Records
 
-Once you've built an index, you can then query the key space and retrieve all the records that overlap a given locus. For example:
+Once you've built an index, you can then query the key space and retrieve all the records that overlap a given locus. For example, to query all records in the `genes` key space that overlap a given region:
 
 ```bash
-$ python3 main.py query chr8:100000-101000
+$ python3 main.py query genes chr8:100000-101000
+{"name": "AC131281.2", "chromosome": "8", "start": 100584, "end": 100728, "ensemblId": "ENSG00000254193", "type": "processed_pseudogene"}
 ```
 
-### Running the Server
+The input region is always in the format `chromosome:start[-stop]`. The `chromosome` may optionally be prefixed with "chr", but doesn't need to be. If the `stop` is not provided, it defaults to `start+1`.
 
-Create (or edit) the `.flaskenv` file to set the `FLASK_APP` to `server:app` and optionally the `FLASK_PORT` (default is 5000).
+_Note: the input locus is in the range `[start,stop)`._
+
+### Checking and Updating Indexes
+
+Data changes. That's life. And, if you use a process like [Spark][spark] to generate your data, it will blow away existing tables that were previously indexed, orphaning many records in your indexes.
+
+#### Checking + Deleting Tables
+
+To check the tables in the database, you can use the `check` command. This will verify that every table indexed still exists in [S3][s3].
+
+```bash
+$ python3 main.py check
+INFO  - Running table check...
+INFO  - Check complete
+```
+
+Any tables that are no longer present will output a warning. If you pass `--delete` on the command line as well, then any tables that no longer exist will be removed from the key space they were added to along with all records that pointed to them.
+
+#### Updating Tables
+
+If you have a table (or path of tables) that occupy the same space in [S3][s3] (i.e. have the same key), then you can just use the `index` command along with the `--update` flag. Any tables being indexed that already exist will have all their records deleted from the key space and then be re-indexed.
+
+_Note: when updating tables, you still need to provide a "locus" string that identifies the JSON keys to use for indexing. BIO-Index does not assume they are the same as they were previously!_
+
+#### Indexing New Tables
+
+Perhaps you have an entire folder in [S3][s3] with tables that have already been indexed, and have now just added a couple additional ones you'd also like indexed. To do this, use the `index` command with the `--new` flag. And tables that have already been indexed will be skipped, and new tables will be indexed.
+
+_Note: you can supply both the `--new` and `--update` flags, which will index new tables and update existing ones in the same pass._
+
+## Index REST Server
+
+In addition to a CLI, BIO-Index is also a [Flask][flask] server that allows you to query records via REST calls.
+
+### Starting the Server
+
+Create (or edit) the `.flaskenv` file to set the `FLASK_APP` to `server:app` and optionally the `FLASK_PORT` (default is 5000). Then run:
+
+```bash
+$ flask run
+```
+
+_Note: this assumes `flask` is installed via `pip`. This is also the development environment. If you wish to run this in production, follow the guides on the [Flask][flask] website for doing so._
+
+### REST Queries
+
+TODO:
 
 ### Dependencies
 

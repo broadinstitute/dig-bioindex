@@ -47,9 +47,6 @@ def cli_index(only, exclude, new, update, key, prefix, locus):
     bucket = os.getenv('S3_BUCKET')
     t0 = time.time()
 
-    if new and update:
-        raise AssertionError('Cannot provide both --new and --update')
-
     # connect to redis
     with Client() as client:
         n = index(client, key, locus, bucket, prefix, only=only, exclude=exclude, new=new, update=update)
