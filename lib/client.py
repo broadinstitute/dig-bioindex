@@ -80,9 +80,9 @@ class Client:
             raise KeyError(f'Table {table_id} does not exist')
 
         # if this table has field names (CSV), unpack them
-        cols = table.get(b'fieldnames')
-        if cols is not None:
-            cols = list(map(lambda s: s.decode('utf-8'), msgpack.loads(cols)))
+        cols = msgpack.loads(table.get(b'fieldnames'))
+        if cols:
+            cols = list(map(lambda s: s.decode('utf-8'), cols))
 
         return Table(
             path=table[b'path'].decode('utf-8'),
