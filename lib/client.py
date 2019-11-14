@@ -81,7 +81,7 @@ class Client:
 
         # if this table has field names (CSV), unpack them
         cols = table.get(b'fieldnames')
-        if cols:
+        if cols is not None:
             cols = list(map(lambda s: s.decode('utf-8'), msgpack.loads(cols)))
 
         return Table(
