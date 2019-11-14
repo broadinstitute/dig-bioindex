@@ -1,5 +1,4 @@
 import logging
-import smart_open
 
 from .locus import *
 from .record import *
@@ -52,8 +51,8 @@ def index(redis_client, key, dialect, locus, bucket, paths, update=False, new=Fa
 
                 # tally record
                 n += 1
-            except ValueError:
-                pass
+            except (KeyError, ValueError) as e:
+                logging.warning('Record error (line %d): %s; skipping...', line_stream.n, e)
 
         # add them all in a single batch
         redis_client.insert_records(key, records)

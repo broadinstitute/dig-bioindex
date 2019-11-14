@@ -48,7 +48,7 @@ class Table:
 class LineStream:
     """
     A wrapper around a file-like that iterates over lines, but also tracks the
-    line offset (seek position within the file) and length.
+    line offset (seek position), current line number, and length.
     """
 
     def __init__(self, file, comment=None):
@@ -60,6 +60,7 @@ class LineStream:
         self.comment = comment
         self.offset = self.file.tell()
         self.length = 0
+        self.n = 0
 
     def __iter__(self):
         """
@@ -73,6 +74,7 @@ class LineStream:
         """
         for line in self.file:
             self.offset += self.length
+            self.n += 1
             self.length = len(line)
 
             # skip if the line is empty or a comment

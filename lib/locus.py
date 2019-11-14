@@ -85,8 +85,10 @@ class RegionLocus(Locus):
         """
         super().__post_init__()
 
-        if not self.start or not self.stop:
-            raise KeyError('Missing start and/or stop columns from record')
+        if not self.start:
+            raise KeyError('Missing start column from record')
+        if not self.stop:
+            raise KeyError('Missing stop column from record')
 
         # ensure integer range
         self.start = int(self.start)

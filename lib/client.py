@@ -79,12 +79,18 @@ class Client:
         if not table:
             raise KeyError(f'Table {table_id} does not exist')
 
+        # if this table has field names (CSV), unpack them
+        if b'fieldnames' in table:
+            cols = list(map(lambda s: s.decode('utf-8'), msgpack.loads(table[b'fieldnames'])))
+        else:
+            cols = None
+
         return Table(
             path=table[b'path'].decode('utf-8'),
             key=table[b'key'].decode('utf-8'),
             locus=table[b'locus'].decode('utf-8'),
             dialect=table[b'dialect'].decode('utf-8'),
-            fieldnames=list(map(lambda s: s.decode('utf-8'), msgpack.loads(table[b'fieldnames']))),
+            fieldnames=cols,
         )
 
     def delete_table(self, table_id):
