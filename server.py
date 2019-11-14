@@ -54,7 +54,7 @@ def server_count(key):
             },
             'key': key,
             'locus': locus,
-            'count': n,
+            'n': n,
         }
     except ValueError as e:
         flask.abort(400, str(e))

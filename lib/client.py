@@ -135,14 +135,14 @@ class Client:
 
     def get_table_keys(self):
         """
-        Query all tables for a unique set of indexed key spaces.
+        Query all tables for a unique list of indexed key spaces.
         """
         keys = set()
 
         for table_id in self.scan_tables():
             keys.add(self.get_table(table_id).key)
 
-        return keys
+        return list(keys)
 
     def insert_records(self, base_key, records):
         """
