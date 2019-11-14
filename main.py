@@ -60,6 +60,16 @@ def cli_index(only, exclude, new, update, dialect, key, prefix, locus):
         logging.info('%d records indexed in %s', n, str(dt))
 
 
+@click.command(name='keys')
+def cli_keys():
+    """
+    Output the indexed key spaces.
+    """
+    with Client(readonly=True) as client:
+        for key in client.get_table_keys():
+            print(key)
+
+
 @click.command(name='count')
 @click.argument('key')
 @click.argument('locus')
@@ -114,6 +124,7 @@ def cli_check(delete):
 # initialize the cli
 cli.add_command(cli_test)
 cli.add_command(cli_index)
+cli.add_command(cli_keys)
 cli.add_command(cli_count)
 cli.add_command(cli_query)
 cli.add_command(cli_check)

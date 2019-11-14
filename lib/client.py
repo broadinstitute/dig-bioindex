@@ -133,6 +133,17 @@ class Client:
             # do it
             pipe.execute()
 
+    def get_table_keys(self):
+        """
+        Query all tables for a unique set of indexed key spaces.
+        """
+        keys = set()
+
+        for table_id in self.scan_tables():
+            keys.add(self.get_table(table_id).key)
+
+        return keys
+
     def insert_records(self, base_key, records):
         """
         Use the key type of the records map to determine whether to insert

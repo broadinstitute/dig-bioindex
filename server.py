@@ -19,22 +19,31 @@ bucket = os.getenv('S3_BUCKET')
 assert bucket, 'S3_BUCKET not set in environment or .env'
 
 
-@app.route('/count/<key>/<locus>')
-def server_count(key, locus):
+@app.route('/keys')
+def server_keys():
+    """
+    Query the redis database for a list of all indexed key spaces.
+    """
+    return client.get_table_keys()
+
+
+@app.route('/count/<key>')
+def server_count(key):
     """
     Query the redis database for records overlapping the region and return the
     count of them without fetching.
     """
     try:
+        locus = flask.request.args.get('q')
         chromosome, start, stop = parse_locus(locus)
 
         # perform the query and time it
-        n, index_s = profile(client.count_records, key, chromosome, start, stop)
+        n, query_s = profile(client.count_records, key, chromosome, start, stop)
 
         return {
             'cont_token': None,
             'profile': {
-                'index': index_s,
+                'query': query_s,
             },
             'key': key,
             'locus': locus,
@@ -44,13 +53,14 @@ def server_count(key, locus):
         flask.abort(400, str(e))
 
 
-@app.route('/query/<key>/<locus>')
-def server_query(key, locus):
+@app.route('/query/<key>')
+def server_query(key):
     """
     Query the redis database for records overlapping the region and then fetch
     the records from s3.
     """
     try:
+        locus = flask.request.args.get('q')
         chromosome, start, stop = parse_locus(locus)
 
         # parse the query parameters
@@ -58,7 +68,7 @@ def server_query(key, locus):
         limit = flask.request.args.get('limit', type=int)
 
         # perform the query and time it
-        results, index_s = profile(query, client, key, chromosome, start, stop, bucket)
+        results, query_s = profile(query, client, key, chromosome, start, stop, bucket)
         records, fetch_s = profile(fetch_records, results, limit=limit, sort_col=sort_col)
 
         # optionally generate a continuation token
@@ -67,7 +77,7 @@ def server_query(key, locus):
         return {
             'cont_token': cont_token,
             'profile': {
-                'index': index_s,
+                'query': query_s,
                 'fetch': fetch_s,
             },
             'key': key,
