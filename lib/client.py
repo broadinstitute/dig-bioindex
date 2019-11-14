@@ -1,5 +1,4 @@
 import msgpack
-import os
 import redis
 
 from .locus import *
@@ -38,47 +37,54 @@ class Client:
     def register_table(self, table):
         """
         Create a new table key if it doesn't exist yet. Returns the ID and a flag
-        indicating whether the table already existed (True).
+        indicating whether the table already existed (True). The schema should be
+        either 'json' (the default) or a registered CSV dialect name.
         """
-        table_path = 'table/%s' % table.path
+        table_path = f'table/{table.path}'
 
         # ensure the table isn't already indexed
         table_id = self._r.get(table_path)
-        if table_id:
-            return int(table_id), True
+        already_exists = table_id is not None
 
-        # get the next table id
-        table_id = self._r.incr('table_id')
+        # create a new table id
+        if already_exists:
+            table_id = int(table_id)
+        else:
+            table_id = self._r.incr('table_id')
 
-        # define the table with the given id
-        self._r.hset('table:%d' % table_id, 'path', table.path)
-        self._r.hset('table:%d' % table_id, 'key', table.key)
-        self._r.hset('table:%d' % table_id, 'locus', table.locus)
+            # index the table name to its value (can ensure unique tables)
+            self._r.set(table_path, table_id)
 
-        # index the table name to its value (can ensure unique tables)
-        self._r.set(table_path, table_id)
+        # set - or update - the table values
+        self._r.hset(f'table:{table_id}', 'path', table.path)
+        self._r.hset(f'table:{table_id}', 'key', table.key)
+        self._r.hset(f'table:{table_id}', 'locus', table.locus)
+        self._r.hset(f'table:{table_id}', 'dialect', table.dialect)
+        self._r.hset(f'table:{table_id}', 'fieldnames', msgpack.dumps(table.fieldnames))
 
-        return table_id, False
+        return table_id, already_exists
 
     def scan_tables(self, prefix=None):
         """
         Returns a generator of table IDs.
         """
-        for key in self._r.scan_iter('table:%s*' % prefix if prefix else ''):
+        for key in self._r.scan_iter(f'table:{prefix if prefix else ""}*'):
             yield int(key.split(b':')[1])
 
     def get_table(self, table_id):
         """
         Returns a map of the table entry for the given id.
         """
-        table = self._r.hgetall('table:%d' % table_id)
+        table = self._r.hgetall(f'table:{table_id}')
         if not table:
-            raise KeyError('Table %d does not exist' % table_id)
+            raise KeyError(f'Table {table_id} does not exist')
 
         return Table(
             path=table[b'path'].decode('utf-8'),
             key=table[b'key'].decode('utf-8'),
             locus=table[b'locus'].decode('utf-8'),
+            dialect=table[b'dialect'].decode('utf-8'),
+            fieldnames=list(map(lambda s: s.decode('utf-8'), msgpack.loads(table[b'fieldnames']))),
         )
 
     def delete_table(self, table_id):
@@ -91,11 +97,11 @@ class Client:
         self.delete_records(table_id)
 
         # lookup the path to delete the reverse lookup key
-        path = self._r.hget('table:%d' % table_id, 'path').decode('utf-8')
+        path = self._r.hget(f'table:{table_id}', 'path').decode('utf-8')
 
         # delete the table key and path
-        self._r.delete('table/%s' % path)
-        self._r.delete('table:%d' % table_id)
+        self._r.delete(f'table/{path}')
+        self._r.delete(f'table:{table_id}')
 
     def delete_records(self, table_id):
         """
@@ -113,7 +119,7 @@ class Client:
         with self._r.pipeline() as pipe:
             pipe.multi()
 
-            for k in self._r.scan_iter('%s:*' % table.key):
+            for k in self._r.scan_iter(f'{table.key}:*'):
                 if self._r.type(k) == b'zset':
                     pipe.zrem(k, *filter_records(self._r.zrange(k, 0, -1)))
                 else:
@@ -132,27 +138,31 @@ class Client:
 
             # add each record
             for locus, record in records.items():
-                value = msgpack.packb(record)
+                value = record.pack()
+                base_chr = f'{base_key}:{locus.chromosome}'
 
                 # SNP records are stored as an ordered set
                 if isinstance(locus, SNPLocus):
-                    key = '%s:%s' % (base_key, locus.chromosome)
-                    pipe.zadd(key, {value: locus.position})
+                    pipe.zadd(base_chr, {value: locus.position})
 
                 # Regions are stored as sets across fixed-sized buckets
                 if isinstance(locus, RegionLocus):
                     for bucket in range(locus.start // 20000, locus.stop // 20000 + 1):
-                        key = '%s:%s:%d' % (base_key, locus.chromosome, bucket)
-                        pipe.sadd(key, value)
+                        pipe.sadd(f'{base_chr}:{bucket}', value)
 
             # insert all values atomically
             pipe.execute()
 
     def count_records(self, key, chromosome, start, stop):
         """
-        Count the number of records overlapped by a given locus.
+        Count the number of records overlapped by a given locus. This count
+        may not be 100% accurate for region records, because they may overlap
+        a bucket but not the locus of the query. Without actually fetching
+        the records it isn't possible to know if the record overlaps. At worst,
+        though, this will return false positives (more records), but no false
+        negatives (fewer).
         """
-        chr_key = '%s:%s' % (key, chromosome)
+        chr_key = f'{key}:{chromosome}'
 
         # does the chromosome maps to an ordered set (SNP records)?
         if self._r.type(chr_key) == b'zset':
@@ -162,8 +172,7 @@ class Client:
 
             # query records across the bucket range
             for i in range(start // 20000, stop // 20000 + 1):
-                key = '%s:%d' % (chr_key, i)
-                n += self._r.scard(key)
+                n += self._r.scard(f'{chr_key}:{i}')
 
         return n
 
@@ -172,7 +181,7 @@ class Client:
         Queries all the records overlapped by a given locus. Uses the type of the key
         to determine the query type. Returns a map of table_id -> [(offset, length)].
         """
-        chr_key = '%s:%s' % (key, chromosome)
+        chr_key = chr_key = f'{key}:{chromosome}'
         results = dict()
 
         # does the chromosome maps to an ordered set (SNP records)?
@@ -183,8 +192,7 @@ class Client:
 
             # query records across the bucket range
             for i in range(start // 20000, stop // 20000 + 1):
-                key = '%s:%d' % (chr_key, i)
-                members = self._r.smembers(key)
+                members = self._r.smembers(f'{chr_key}:{i}')
 
                 # each record should only exist once
                 query_results.update(members)
@@ -196,6 +204,6 @@ class Client:
             # NOTE: record may overlap bucket but not locus!!
 
             results.setdefault(record[0], list()). \
-                append((record[1], record[2]))
+                append(record[1:])
 
         return results

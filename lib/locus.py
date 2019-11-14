@@ -17,9 +17,9 @@ class Locus(abc.ABC):
         Create either a SNPLocus or a RegionLocus for the record.
         """
         if not stop_col:
-            return SNPLocus(record[chromosome_col], record[start_col])
+            return SNPLocus(record[chromosome_col], int(record[start_col]))
 
-        return RegionLocus(record[chromosome_col], record[start_col], record[stop_col])
+        return RegionLocus(record[chromosome_col], int(record[start_col]), int(record[stop_col]))
 
     @abc.abstractmethod
     def __str__(self):
@@ -40,8 +40,20 @@ class Locus(abc.ABC):
 class SNPLocus(Locus):
     position: int
 
+    def __post_init__(self):
+        """
+        Ensure the proper types for the locus.
+        """
+        super().__post_init__()
+
+        # ensure integer position
+        self.position = int(self.position)
+
     def __str__(self):
-        return '%s:%d' % (self.chromosome, self.position)
+        """
+        Return a string representation of the locus.
+        """
+        return f'{self.chromosome}:{self.position}'
 
     def __hash__(self):
         """
@@ -61,8 +73,21 @@ class RegionLocus(Locus):
     start: int
     stop: int
 
+    def __post_init__(self):
+        """
+        Ensure the proper types for the locus.
+        """
+        super().__post_init__()
+
+        # ensure integer range
+        self.start = int(self.start)
+        self.stop = int(self.stop)
+
     def __str__(self):
-        return '%s:%d-%d' % (self.chromosome, self.start, self.stop)
+        """
+        Return a string representation of the locus.
+        """
+        return f'{self.chromosome}:{self.start}-{self.stop}'
 
     def __hash__(self):
         """
@@ -84,7 +109,7 @@ def parse_chromosome(s):
     match = re.fullmatch(r'(?:chr)?(\d{1,2}|x|y|xy|m)', s)
 
     if not match:
-        raise ValueError('Failed to match chromosome against %s' % s)
+        raise ValueError(f'Failed to match chromosome against {s}')
 
     return match.group(1).upper()
 
@@ -96,7 +121,7 @@ def parse_locus(s):
     match = re.fullmatch(r'(?:chr)?(\d{1,2}|x|y|xy|m):(\d+)(?:-(\d+))?', s, re.IGNORECASE)
 
     if not match:
-        raise ValueError('Failed to match locus against %s' % s)
+        raise ValueError(f'Failed to match locus against {s}')
 
     chromosome, start, end = match.groups()
 
@@ -116,6 +141,6 @@ def parse_locus_columns(s):
     match = re.fullmatch(r'([^:]+):([^-]+)(?:-(.+))?', s)
 
     if not match:
-        raise ValueError('Failed to parse locus column names against %s' % s)
+        raise ValueError(f'Failed to parse locus column names against {s}')
 
     return match.groups()

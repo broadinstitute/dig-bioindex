@@ -16,7 +16,7 @@ def s3_uri(bucket, path):
     """
     Returns an s3 URI for a given path in a bucket.
     """
-    return 's3://%s/%s' % (bucket, path)
+    return f's3://{bucket}/{path}'
 
 
 def s3_parse_url(uri):
@@ -26,7 +26,7 @@ def s3_parse_url(uri):
     url = urllib.parse.urlparse(uri)
 
     if url.scheme != 's3':
-        raise ValueError('Invalid S3 URI: %s' % uri)
+        raise ValueError(f'Invalid S3 URI: {uri}')
 
     # separate the bucket name from the path
     return url.netloc, url.path
@@ -90,11 +90,11 @@ def s3_read_object(bucket, path, offset=None, length=None):
 
     # specify the range parameter
     if offset is not None and length is not None:
-        kwargs['Range'] = 'bytes=%d-%d' % (offset, offset + length - 1)
+        kwargs['Range'] = f'bytes={offset}-{offset + length - 1}'
     elif offset is not None:
-        kwargs['Range'] = 'bytes=%d-' % offset
+        kwargs['Range'] = f'bytes={offset}-'
     elif length is not None:
-        kwargs['Range'] = 'bytes=-%d' % length
+        kwargs['Range'] = f'bytes=-{length}'
 
     # download the object
     return s3_client.get_object(**kwargs).get('Body')

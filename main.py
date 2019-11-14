@@ -29,7 +29,7 @@ def cli_test():
 
     # only get the first object in the bucket and ensure access
     first = next(s3_list_objects(bucket, '/'))
-    assert s3_test_object(bucket, first), 'Failed to access s3 bucket %s' % bucket
+    assert s3_test_object(bucket, first), f'Failed to access s3 bucket {bucket}'
 
 
 @click.command(name='index')
@@ -37,19 +37,23 @@ def cli_test():
 @click.option('--exclude', help='exclude s3 keys matching the pattern')
 @click.option('--new', is_flag=True, help='skip tables already indexed')
 @click.option('--update', is_flag=True, help='update tables already indexed')
+@click.option('--dialect', default='json', help='record dialect to use (default=json)')
 @click.argument('key')
 @click.argument('prefix')
 @click.argument('locus')
-def cli_index(only, exclude, new, update, key, prefix, locus):
+def cli_index(only, exclude, new, update, dialect, key, prefix, locus):
     """
     Index s3 table records in to a redis key.
     """
     bucket = os.getenv('S3_BUCKET')
     t0 = time.time()
 
+    # fetch the list of all paths to index
+    paths = s3_list_objects(bucket, prefix, only=only, exclude=exclude)
+
     # connect to redis
     with Client() as client:
-        n = index(client, key, locus, bucket, prefix, only=only, exclude=exclude, new=new, update=update)
+        n = index(client, key, dialect, locus, bucket, paths, update=update, new=new)
         dt = datetime.timedelta(seconds=time.time() - t0)
 
         # done output report
