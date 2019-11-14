@@ -29,6 +29,9 @@ class Locus(abc.ABC):
         """
         Validate the chromosome is valid, and normalize it.
         """
+        if not self.chromosome:
+            raise KeyError('Missing chromosome column from record')
+
         self.chromosome = parse_chromosome(self.chromosome)
 
     @abc.abstractmethod
@@ -45,6 +48,9 @@ class SNPLocus(Locus):
         Ensure the proper types for the locus.
         """
         super().__post_init__()
+
+        if not self.position:
+            raise KeyError('Missing position column from record')
 
         # ensure integer position
         self.position = int(self.position)
@@ -78,6 +84,9 @@ class RegionLocus(Locus):
         Ensure the proper types for the locus.
         """
         super().__post_init__()
+
+        if not self.start or not self.stop:
+            raise KeyError('Missing start and/or stop columns from record')
 
         # ensure integer range
         self.start = int(self.start)
