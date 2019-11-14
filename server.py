@@ -24,7 +24,14 @@ def server_keys():
     """
     Query the redis database for a list of all indexed key spaces.
     """
-    return client.get_table_keys()
+    keys, query_s = profile(client.get_table_keys)
+
+    return {
+        'profile': {
+            'query': query_s,
+        },
+        'keys': keys,
+    }
 
 
 @app.route('/count/<key>')
