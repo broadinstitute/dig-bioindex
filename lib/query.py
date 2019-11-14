@@ -39,12 +39,8 @@ def query(redis_client, key, chromosome, start, stop, bucket):
 
         # final record list
         for r in records:
-            try:
-                if Locus.from_record(r, *locus_cols).overlaps(chromosome, start, stop):
-                    yield r
-            except KeyError:
-                print(r)
-                print(locus_cols)
+            if Locus.from_record(r, *locus_cols).overlaps(chromosome, start, stop):
+                yield r
 
     # create a thread pool to load records in parallel
     ex = concurrent.futures.ThreadPoolExecutor(max_workers=20)
