@@ -9,7 +9,7 @@ from lib.query import *
 
 
 # create flask app; this will load .env
-app = flask.Flask(__name__, static_folder='web')
+app = flask.Flask(__name__, static_folder='web', static_url_path='/')
 
 # connect to redis and get bucket from .env
 client = Client()
@@ -19,7 +19,7 @@ bucket = os.getenv('S3_BUCKET')
 assert bucket, 'S3_BUCKET not set in environment or .env'
 
 
-@app.route('/keys')
+@app.route('/api/keys')
 def server_keys():
     """
     Query the redis database for a list of all indexed key spaces.
@@ -34,7 +34,7 @@ def server_keys():
     }
 
 
-@app.route('/count/<key>')
+@app.route('/api/count/<key>')
 def server_count(key):
     """
     Query the redis database for records overlapping the region and return the
@@ -60,7 +60,7 @@ def server_count(key):
         flask.abort(400, str(e))
 
 
-@app.route('/query/<key>')
+@app.route('/api/query/<key>')
 def server_query(key):
     """
     Query the redis database for records overlapping the region and then fetch
@@ -95,7 +95,7 @@ def server_query(key):
         flask.abort(400, str(e))
 
 
-@app.route('/next/<token>')
+@app.route('/api/next/<token>')
 def server_next(token: str):
     """
     Continue to fetch records from a previous query using a continuation token.
