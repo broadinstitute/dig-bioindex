@@ -103,16 +103,24 @@
             $('#regionTable').bootstrapTable();
         });
 
-        function debounce(f, delay) {
-            let timeoutId = null;
+        function debounce(f, wait, immediate) {
+            let timeout = null;
 
-            return () => {
-                clearTimeout(timeoutId);
-                let args = arguments;
-                let that = this;
-                timeoutId = setTimeout(() => f.apply(that, args), delay);
-            };
-        }
+		return function() {
+			let context = this;
+			let args = arguments;
+
+			let later = function() {
+				timeout = null;
+				if (!immediate) f.apply(context, args);
+			};
+
+			let callNow = immediate && !timeout;
+			clearTimeout(timeout);
+			timeout = setTimeout(later, wait);
+			if (callNow) f.apply(context, args);
+		};
+            }
 
         let store = new Vuex.Store({
             state: {
@@ -239,7 +247,7 @@
                 geneData() { return this.$store.state.genes },
             },
             watch: {
-                locus: debounce((locus) => {
+                locus: debounce(function(locus) {
                     this.$store.dispatch('countMetaAnalysis', { locus });
                     this.$store.dispatch('countGenes', { locus });
                     this.$store.dispatch('countRegions', { locus });
