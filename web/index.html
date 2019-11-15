@@ -13,7 +13,8 @@
 </head>
 
 <body>
-    <div id="app w-75 mx-auto">
+  <center>
+    <div id="app">
         <div class="m-5">
             <h1>KPN BIO Index</h1>
         </div>
@@ -25,42 +26,42 @@
         </div>
 
         <!-- match group -->
-        <div class="btn-group" role="group" aria-label="Matches">
+        <div class="btn-group mb-5" role="group" aria-label="Matches">
             <a class="btn btn-light btn-sm" data-toggle="collapse" href="#metaanalysis"
-                @clicked="$store.dispatch('queryMetaAnalysis')">Bottom Line
+								   @click="$store.dispatch('queryMetaAnalysis', {locus})">Bottom Line
                 <span class=" badge badge-primary badge-pill">{{$store.state.metaAnalysisCount}}</span>
             </a>
             <a class="btn btn-light btn-sm" data-toggle="collapse" href="#genes"
-                @clicked="$store.dispatch('queryGenes')">Genes
+								   @click="$store.dispatch('queryGenes', {locus})">Genes
                 <span class="badge badge-primary badge-pill">{{$store.state.geneCount}}</span>
             </a>
             <a class="btn btn-light btn-sm" data-toggle="collapse" href="#regions"
-                @clicked="$store.dispatch('queryRegions')">Regions
+								   @click="$store.dispatch('queryRegions', {locus})">Regions
                 <span class="badge badge-primary badge-pill">{{$store.state.regionCount}}</span>
             </a>
         </div>
 
         <!-- meta-analysis -->
         <div class="collapse" id="metaanalysis">
-            <div class="spinner-border text-primary" role="status">
+            <div v-if="$store.state.metaAnalysis===undefined" class="spinner-border text-primary" role="status">
                 <span class="sr-only">Loading...</span>
             </div>
         </div>
 
         <!-- genes -->
         <div class="collapse" id="genes">
-            <div class="spinner-border text-primary" role="status">
+            <div v-if="$store.state.genes===undefined" class="spinner-border text-primary" role="status">
                 <span class="sr-only">Loading...</span>
             </div>
         </div>
 
         <!-- regions -->
         <div class="collapse" id="regions">
-            <div class="spinner-border text-primary" role="status">
+            <div v-if="$store.state.regions===undefined" class="spinner-border text-primary mx-auto" role="status">
                 <span class="sr-only">Loading...</span>
             </div>
         </div>
-    </div>
+    </center>
 
     <!-- jquery, popper, bootstrap -->
     <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"
@@ -141,6 +142,7 @@
                         });
                 },
                 async queryGenes({ commit }, { locus }) {
+			commit('setGenes', undefined);
                     fetch(`/api/query/genes?q=${locus}`)
                         .then((resp) => resp.json())
                         .then((json) => {
@@ -151,6 +153,7 @@
                         });
                 },
                 async queryRegions({ commit }, { locus }) {
+			commit('setRegions', undefined);
                     fetch(`/api/query/regions?q=${locus}`)
                         .then((resp) => resp.json())
                         .then((json) => {
@@ -168,6 +171,11 @@
             store,
             data: {
                 locus: '',
+            },
+            computed: {
+		    noMetaAnalysis() { return !this.$store.metaAnalysisCount },
+		    noGenes() { return !this.$store.geneCount },
+		    noRegions() { return !this.$store.regionCount },
             },
             watch: {
                 locus(locus) {
