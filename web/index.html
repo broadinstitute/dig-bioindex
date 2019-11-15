@@ -13,44 +13,54 @@
 </head>
 
 <body>
-    <center>
-        <div id="app">
-            <div class="m-5">
-                <h1>KPN BIO Index</h1>
-            </div>
+    <div id="app w-75 mx-auto">
+        <div class="m-5">
+            <h1>KPN BIO Index</h1>
+        </div>
 
-            <!-- locus input -->
-            <div class="mx-auto p-3 mb-2 px-md-5 bg-white rounded w-50">
-                <input v-model="locus" @change="" type="text" class="form-control" aria-describedby="locus"
-                    placeholder="chromosome:start-stop">
-            </div>
+        <!-- locus input -->
+        <div class="mx-auto p-3 mb-2 px-md-5 bg-white rounded w-50">
+            <input v-model="locus" @change="" type="text" class="form-control" aria-describedby="locus"
+                placeholder="chromosome:start-stop">
+        </div>
 
-            <!-- match group -->
-            <div class="btn-group" role="group" aria-label="Matches">
-                <a class="btn btn-light btn-sm" data-toggle="collapse" href="#bottomLine">Bottom Line
-                    <span class="badge badge-primary badge-pill">{{$store.state.bottomLineCount}}</span>
-                </a>
-                <a class="btn btn-light btn-sm" data-toggle="collapse" href="#genes">Genes
-                    <span class="badge badge-primary badge-pill">{{$store.state.geneCount}}</span>
-                </a>
-                <a class="btn btn-light btn-sm" data-toggle="collapse" href="#regions">Regions
-                    <span class="badge badge-primary badge-pill">{{$store.state.regionCount}}</span>
-                </a>
-            </div>
+        <!-- match group -->
+        <div class="btn-group" role="group" aria-label="Matches">
+            <a class="btn btn-light btn-sm" data-toggle="collapse" href="#metaanalysis"
+                @clicked="$store.dispatch('queryMetaAnalysis')">Bottom Line
+                <span class=" badge badge-primary badge-pill">{{$store.state.metaAnalysisCount}}</span>
+            </a>
+            <a class="btn btn-light btn-sm" data-toggle="collapse" href="#genes"
+                @clicked="$store.dispatch('queryGenes')">Genes
+                <span class="badge badge-primary badge-pill">{{$store.state.geneCount}}</span>
+            </a>
+            <a class="btn btn-light btn-sm" data-toggle="collapse" href="#regions"
+                @clicked="$store.dispatch('queryRegions')">Regions
+                <span class="badge badge-primary badge-pill">{{$store.state.regionCount}}</span>
+            </a>
+        </div>
 
-            <!-- bottom line results -->
-            <div class="collapse" id="bottomLine">
-            </div>
-
-            <!-- gene results -->
-            <div class="collapse" id="genes">
-            </div>
-
-            <!-- region results -->
-            <div class="collapse" id="regions">
+        <!-- meta-analysis -->
+        <div class="collapse" id="metaanalysis">
+            <div class="spinner-border text-primary" role="status">
+                <span class="sr-only">Loading...</span>
             </div>
         </div>
-    </center>
+
+        <!-- genes -->
+        <div class="collapse" id="genes">
+            <div class="spinner-border text-primary" role="status">
+                <span class="sr-only">Loading...</span>
+            </div>
+        </div>
+
+        <!-- regions -->
+        <div class="collapse" id="regions">
+            <div class="spinner-border text-primary" role="status">
+                <span class="sr-only">Loading...</span>
+            </div>
+        </div>
+    </div>
 
     <!-- jquery, popper, bootstrap -->
     <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"
@@ -71,22 +81,44 @@
     <script>
         let store = new Vuex.Store({
             state: {
-                bottomLineCount: 0,
+                metaAnalysisCount: 0,
                 geneCount: 0,
                 regionCount: 0,
+                metaAnalysis: {},
+                genes: {},
+                regions: {},
             },
             mutations: {
-                setBottomLineCount(state, n) {
-                    state.bottomLineCount = n;
+                setMetaAnalysisCount(state, n) {
+                    state.metaAnalysisCount = n;
                 },
                 setGeneCount(state, n) {
                     state.geneCount = n;
                 },
                 setRegionCount(state, n) {
                     state.regionCount = n;
+                },
+                setMetaAnalysis(state, json) {
+                    state.metaAnalysis = json;
+                },
+                setGenes(state, json) {
+                    state.genes = json;
+                },
+                setRegions(state, json) {
+                    state.regions = json;
                 }
             },
             actions: {
+                async countMetaAnalysis({ commit }, { locus }) {
+                    fetch(`/api/count/metaanalysis?q=${locus}`)
+                        .then((resp) => resp.json())
+                        .then((json) => {
+                            commit('setMetaAnalysisCount', json.n);
+                        })
+                        .catch((err) => {
+                            commit('setMetaAnalysisCount', 0);
+                        });
+                },
                 async countGenes({ commit }, { locus }) {
                     fetch(`/api/count/genes?q=${locus}`)
                         .then((resp) => resp.json())
@@ -106,6 +138,26 @@
                         .catch((err) => {
                             commit('setRegionCount', 0);
                         });
+                },
+                async queryGenes({ commit }, { locus }) {
+                    fetch(`/api/query/genes?q=${locus}`)
+                        .then((resp) => resp.json())
+                        .then((json) => {
+                            commit('setGenes', json)
+                        })
+                        .catch((err) => {
+                            commit('setGenes', {});
+                        });
+                },
+                async queryRegions({ commit }, { locus }) {
+                    fetch(`/api/query/regions?q=${locus}`)
+                        .then((resp) => resp.json())
+                        .then((json) => {
+                            commit('setRegions', json)
+                        })
+                        .catch((err) => {
+                            commit('setRegions', {});
+                        });
                 }
             }
         });
@@ -118,6 +170,7 @@
             },
             watch: {
                 locus(locus) {
+                    this.$store.dispatch('countMetaAnalysis', { locus });
                     this.$store.dispatch('countGenes', { locus });
                     this.$store.dispatch('countRegions', { locus });
                 },
