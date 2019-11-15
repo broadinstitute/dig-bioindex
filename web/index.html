@@ -14,6 +14,11 @@
 
     <!-- title last -->
     <title>KPN BIO Index</title>
+
+    <!-- don't show vue app until compiled -->
+    <style>
+        [v-cloak] { display: none; }
+    </style>
 </head>
 
 <body>
@@ -94,172 +99,9 @@
     <script src="https://unpkg.com/bootstrap-table@1.15.5/dist/bootstrap-table.min.js"></script>
     <script src="https://unpkg.com/bootstrap-table@1.15.5/dist/bootstrap-table-vue.min.js"></script>
 
-    <!-- app -->
-    <script>
-        Vue.use(BootstrapTable);
-
-        $(document).ready(() => {
-            $('#geneTable').bootstrapTable();
-            $('#regionTable').bootstrapTable();
-        });
-
-        function debounce(f, wait, immediate) {
-            let timeout = null;
-
-            return function () {
-                let context = this;
-                let args = arguments;
-                let callNow = immediate && !timeout;
-
-                let later = function () {
-                    timeout = null;
-                    if (!immediate) {
-                        f.apply(context, args);
-                    }
-                };
-
-                clearTimeout(timeout);
-                timeout = setTimeout(later, wait);
-
-                if (callNow) {
-                    f.apply(context, args);
-                }
-            };
-        }
-
-        let store = new Vuex.Store({
-            state: {
-                tab: null,
-                metaAnalysisCount: 0,
-                geneCount: 0,
-                regionCount: 0,
-                metaAnalysis: null,
-                genes: null,
-                regions: null,
-            },
-            mutations: {
-                setTab(state, tab) {
-                    state.tab = tab;
-                },
-                setMetaAnalysisCount(state, n) {
-                    state.metaAnalysisCount = n;
-                },
-                setGeneCount(state, n) {
-                    state.geneCount = n;
-                },
-                setRegionCount(state, n) {
-                    state.regionCount = n;
-                },
-                setMetaAnalysis(state, json) {
-                    state.metaAnalysis = json;
-                },
-                setGenes(state, json) {
-                    state.genes = json;
-                },
-                setRegions(state, json) {
-                    state.regions = json;
-                }
-            },
-            actions: {
-                async countMetaAnalysis({ commit }, { locus }) {
-                    fetch(`/api/count/metaanalysis?q=${encodeURIComponent(locus)}`)
-                        .then((resp) => resp.json())
-                        .then((json) => {
-                            commit('setMetaAnalysisCount', json.n);
-                        })
-                        .catch((err) => {
-                            commit('setMetaAnalysisCount', 0);
-                        });
-                },
-                async countGenes({ commit }, { locus }) {
-                    fetch(`/api/count/genes?q=${encodeURIComponent(locus)}`)
-                        .then((resp) => resp.json())
-                        .then((json) => {
-                            commit('setGeneCount', json.n);
-                        })
-                        .catch((err) => {
-                            commit('setGeneCount', 0);
-                        });
-                },
-                async countRegions({ commit }, { locus }) {
-                    fetch(`/api/count/regions?q=${encodeURIComponent(locus)}`)
-                        .then((resp) => resp.json())
-                        .then((json) => {
-                            commit('setRegionCount', json.n);
-                        })
-                        .catch((err) => {
-                            commit('setRegionCount', 0);
-                        });
-                },
-                async queryGenes({ commit }, { locus }) {
-                    commit('setGenes', undefined);
-                    commit('setTab', 'genes');
-                    fetch(`/api/query/genes?q=${encodeURIComponent(locus)}`)
-                        .then((resp) => resp.json())
-                        .then((json) => {
-                            commit('setGenes', json.records)
-                        })
-                        .catch((err) => {
-                            commit('setGenes', null);
-                        });
-                },
-                async queryRegions({ commit }, { locus }) {
-                    commit('setRegions', undefined);
-                    commit('setTab', 'regions');
-                    fetch(`/api/query/regions?q=${encodeURIComponent(locus)}`)
-                        .then((resp) => resp.json())
-                        .then((json) => {
-                            commit('setRegions', json.records)
-                        })
-                        .catch((err) => {
-                            commit('setRegions', null);
-                        });
-                }
-            }
-        });
-
-        let app = new Vue({
-            el: '#app',
-            store,
-            components: {
-                'BootstrapTable': BootstrapTable,
-            },
-            data: {
-                locus: '',
-                regionColumns: [
-                    { title: 'Region', formatter(v, r) { return `${r.chromosome}:${r.start}-${r.end}`; } },
-                    { title: 'Tissue', field: 'biosample' },
-                    { title: 'Method', field: 'method' },
-                    { title: 'Annotation', field: 'annotation' },
-                    { title: 'Gene', field: 'predictedTargetGene' },
-                    { title: 'Score', field: 'score' },
-                ],
-                geneColumns: [
-                    { title: 'Gene', field: 'name' },
-                    { title: 'ENS', field: 'ensemblId' },
-                    { title: 'Start', field: 'start' },
-                    { title: 'End', field: 'end' },
-                    { title: 'Type', field: 'type' },
-                ],
-            },
-            computed: {
-                tab() { return this.$store.state.tab },
-                noMetaAnalysis() { return !this.$store.state.metaAnalysisCount },
-                noGenes() { return !this.$store.state.geneCount },
-                noRegions() { return !this.$store.state.regionCount },
-
-                regionData() { return this.$store.state.regions },
-                geneData() { return this.$store.state.genes },
-            },
-            watch: {
-                locus: debounce(function (locus) {
-                    this.$store.dispatch('countMetaAnalysis', { locus });
-                    this.$store.dispatch('countGenes', { locus });
-                    this.$store.dispatch('countRegions', { locus });
-                }, 500),
-            }
-        });
-    </script>
+    <!-- vue app -->
+    <script type="javascript" src="/static/js/store.js"></script>
+    <script type="javascript" src="/static/js/app.js"></script>
 </body>
 
 </html>
