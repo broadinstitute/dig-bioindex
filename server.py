@@ -9,7 +9,7 @@ from lib.query import *
 
 
 # create flask app; this will load .env
-app = flask.Flask(__name__, static_folder='web', static_url_path='web/static')
+app = flask.Flask(__name__, static_folder='web/static')
 
 # connect to redis and get bucket from .env
 client = Client()
