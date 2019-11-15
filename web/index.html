@@ -7,6 +7,7 @@
 
     <!-- bootstrap css -->
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/bootstrap-table@1.15.5/dist/bootstrap-table.min.css">
 
     <!-- title last -->
     <title>BIO Index</title>
@@ -15,7 +16,7 @@
 <body>
     <center>
         <div id="app">
-            <div class="m-5">
+            <div class="mt-5 mb-2">
                 <h1>KPN BIO Index</h1>
             </div>
 
@@ -27,82 +28,60 @@
 
             <!-- match group -->
             <div class="btn-group mb-5" role="group" aria-label="Matches">
-                <a class="btn btn-light btn-sm" data-toggle="collapse" href="#metaanalysis"
+                <a class="btn btn-light btn-sm" href="#"
                     @click="$store.dispatch('queryMetaAnalysis', {locus})">Bottom Line
                     <span v-if="$store.state.metaAnalysisCount>0"
                         class=" badge badge-primary badge-pill">{{$store.state.metaAnalysisCount}}</span>
                 </a>
-                <a class="btn btn-light btn-sm" data-toggle="collapse" href="#genes"
+                <a class="btn btn-light btn-sm" href="#"
                     @click="$store.dispatch('queryGenes', {locus})">Genes
                     <span v-if="$store.state.geneCount>0"
                         class="badge badge-primary badge-pill">{{$store.state.geneCount}}</span>
                 </a>
-                <a class="btn btn-light btn-sm" data-toggle="collapse" href="#regions"
+                <a class="btn btn-light btn-sm" href="#"
                     @click="$store.dispatch('queryRegions', {locus})">Regions
                     <span v-if="$store.state.regionCount>0"
                         class="badge badge-primary badge-pill">{{$store.state.regionCount}}</span>
                 </a>
             </div>
 
+	    <div class="w-75 mx-auto">
             <!-- meta-analysis -->
-            <div class="collapse" id="metaanalysis">
+            <div v-if="tab=='metaanalysis'" id="metaanalysis">
                 <div v-if="$store.state.metaAnalysis===undefined" class="spinner-border text-primary" role="status">
                     <span class="sr-only">Loading...</span>
-                </div>
-                <div v-if="$store.state.metaAnalysisCount===0">
-                    <em>No bottom line results found</em>
                 </div>
             </div>
 
             <!-- genes -->
-            <div class="collapse" id="genes">
+            <div v-if="tab=='genes'" id="genes">
                 <div v-if="$store.state.genes===undefined" class="spinner-border text-primary" role="status">
                     <span class="sr-only">Loading...</span>
                 </div>
-                <div v-if="$store.state.genes===null">
-                    <em>No genes found</em>
-                </div>
+		<div v-if="geneData">
+			<bootstrap-table id="geneTable"
+				:columns="geneColumns"
+			    	:data="geneData"
+				:options="{pagination:true,pageSize:25,showSearchButton:true}"
+		     ></bootstrap-table>
+		</div>
             </div>
 
             <!-- regions -->
-            <div class="collapse" id="regions">
+            <div v-if="tab=='regions'" id="regions">
                 <div v-if="$store.state.regions===undefined" class="spinner-border text-primary mx-auto" role="status">
                     <span class="sr-only">Loading...</span>
                 </div>
-                <div v-if="$store.state.regions===null">
-                    <em>No regions found</em>
-                </div>
-                <table v-if="$store.state.regions===0" id="regionTable">
-                    <thead>
-                        <tr>
-                            <th>Locus</th>
-                            <th>Tissue</th>
-                            <th>Method</th>
-                            <th>Annotation</th>
-                            <th>Gene</th>
-                            <th>Score</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="r in $store.state.regions.records">
-                            <td>{{r.chromosome}}:{{r.start}}-{{r.end}}</td>
-                            <td>{{r.biosample}}</td>
-                            <td>{{r.method}}</td>
-                            <td>{{r.annotation}}</td>
-                            <td>{{r.gene}}</td>
-                            <td>{{r.score}}</td>
-                        </tr>
-                    </tbody>
-                </table>
+		<div v-if="regionData">
+			<bootstrap-table id="regionTable"
+				:columns="regionColumns"
+			    	:data="regionData"
+				:options="{pagination:true,pageSize:25,showSearchButton:true}"
+		     ></bootstrap-table>
+		</div>
             </div>
+	    </div>
     </center>
-    <script>
-        $(document).ready(function () {
-            //$('#metaAnalysisTable').DataTable();
-            //$('#geneTable').DataTable();
-            $('#regionTable').DataTable();
-        });
-    </script>
 
     <!-- jquery, popper, bootstrap -->
     <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"
@@ -120,18 +99,32 @@
     <!--<script src="https://cdn.jsdelivr.net/npm/vue"></script>-->
     <script src="https://unpkg.com/vuex"></script>
 
+    <!-- bootstrap table -->
+    <script src="https://unpkg.com/bootstrap-table@1.15.5/dist/bootstrap-table.min.js"></script>
+    <script src="https://unpkg.com/bootstrap-table@1.15.5/dist/bootstrap-table-vue.min.js"></script>
+
     <!-- app -->
     <script>
+	Vue.use(BootstrapTable);
+
+	$(document).ready(() => {
+		$('#regionTable').bootstrapTable();
+	});
+
         let store = new Vuex.Store({
             state: {
+		    tab: null,
                 metaAnalysisCount: 0,
                 geneCount: 0,
                 regionCount: 0,
-                metaAnalysis: {},
-                genes: {},
-                regions: {},
+                metaAnalysis: null,
+                genes: null,
+                regions: null,
             },
             mutations: {
+		   setTab(state,tab) {
+			   state.tab=tab;
+		   },
                 setMetaAnalysisCount(state, n) {
                     state.metaAnalysisCount = n;
                 },
@@ -184,10 +177,11 @@
                 },
                 async queryGenes({ commit }, { locus }) {
                     commit('setGenes', undefined);
+		commit('setTab', 'genes');
                     fetch(`/api/query/genes?q=${locus}`)
                         .then((resp) => resp.json())
                         .then((json) => {
-                            commit('setGenes', json)
+                            commit('setGenes', json.records)
                         })
                         .catch((err) => {
                             commit('setGenes', null);
@@ -195,10 +189,11 @@
                 },
                 async queryRegions({ commit }, { locus }) {
                     commit('setRegions', undefined);
+		commit('setTab', 'regions');
                     fetch(`/api/query/regions?q=${locus}`)
                         .then((resp) => resp.json())
                         .then((json) => {
-                            commit('setRegions', json)
+                            commit('setRegions', json.records)
                         })
                         .catch((err) => {
                             commit('setRegions', null);
@@ -210,13 +205,35 @@
         let app = new Vue({
             el: '#app',
             store,
+		components: {
+			'BootstrapTable': BootstrapTable,
+		},
             data: {
                 locus: '',
+		    regionColumns: [
+			    {title:'Region', formatter(v, r) { return `${r.chromosome}:${r.start}-${r.end}`; }},
+			    {title:'Tissue', field: 'biosample'},
+			    {title:'Method', field: 'method'},
+			    {title:'Annotation', field: 'annotation'},
+			    {title:'Gene', field: 'predictedTargetGene'},
+			    {title:'Score', field: 'score'},
+			   ],
+		    geneColumns:[
+			    {title:'Gene', field: 'name'},
+			    {title:'ENS', field: 'ensemblId'},
+			    {title:'Start', field: 'start'},
+			    {title:'End', field:'end'},
+			    {title:'Type', field:'type'},
+			    ],
             },
             computed: {
-                noMetaAnalysis() { return !this.$store.metaAnalysisCount },
-                noGenes() { return !this.$store.geneCount },
-                noRegions() { return !this.$store.regionCount },
+		    tab() { return this.$store.state.tab },
+                noMetaAnalysis() { return !this.$store.state.metaAnalysisCount },
+                noGenes() { return !this.$store.state.geneCount },
+                noRegions() { return !this.$store.state.regionCount },
+
+		    regionData() { return this.$store.state.regions },
+		    geneData() { return this.$store.state.genes },
             },
             watch: {
                 locus(locus) {
