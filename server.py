@@ -19,8 +19,16 @@ bucket = os.getenv('S3_BUCKET')
 assert bucket, 'S3_BUCKET not set in environment or .env'
 
 
+@app.route('/')
+def index():
+    """
+    SPA page.
+    """
+    flask.send_file('web/index.html', mimetype='text/html')
+
+
 @app.route('/api/keys')
-def server_keys():
+def api_keys():
     """
     Query the redis database for a list of all indexed key spaces.
     """
@@ -35,7 +43,7 @@ def server_keys():
 
 
 @app.route('/api/count/<key>')
-def server_count(key):
+def api_count(key):
     """
     Query the redis database for records overlapping the region and return the
     count of them without fetching.
@@ -61,7 +69,7 @@ def server_count(key):
 
 
 @app.route('/api/query/<key>')
-def server_query(key):
+def api_query(key):
     """
     Query the redis database for records overlapping the region and then fetch
     the records from s3.
@@ -96,7 +104,7 @@ def server_query(key):
 
 
 @app.route('/api/next/<token>')
-def server_next(token: str):
+def api_next(token: str):
     """
     Continue to fetch records from a previous query using a continuation token.
     """
