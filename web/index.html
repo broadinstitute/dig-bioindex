@@ -13,55 +13,96 @@
 </head>
 
 <body>
-  <center>
-    <div id="app">
-        <div class="m-5">
-            <h1>KPN BIO Index</h1>
-        </div>
-
-        <!-- locus input -->
-        <div class="mx-auto p-3 mb-2 px-md-5 bg-white rounded w-50">
-            <input v-model="locus" @change="" type="text" class="form-control" aria-describedby="locus"
-                placeholder="chromosome:start-stop">
-        </div>
-
-        <!-- match group -->
-        <div class="btn-group mb-5" role="group" aria-label="Matches">
-            <a class="btn btn-light btn-sm" data-toggle="collapse" href="#metaanalysis"
-								   @click="$store.dispatch('queryMetaAnalysis', {locus})">Bottom Line
-                <span class=" badge badge-primary badge-pill">{{$store.state.metaAnalysisCount}}</span>
-            </a>
-            <a class="btn btn-light btn-sm" data-toggle="collapse" href="#genes"
-								   @click="$store.dispatch('queryGenes', {locus})">Genes
-                <span class="badge badge-primary badge-pill">{{$store.state.geneCount}}</span>
-            </a>
-            <a class="btn btn-light btn-sm" data-toggle="collapse" href="#regions"
-								   @click="$store.dispatch('queryRegions', {locus})">Regions
-                <span class="badge badge-primary badge-pill">{{$store.state.regionCount}}</span>
-            </a>
-        </div>
-
-        <!-- meta-analysis -->
-        <div class="collapse" id="metaanalysis">
-            <div v-if="$store.state.metaAnalysis===undefined" class="spinner-border text-primary" role="status">
-                <span class="sr-only">Loading...</span>
+    <center>
+        <div id="app">
+            <div class="m-5">
+                <h1>KPN BIO Index</h1>
             </div>
-        </div>
 
-        <!-- genes -->
-        <div class="collapse" id="genes">
-            <div v-if="$store.state.genes===undefined" class="spinner-border text-primary" role="status">
-                <span class="sr-only">Loading...</span>
+            <!-- locus input -->
+            <div class="mx-auto p-3 mb-2 px-md-5 bg-white rounded w-50">
+                <input v-model="locus" @change="" type="text" class="form-control" aria-describedby="locus"
+                    placeholder="chromosome:start-stop">
             </div>
-        </div>
 
-        <!-- regions -->
-        <div class="collapse" id="regions">
-            <div v-if="$store.state.regions===undefined" class="spinner-border text-primary mx-auto" role="status">
-                <span class="sr-only">Loading...</span>
+            <!-- match group -->
+            <div class="btn-group mb-5" role="group" aria-label="Matches">
+                <a class="btn btn-light btn-sm" data-toggle="collapse" href="#metaanalysis"
+                    @click="$store.dispatch('queryMetaAnalysis', {locus})">Bottom Line
+                    <span v-if="$store.state.metaAnalysisCount>0"
+                        class=" badge badge-primary badge-pill">{{$store.state.metaAnalysisCount}}</span>
+                </a>
+                <a class="btn btn-light btn-sm" data-toggle="collapse" href="#genes"
+                    @click="$store.dispatch('queryGenes', {locus})">Genes
+                    <span v-if="$store.state.geneCount>0"
+                        class="badge badge-primary badge-pill">{{$store.state.geneCount}}</span>
+                </a>
+                <a class="btn btn-light btn-sm" data-toggle="collapse" href="#regions"
+                    @click="$store.dispatch('queryRegions', {locus})">Regions
+                    <span v-if="$store.state.regionCount>0"
+                        class="badge badge-primary badge-pill">{{$store.state.regionCount}}</span>
+                </a>
             </div>
-        </div>
+
+            <!-- meta-analysis -->
+            <div class="collapse" id="metaanalysis">
+                <div v-if="$store.state.metaAnalysis===undefined" class="spinner-border text-primary" role="status">
+                    <span class="sr-only">Loading...</span>
+                </div>
+                <div v-if="$store.state.metaAnalysisCount===0">
+                    <em>No bottom line results found</em>
+                </div>
+            </div>
+
+            <!-- genes -->
+            <div class="collapse" id="genes">
+                <div v-if="$store.state.genes===undefined" class="spinner-border text-primary" role="status">
+                    <span class="sr-only">Loading...</span>
+                </div>
+                <div v-if="$store.state.genes===null">
+                    <em>No genes found</em>
+                </div>
+            </div>
+
+            <!-- regions -->
+            <div class="collapse" id="regions">
+                <div v-if="$store.state.regions===undefined" class="spinner-border text-primary mx-auto" role="status">
+                    <span class="sr-only">Loading...</span>
+                </div>
+                <div v-if="$store.state.regions===null">
+                    <em>No regions found</em>
+                </div>
+                <table v-if="$store.state.regions===0" id="regionTable">
+                    <thead>
+                        <tr>
+                            <th>Locus</th>
+                            <th>Tissue</th>
+                            <th>Method</th>
+                            <th>Annotation</th>
+                            <th>Gene</th>
+                            <th>Score</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="r in $store.state.regions.records">
+                            <td>{{r.chromosome}}:{{r.start}}-{{r.end}}</td>
+                            <td>{{r.biosample}}</td>
+                            <td>{{r.method}}</td>
+                            <td>{{r.annotation}}</td>
+                            <td>{{r.gene}}</td>
+                            <td>{{r.score}}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
     </center>
+    <script>
+        $(document).ready(function () {
+            //$('#metaAnalysisTable').DataTable();
+            //$('#geneTable').DataTable();
+            $('#regionTable').DataTable();
+        });
+    </script>
 
     <!-- jquery, popper, bootstrap -->
     <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"
@@ -142,25 +183,25 @@
                         });
                 },
                 async queryGenes({ commit }, { locus }) {
-			commit('setGenes', undefined);
+                    commit('setGenes', undefined);
                     fetch(`/api/query/genes?q=${locus}`)
                         .then((resp) => resp.json())
                         .then((json) => {
                             commit('setGenes', json)
                         })
                         .catch((err) => {
-                            commit('setGenes', {});
+                            commit('setGenes', null);
                         });
                 },
                 async queryRegions({ commit }, { locus }) {
-			commit('setRegions', undefined);
+                    commit('setRegions', undefined);
                     fetch(`/api/query/regions?q=${locus}`)
                         .then((resp) => resp.json())
                         .then((json) => {
                             commit('setRegions', json)
                         })
                         .catch((err) => {
-                            commit('setRegions', {});
+                            commit('setRegions', null);
                         });
                 }
             }
@@ -173,9 +214,9 @@
                 locus: '',
             },
             computed: {
-		    noMetaAnalysis() { return !this.$store.metaAnalysisCount },
-		    noGenes() { return !this.$store.geneCount },
-		    noRegions() { return !this.$store.regionCount },
+                noMetaAnalysis() { return !this.$store.metaAnalysisCount },
+                noGenes() { return !this.$store.geneCount },
+                noRegions() { return !this.$store.regionCount },
             },
             watch: {
                 locus(locus) {
