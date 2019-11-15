@@ -28,13 +28,13 @@
             <!-- match group -->
             <div class="btn-group" role="group" aria-label="Matches">
                 <a class="btn btn-light btn-sm" data-toggle="collapse" href="#bottomLine">Bottom Line
-                    <span class="badge badge-primary badge-pill">{{$store.bottomLineCount}}</span>
+                    <span class="badge badge-primary badge-pill">{{$store.state.bottomLineCount}}</span>
                 </a>
                 <a class="btn btn-light btn-sm" data-toggle="collapse" href="#genes">Genes
-                    <span class="badge badge-primary badge-pill">{{$store.geneCount}}</span>
+                    <span class="badge badge-primary badge-pill">{{$store.state.geneCount}}</span>
                 </a>
                 <a class="btn btn-light btn-sm" data-toggle="collapse" href="#regions">Regions
-                    <span class="badge badge-primary badge-pill">{{$store.regionCount}}</span>
+                    <span class="badge badge-primary badge-pill">{{$store.state.regionCount}}</span>
                 </a>
             </div>
 
@@ -88,13 +88,15 @@
             },
             actions: {
                 async countGenes({ commit }, { locus }) {
-                    fetch(`/api/count/genes?q={locus}`)
-                        .then((resp) => {
-                            commit('setGeneCount', JSON.parse(resp));
-                        })
-                        .catch(() => {
-                            commit('setGeneCount', 0);
-                        });
+                    fetch(`/api/count/genes?q=${locus}`)
+                        .then((resp) => resp.json())
+				.then((json) => {
+					commit('setGeneCount', json.n);
+
+			})
+				.catch((err) => {
+					commit('setGeneCount', 0);
+				});
                 }
             }
         });
