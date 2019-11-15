@@ -1,11 +1,117 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <link type="stylesheet" href="css/index.html">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <!-- bootstrap css -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+
+    <!-- title last -->
     <title>BIO Index</title>
 </head>
+
 <body>
-    Hello, world!
+    <center>
+        <div id="app">
+            <div class="m-5">
+                <h1>KPN BIO Index</h1>
+            </div>
+
+            <!-- locus input -->
+            <div class="mx-auto p-3 mb-2 px-md-5 bg-white rounded w-50">
+                <input v-model="locus" @change="" type="text" class="form-control" aria-describedby="locus"
+                    placeholder="chromosome:start-stop">
+            </div>
+
+            <!-- match group -->
+            <div class="btn-group" role="group" aria-label="Matches">
+                <a class="btn btn-light btn-sm" data-toggle="collapse" href="#bottomLine">Bottom Line
+                    <span class="badge badge-primary badge-pill">{{$store.bottomLineCount}}</span>
+                </a>
+                <a class="btn btn-light btn-sm" data-toggle="collapse" href="#genes">Genes
+                    <span class="badge badge-primary badge-pill">{{$store.geneCount}}</span>
+                </a>
+                <a class="btn btn-light btn-sm" data-toggle="collapse" href="#regions">Regions
+                    <span class="badge badge-primary badge-pill">{{$store.regionCount}}</span>
+                </a>
+            </div>
+
+            <!-- bottom line results -->
+            <div class="collapse" id="bottomLine">
+            </div>
+
+            <!-- gene results -->
+            <div class="collapse" id="genes">
+            </div>
+
+            <!-- region results -->
+            <div class="collapse" id="regions">
+            </div>
+        </div>
+    </center>
+
+    <!-- jquery, popper, bootstrap -->
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"
+        integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo"
+        crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"
+        integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1"
+        crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"
+        integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM"
+        crossorigin="anonymous"></script>
+
+    <!-- vue.js -->
+    <script src="https://cdn.jsdelivr.net/npm/vue"></script>
+    <script src="https://unpkg.com/vuex"></script>
+
+    <!-- app -->
+    <script>
+        let store = new Vuex.Store({
+            state: {
+                bottomLineCount: 0,
+                geneCount: 0,
+                regionCount: 0,
+            },
+            mutations: {
+                setBottomLineCount(state, n) {
+                    state.bottomLineCount = n;
+                },
+                setGeneCount(state, n) {
+                    state.geneCount = n;
+                },
+                setRegionCount(state, n) {
+                    state.regionCount = n;
+                }
+            },
+            actions: {
+                async countGenes({ commit }, { locus }) {
+                    fetch(`/api/count/genes?q={locus}`)
+                        .then((resp) => {
+                            commit('setGeneCount', JSON.parse(resp));
+                        })
+                        .catch(() => {
+                            commit('setGeneCount', 0);
+                        });
+                }
+            }
+        });
+
+        let app = new Vue({
+            el: '#app',
+            store,
+            data: {
+                locus: '',
+            },
+            watch: {
+                locus(locus) {
+                    this.$store.dispatch('countGenes', { locus });
+                },
+            }
+        });
+    </script>
 </body>
+
 </html>
