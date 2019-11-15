@@ -28,59 +28,52 @@
 
             <!-- match group -->
             <div class="btn-group mb-5" role="group" aria-label="Matches">
-                <a class="btn btn-light btn-sm" href="#"
-                    @click="$store.dispatch('queryMetaAnalysis', {locus})">Bottom Line
+                <a class="btn btn-light btn-sm" href="#" @click="$store.dispatch('queryMetaAnalysis', {locus})">Bottom
+                    Line
                     <span v-if="$store.state.metaAnalysisCount>0"
                         class=" badge badge-primary badge-pill">{{$store.state.metaAnalysisCount}}</span>
                 </a>
-                <a class="btn btn-light btn-sm" href="#"
-                    @click="$store.dispatch('queryGenes', {locus})">Genes
+                <a class="btn btn-light btn-sm" href="#" @click="$store.dispatch('queryGenes', {locus})">Genes
                     <span v-if="$store.state.geneCount>0"
                         class="badge badge-primary badge-pill">{{$store.state.geneCount}}</span>
                 </a>
-                <a class="btn btn-light btn-sm" href="#"
-                    @click="$store.dispatch('queryRegions', {locus})">Regions
+                <a class="btn btn-light btn-sm" href="#" @click="$store.dispatch('queryRegions', {locus})">Regions
                     <span v-if="$store.state.regionCount>0"
                         class="badge badge-primary badge-pill">{{$store.state.regionCount}}</span>
                 </a>
             </div>
 
-	    <div class="w-75 mx-auto">
-            <!-- meta-analysis -->
-            <div v-if="tab=='metaanalysis'" id="metaanalysis">
-                <div v-if="$store.state.metaAnalysis===undefined" class="spinner-border text-primary" role="status">
-                    <span class="sr-only">Loading...</span>
+            <div class="w-75 mx-auto">
+                <!-- meta-analysis -->
+                <div v-if="tab=='metaanalysis'" id="metaanalysis">
+                    <div v-if="$store.state.metaAnalysis===undefined" class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading...</span>
+                    </div>
                 </div>
-            </div>
 
-            <!-- genes -->
-            <div v-if="tab=='genes'" id="genes">
-                <div v-if="$store.state.genes===undefined" class="spinner-border text-primary" role="status">
-                    <span class="sr-only">Loading...</span>
+                <!-- genes -->
+                <div v-if="tab=='genes'" id="genes">
+                    <div v-if="$store.state.genes===undefined" class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading...</span>
+                    </div>
+                    <div v-if="geneData">
+                        <bootstrap-table id="geneTable" :columns="geneColumns" :data="geneData"
+                            :options="{pagination:true,pageSize:25,showSearchButton:true}"></bootstrap-table>
+                    </div>
                 </div>
-		<div v-if="geneData">
-			<bootstrap-table id="geneTable"
-				:columns="geneColumns"
-			    	:data="geneData"
-				:options="{pagination:true,pageSize:25,showSearchButton:true}"
-		     ></bootstrap-table>
-		</div>
-            </div>
 
-            <!-- regions -->
-            <div v-if="tab=='regions'" id="regions">
-                <div v-if="$store.state.regions===undefined" class="spinner-border text-primary mx-auto" role="status">
-                    <span class="sr-only">Loading...</span>
+                <!-- regions -->
+                <div v-if="tab=='regions'" id="regions">
+                    <div v-if="$store.state.regions===undefined" class="spinner-border text-primary mx-auto"
+                        role="status">
+                        <span class="sr-only">Loading...</span>
+                    </div>
+                    <div v-if="regionData">
+                        <bootstrap-table id="regionTable" :columns="regionColumns" :data="regionData"
+                            :options="{pagination:true,pageSize:25,showSearchButton:true}"></bootstrap-table>
+                    </div>
                 </div>
-		<div v-if="regionData">
-			<bootstrap-table id="regionTable"
-				:columns="regionColumns"
-			    	:data="regionData"
-				:options="{pagination:true,pageSize:25,showSearchButton:true}"
-		     ></bootstrap-table>
-		</div>
             </div>
-	    </div>
     </center>
 
     <!-- jquery, popper, bootstrap -->
@@ -105,15 +98,15 @@
 
     <!-- app -->
     <script>
-	Vue.use(BootstrapTable);
+        Vue.use(BootstrapTable);
 
-	$(document).ready(() => {
-		$('#regionTable').bootstrapTable();
-	});
+        $(document).ready(() => {
+            $('#regionTable').bootstrapTable();
+        });
 
         let store = new Vuex.Store({
             state: {
-		    tab: null,
+                tab: null,
                 metaAnalysisCount: 0,
                 geneCount: 0,
                 regionCount: 0,
@@ -122,9 +115,9 @@
                 regions: null,
             },
             mutations: {
-		   setTab(state,tab) {
-			   state.tab=tab;
-		   },
+                setTab(state, tab) {
+                    state.tab = tab;
+                },
                 setMetaAnalysisCount(state, n) {
                     state.metaAnalysisCount = n;
                 },
@@ -177,7 +170,7 @@
                 },
                 async queryGenes({ commit }, { locus }) {
                     commit('setGenes', undefined);
-		commit('setTab', 'genes');
+                    commit('setTab', 'genes');
                     fetch(`/api/query/genes?q=${locus}`)
                         .then((resp) => resp.json())
                         .then((json) => {
@@ -189,7 +182,7 @@
                 },
                 async queryRegions({ commit }, { locus }) {
                     commit('setRegions', undefined);
-		commit('setTab', 'regions');
+                    commit('setTab', 'regions');
                     fetch(`/api/query/regions?q=${locus}`)
                         .then((resp) => resp.json())
                         .then((json) => {
@@ -205,35 +198,35 @@
         let app = new Vue({
             el: '#app',
             store,
-		components: {
-			'BootstrapTable': BootstrapTable,
-		},
+            components: {
+                'BootstrapTable': BootstrapTable,
+            },
             data: {
                 locus: '',
-		    regionColumns: [
-			    {title:'Region', formatter(v, r) { return `${r.chromosome}:${r.start}-${r.end}`; }},
-			    {title:'Tissue', field: 'biosample'},
-			    {title:'Method', field: 'method'},
-			    {title:'Annotation', field: 'annotation'},
-			    {title:'Gene', field: 'predictedTargetGene'},
-			    {title:'Score', field: 'score'},
-			   ],
-		    geneColumns:[
-			    {title:'Gene', field: 'name'},
-			    {title:'ENS', field: 'ensemblId'},
-			    {title:'Start', field: 'start'},
-			    {title:'End', field:'end'},
-			    {title:'Type', field:'type'},
-			    ],
+                regionColumns: [
+                    { title: 'Region', formatter(v, r) { return `${r.chromosome}:${r.start}-${r.end}`; } },
+                    { title: 'Tissue', field: 'biosample' },
+                    { title: 'Method', field: 'method' },
+                    { title: 'Annotation', field: 'annotation' },
+                    { title: 'Gene', field: 'predictedTargetGene' },
+                    { title: 'Score', field: 'score' },
+                ],
+                geneColumns: [
+                    { title: 'Gene', field: 'name' },
+                    { title: 'ENS', field: 'ensemblId' },
+                    { title: 'Start', field: 'start' },
+                    { title: 'End', field: 'end' },
+                    { title: 'Type', field: 'type' },
+                ],
             },
             computed: {
-		    tab() { return this.$store.state.tab },
+                tab() { return this.$store.state.tab },
                 noMetaAnalysis() { return !this.$store.state.metaAnalysisCount },
                 noGenes() { return !this.$store.state.geneCount },
                 noRegions() { return !this.$store.state.regionCount },
 
-		    regionData() { return this.$store.state.regions },
-		    geneData() { return this.$store.state.genes },
+                regionData() { return this.$store.state.regions },
+                geneData() { return this.$store.state.genes },
             },
             watch: {
                 locus(locus) {
