@@ -117,7 +117,7 @@ def parse_chromosome(s):
     """
     Parse and normalize a chromosome string, which may be prefixed with 'chr'.
     """
-    match = re.fullmatch(r'(?:chr)?(\d{1,2}|x|y|xy|m)', s)
+    match = re.fullmatch(r'(?:chr)?(\d{1,2}|x|y|xy|m)', s, re.IGNORECASE)
 
     if not match:
         raise ValueError(f'Failed to match chromosome against {s}')
@@ -129,18 +129,25 @@ def parse_locus(s):
     """
     Parse a locus string and return the chromosome, start, stop.
     """
-    match = re.fullmatch(r'(?:chr)?(\d{1,2}|x|y|xy|m):(\d+)(?:-(\d+))?', s, re.IGNORECASE)
+    match = re.fullmatch(r'(?:chr)?(\d{1,2}|x|y|xy|m):(\d+)(?:([+-])(\d+))?', s, re.IGNORECASE)
 
     if not match:
         raise ValueError(f'Failed to match locus against {s}')
 
-    chromosome, start, end = match.groups()
+    chromosome, start, adjust, end = match.groups()
 
     # parse the start position
     start = int(start)
 
-    # default end to start+1 if not provided
-    end = int(end) if end else start + 1
+    # if the adjustment is a + then end is a length, otherwise a position
+    if adjust == '+':
+        end = start + int(end)
+    else:
+        end = int(end) if end else start + 1
+
+    # stop position must be > start
+    if end <= start:
+        raise ValueError(f'Stop ({end}) must be > start ({start})')
 
     return chromosome.upper(), start, end
 
