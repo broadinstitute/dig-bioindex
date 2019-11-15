@@ -90,13 +90,22 @@
                 async countGenes({ commit }, { locus }) {
                     fetch(`/api/count/genes?q=${locus}`)
                         .then((resp) => resp.json())
-				.then((json) => {
-					commit('setGeneCount', json.n);
-
-			})
-				.catch((err) => {
-					commit('setGeneCount', 0);
-				});
+                        .then((json) => {
+                            commit('setGeneCount', json.n);
+                        })
+                        .catch((err) => {
+                            commit('setGeneCount', 0);
+                        });
+                },
+                async countRegions({ commit }, { locus }) {
+                    fetch(`/api/count/regions?q=${locus}`)
+                        .then((resp) => resp.json())
+                        .then((json) => {
+                            commit('setRegionCount', json.n);
+                        })
+                        .catch((err) => {
+                            commit('setRegionCount', 0);
+                        });
                 }
             }
         });
@@ -110,6 +119,7 @@
             watch: {
                 locus(locus) {
                     this.$store.dispatch('countGenes', { locus });
+                    this.$store.dispatch('countRegions', { locus });
                 },
             }
         });
