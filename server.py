@@ -24,7 +24,7 @@ def index():
     """
     SPA page.
     """
-    flask.send_file('web/index.html', mimetype='text/html')
+    return flask.send_file('web/index.html', mimetype='text/html')
 
 
 @app.route('/api/keys')
