@@ -139,7 +139,7 @@
             },
             actions: {
                 async countMetaAnalysis({ commit }, { locus }) {
-                    fetch(`/api/count/metaanalysis?q=${locus}`)
+                    fetch(`/api/count/metaanalysis?q=${encodeURIComponent(locus)}`)
                         .then((resp) => resp.json())
                         .then((json) => {
                             commit('setMetaAnalysisCount', json.n);
@@ -149,7 +149,7 @@
                         });
                 },
                 async countGenes({ commit }, { locus }) {
-                    fetch(`/api/count/genes?q=${locus}`)
+                    fetch(`/api/count/genes?q=${encodeURIComponent(locus)}`)
                         .then((resp) => resp.json())
                         .then((json) => {
                             commit('setGeneCount', json.n);
@@ -159,7 +159,7 @@
                         });
                 },
                 async countRegions({ commit }, { locus }) {
-                    fetch(`/api/count/regions?q=${locus}`)
+                    fetch(`/api/count/regions?q=${encodeURIComponent(locus)}`)
                         .then((resp) => resp.json())
                         .then((json) => {
                             commit('setRegionCount', json.n);
@@ -171,7 +171,7 @@
                 async queryGenes({ commit }, { locus }) {
                     commit('setGenes', undefined);
                     commit('setTab', 'genes');
-                    fetch(`/api/query/genes?q=${locus}`)
+                    fetch(`/api/query/genes?q=${encodeURIComponent(locus)}`)
                         .then((resp) => resp.json())
                         .then((json) => {
                             commit('setGenes', json.records)
@@ -183,7 +183,7 @@
                 async queryRegions({ commit }, { locus }) {
                     commit('setRegions', undefined);
                     commit('setTab', 'regions');
-                    fetch(`/api/query/regions?q=${locus}`)
+                    fetch(`/api/query/regions?q=${encodeURIComponent(locus)}`)
                         .then((resp) => resp.json())
                         .then((json) => {
                             commit('setRegions', json.records)
