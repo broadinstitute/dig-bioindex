@@ -126,10 +126,13 @@ class Client:
 
             # find all records associated with table in the table's key space
             for k in (f'{table.key}:{c}' for c in chromosomes()):
+                if not self._r.exists(k):
+                    continue
+
                 if self._r.type(k) == b'zset':
                     pipe.zrem(k, *self._r.zscan_iter(k, match=match, count=10000))
                 else:
-                    for bucket in self._r.scan_iter(f'{k}:*'):
+                    for bucket in self._r.smembers(k):
                         if self._r.type(bucket) == b'set':
                             pipe.srem(bucket, *self._r.sscan_iter(bucket, match=match, count=10000))
 
@@ -167,7 +170,11 @@ class Client:
                 # Regions are stored as sets across fixed-sized buckets
                 if isinstance(locus, RegionLocus):
                     for bucket in range(locus.start // 20000, locus.stop // 20000 + 1):
-                        pipe.sadd(f'{base_chr}:{bucket}', value)
+                        bucket_key = f'{base_chr}:{bucket}'
+
+                        # each chromosome knows which buckets it contains (fast scanning)
+                        pipe.sadd(base_chr, bucket_key)
+                        pipe.sadd(bucket_key, value)
 
             # insert all values atomically
             pipe.execute()
