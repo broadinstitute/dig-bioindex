@@ -40,12 +40,13 @@ $ python3 main.py test
 
 ### Preparing Tables
 
-Once everything is setup, you can begin creating or preparing the "table" files in [S3][s3] to be indexed. Each table is expected to be in a [JSON-lines][json-lines] format. This is output natively by [Spark][spark] to folders in [S3][s3] when used to process data. For example (using [PySpark][pyspark] on an [AWS EMR][emr] cluster):
+Once everything is setup, you can begin creating or preparing the "table" files in [S3][s3] to be indexed. Each table is expected to be in either a [JSON-lines][json-lines] or CSV-like (TSV, BED, VCF, GTF, ...) format. If using a CSV format, then a header is _required_. 
+
+These formats are output natively by [Spark][spark] to folders in [S3][s3] when used to process data. For example (using [PySpark][pyspark] on an [AWS EMR][emr] cluster):
 
 ```python
-df.write. \
-    mode('overwrite'). \
-    json('s3://my-bucket/path/to/output')
+df.write.json('s3://my-bucket/key')
+df.write.csv('s3://my-bucket/key', sep='\t', header=True)
 ```
 
 The above code would write out many part files to the bucket/path that can now be indexed using the `index` CLI command. However, they will not be well suited for high-performance reading. It is best to always order the output files by locus before writing them. This will _dramatically_ improve the performance of Bio-Index:
