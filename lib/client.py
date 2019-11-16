@@ -126,9 +126,11 @@ class Client:
 
             for k in self._r.scan_iter(f'{table.key}:*'):
                 if self._r.type(k) == b'zset':
-                    pipe.zrem(k, *filter_records(self._r.zrange(k, 0, -1)))
+                    for record in filter_records(self._r.zrange(k, 0, -1)):
+                        pipe.zrem(k, record)
                 else:
-                    pipe.srem(k, *filter_records(self._r.smembers(k)))
+                    for record in filter_records(self._r.smembers(k)):
+                        pipe.srem(k, record)
 
             # do it
             pipe.execute()
