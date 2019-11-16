@@ -1,5 +1,6 @@
 import abc
 import dataclasses
+import itertools
 import re
 
 
@@ -111,6 +112,13 @@ class RegionLocus(Locus):
         True if this locus is overlapped by the region.
         """
         return self.chromosome == chromosome and stop > self.start and start < self.stop
+
+
+def chromosomes():
+    """
+    Return an iterator of all chromosomes.
+    """
+    return itertools.chain(range(1, 23), ['X', 'Y', 'XY', 'M'])
 
 
 def parse_chromosome(s):

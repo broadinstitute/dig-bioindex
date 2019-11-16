@@ -116,25 +116,22 @@ class Client:
         """
         table = self.get_table(table_id)
 
-        # extracts records from this table
-        def filter_records(rs, n=10):
-            return list(filter(lambda r: msgpack.loads(r)[0] == table_id, rs))
+        # instead of decoding every record, use the beginning prefix of a fake,
+        # encoded record to match against
+        match = b'\x93' + msgpack.dumps(table_id) + b'*'
 
-        # scan all records in the key space for the table
+        # collect the list of all records to delete
         with self._r.pipeline() as pipe:
             pipe.multi()
 
-            for k in self._r.scan_iter(f'{table.key}:*'):
+            # find all records associated with table in the table's key space
+            for k in (f'{table.key}:{c}' for c in chromosomes()):
                 if self._r.type(k) == b'zset':
-                    records = filter_records(self._r.zrange(k, 0, -1))
-                    delete = pipe.zrem
+                    pipe.zrem(k, *self._r.zscan_iter(k, match=match, count=10000))
                 else:
-                    records = filter_records(self._r.smembers(k))
-                    delete = pipe.srem
-
-                # group the records into batches (fewer commands)
-                for batch in (records[i:i+10] for i in range(0, len(records), 10)):
-                    delete(k, *batch)
+                    for bucket in self._r.scan_iter(f'{k}:*'):
+                        if self._r.type(bucket) == b'set':
+                            pipe.srem(bucket, *self._r.sscan_iter(bucket, match=match, count=10000))
 
             # do it
             pipe.execute()
