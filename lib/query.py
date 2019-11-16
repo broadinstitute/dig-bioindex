@@ -42,7 +42,7 @@ def query(redis_client, key, chromosome, start, stop, bucket):
 
             # final record list
             for r in records:
-                if Locus.from_record(r, *locus_cols).overlaps(chromosome, start, stop):
+                if Locus.of_record(r, *locus_cols).overlaps(chromosome, start, stop):
                     yield r
         except botocore.exceptions.ClientError:
             logging.error('Failed to read table %s; some records missing', table.path)

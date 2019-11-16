@@ -13,7 +13,7 @@ class Locus(abc.ABC):
     chromosome: str
 
     @staticmethod
-    def from_record(record, chromosome_col, start_col, stop_col=None):
+    def of_record(record, chromosome_col, start_col, stop_col=None):
         """
         Create either a SNPLocus or a RegionLocus for the record.
         """
