@@ -18,9 +18,6 @@ def index(redis_client, key, dialect, locus, bucket, paths, update=False, new=Fa
 
     # list all the input tables
     for path in paths:
-        logging.info('Indexing %s...', path)
-
-        # open the file (may need to read header line for table)
         line_stream = LineStream(s3_uri(bucket, path))
 
         # if the dialect isn't json, it's csv, read the first line as the header
@@ -33,11 +30,17 @@ def index(redis_client, key, dialect, locus, bucket, paths, update=False, new=Fa
         # skip already existing tables or die
         if already_exists:
             if update:
+                logging.info('Deleting %s...', path)
+
+                # delete records, but not the table entry; re-use it
                 redis_client.delete_records(table_id)
             elif not new:
-                raise AssertionError(f'Table {path} already exists and --new/update not provided')
+                raise AssertionError(f'Table {path} already indexed; --new/update not provided')
             else:
                 continue
+
+        # Show that the table is now being indexed
+        logging.info('Indexing %s...', path)
 
         # create the record reader
         reader = table.reader(line_stream)
