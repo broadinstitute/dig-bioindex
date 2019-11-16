@@ -132,7 +132,7 @@ class Client:
                 if self._r.type(k) == b'zset':
                     pipe.zrem(k, *self._r.zscan_iter(k, match=match, count=10000))
                 else:
-                    for bucket in self._r.smembers(k):
+                    for bucket in self._r.sscan_iter(k):
                         if self._r.type(bucket) == b'set':
                             pipe.srem(bucket, *self._r.sscan_iter(bucket, match=match, count=10000))
 
@@ -218,9 +218,10 @@ class Client:
 
             # query records across the bucket range
             for i in range(start // 20000, stop // 20000 + 1):
-                members = self._r.smembers(f'{chr_key}:{i}')
+                bucket = f'{chr_key}:{i}'
+                members = self._r.smembers(bucket)
 
-                # each record should only exist once
+                # add all the records to the results
                 query_results.update(members)
 
         # unpack records, extract tables
