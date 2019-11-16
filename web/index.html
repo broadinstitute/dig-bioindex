@@ -57,6 +57,10 @@
                     <div v-if="$store.state.metaAnalysis===undefined" class="spinner-border text-primary" role="status">
                         <span class="sr-only">Loading...</span>
                     </div>
+                    <div v-if="metaAnalysisData">
+                        <bootstrap-table id="metaAnalysisTable" :columns="metaAnalysisColumns" :data="metaAnalysisData"
+                            :options="{pagination:true,pageSize:25,showSearchButton:true}"></bootstrap-table>
+                    </div>
                 </div>
 
                 <!-- genes -->
@@ -179,6 +183,18 @@
                     { title: 'End', field: 'end' },
                     { title: 'Type', field: 'type' },
                 ],
+                metaAnalysisColumns: [
+                    { title: 'Chromosome', field: 'chromosome' },
+                    { title: 'Position', field: 'position' },
+                    { title: 'Ref Allele', field: 'reference' },
+                    { title: 'Alt Allele', field: 'alt' },
+                    { title: 'Phenotype', field: 'phenotype' },
+                    { title: 'P-Value', field: 'pValue' },
+                    { title: 'Effect', field: 'beta' },
+                    { title: 'StdErr', field: 'stdErr' },
+                    { title: 'Z-Score', field: 'zScore' },
+                    { title: 'Samples', field: 'n' },
+                ],
             },
             computed: {
                 tab() { return this.$store.state.tab },
@@ -189,6 +205,7 @@
 
                 regionData() { return this.$store.state.regions },
                 geneData() { return this.$store.state.genes },
+                metaAnalysisData() { return this.$store.state.metaAnalysis },
             },
             watch: {
                 locus: debounce(function (locus) {
