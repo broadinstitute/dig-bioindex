@@ -117,8 +117,8 @@ class Client:
         table = self.get_table(table_id)
 
         # extracts records from this table
-        def filter_records(records):
-            return filter(lambda r: msgpack.loads(r)[0] == table_id, records)
+        def filter_records(rs, n=10):
+            return list(filter(lambda r: msgpack.loads(r)[0] == table_id, rs))
 
         # scan all records in the key space for the table
         with self._r.pipeline() as pipe:
@@ -126,11 +126,15 @@ class Client:
 
             for k in self._r.scan_iter(f'{table.key}:*'):
                 if self._r.type(k) == b'zset':
-                    for record in filter_records(self._r.zrange(k, 0, -1)):
-                        pipe.zrem(k, record)
+                    records = filter_records(self._r.zrange(k, 0, -1))
+                    delete = pipe.zrem
                 else:
-                    for record in filter_records(self._r.smembers(k)):
-                        pipe.srem(k, record)
+                    records = filter_records(self._r.smembers(k))
+                    delete = pipe.srem
+
+                # group the records into batches (fewer commands)
+                for batch in (records[i:i+10] for i in range(0, len(records), 10)):
+                    delete(k, *batch)
 
             # do it
             pipe.execute()
