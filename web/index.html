@@ -25,7 +25,7 @@
     <center>
         <div id="app" v-cloak>
             <div class="mt-5 mb-2">
-                <h1 style="font-family: 'Lato', sans-serif">KPN BIO Index</h1>
+                <h1 style="font-family: 'Lato', sans-serif">KPN Bio-Index</h1>
             </div>
 
             <!-- locus input -->
@@ -58,7 +58,7 @@
                     </div>
                     <div v-if="variantsData">
                         <bootstrap-table id="variantTable" :columns="variantColumns" :data="variantData"
-                            :options="{pagination:true,pageSize:25,showSearchButton:true}"></bootstrap-table>
+                            :options="{pagination:true,pageSize:25,search:true,sortName:'pValue'}"></bootstrap-table>
                     </div>
                 </div>
 
@@ -69,7 +69,7 @@
                     </div>
                     <div v-if="geneData">
                         <bootstrap-table id="geneTable" :columns="geneColumns" :data="geneData"
-                            :options="{pagination:true,pageSize:25,showSearchButton:true}"></bootstrap-table>
+                            :options="{pagination:true,pageSize:25,search:true,sortName:'name'}"></bootstrap-table>
                     </div>
                 </div>
 
@@ -81,7 +81,7 @@
                     </div>
                     <div v-if="regionData">
                         <bootstrap-table id="regionTable" :columns="regionColumns" :data="regionData"
-                            :options="{pagination:true,pageSize:25,showSearchButton:true}"></bootstrap-table>
+                            :options="{pagination:true,pageSize:25,search:true,sortName:'start'}"></bootstrap-table>
                     </div>
                 </div>
             </div>
@@ -183,10 +183,15 @@
                     { title: 'Type', field: 'type' },
                 ],
                 variantColumns: [
-                    { title: 'Variant', field: 'varId' },
+                    { title: 'Dataset', field: 'dataset' },
                     { title: 'Position', field: 'position' },
                     { title: 'Ref', field: 'reference' },
                     { title: 'Alt', field: 'alt' },
+                    { title: 'Phenotype', field: 'phenotype' },
+                    { title: 'Ancestry', field: 'ancestry' },
+                    { title: 'P-Value', field: 'pValue' },
+                    { title: 'Effect', field: 'beta' },
+                    { title: 'N', field: 'n' },
                 ],
             },
             computed: {
