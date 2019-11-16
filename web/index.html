@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="https://unpkg.com/bootstrap-table@1.15.5/dist/bootstrap-table.min.css">
 
     <!-- title last -->
-    <title>KPN BIO Index</title>
+    <title>KPN Bio Index</title>
 
     <!-- don't show vue app until compiled -->
     <style>
@@ -36,11 +36,6 @@
 
             <!-- match group -->
             <div class="btn-group mb-5" role="group" aria-label="Matches">
-                <a class="btn btn-light btn-sm" href="#" @click="$store.dispatch('queryMetaAnalysis', {locus})">Bottom
-                    Line
-                    <span v-if="$store.state.metaAnalysisCount>0"
-                        class=" badge badge-primary badge-pill">{{$store.state.metaAnalysisCount}}</span>
-                </a>
                 <a class="btn btn-light btn-sm" href="#" @click="$store.dispatch('queryGenes', {locus})">Genes
                     <span v-if="$store.state.geneCount>0"
                         class="badge badge-primary badge-pill">{{$store.state.geneCount}}</span>
@@ -49,16 +44,20 @@
                     <span v-if="$store.state.regionCount>0"
                         class="badge badge-primary badge-pill">{{$store.state.regionCount}}</span>
                 </a>
+                <a class="btn btn-light btn-sm" href="#" @click="$store.dispatch('queryVariants', {locus})">Variants
+                    <span v-if="$store.state.variantCount>0"
+                        class=" badge badge-primary badge-pill">{{$store.state.variantCount}}</span>
+                </a>
             </div>
 
             <div class="w-75 mx-auto">
-                <!-- meta-analysis -->
-                <div v-if="tab=='metaanalysis'" id="metaanalysis">
-                    <div v-if="$store.state.metaAnalysis===undefined" class="spinner-border text-primary" role="status">
+                <!-- variants -->
+                <div v-if="tab=='variants'" id="variants">
+                    <div v-if="$store.state.variants===undefined" class="spinner-border text-primary" role="status">
                         <span class="sr-only">Loading...</span>
                     </div>
-                    <div v-if="metaAnalysisData">
-                        <bootstrap-table id="metaAnalysisTable" :columns="metaAnalysisColumns" :data="metaAnalysisData"
+                    <div v-if="variantsData">
+                        <bootstrap-table id="variantTable" :columns="variantColumns" :data="variantData"
                             :options="{pagination:true,pageSize:25,showSearchButton:true}"></bootstrap-table>
                     </div>
                 </div>
@@ -112,12 +111,12 @@
                 tab: null,
 
                 // how many estimated records per key space
-                metaAnalysisCount: 0,
+                variantCount: 0,
                 geneCount: 0,
                 regionCount: 0,
 
                 // records per key space
-                metaAnalysis: [],
+                variants: [],
                 genes: [],
                 regions: [],
             },
@@ -125,19 +124,19 @@
                 setTab: (state, tab) => state.tab = tab,
 
                 // estimated counts
-                setMetaAnalysisCount: (state, n) => state.metaAnalysisCount = n,
+                setVariantCount: (state, n) => state.variantCount = n,
                 setGeneCount: (state, n) => state.geneCount = n,
                 setRegionCount: (state, n) => state.regionCount = n,
 
                 // fetched records
-                setMetaAnalysis: (state, records) => state.metaAnalysis = records,
+                setVariants: (state, records) => state.variants = records,
                 setGenes: (state, records) => state.genes = records,
                 setRegions: (state, records) => state.regions = records,
             },
             actions: {
                 // simple guess as to the number of records in the region
-                async countMetaAnalysis(context, { locus }) {
-                    await count(context, 'setMetaAnalysisCount', 'metaanalysis', locus);
+                async countVariants(context, { locus }) {
+                    await count(context, 'setVariantCount', 'variants', locus);
                 },
                 async countGenes(context, { locus }) {
                     await count(context, 'setGeneCount', 'genes', locus);
@@ -147,8 +146,8 @@
                 },
 
                 // perform fetch queries to get the actual records
-                async queryMetaAnalysis(context, { locus }) {
-                    await query(context, 'setMetaAnalysis', 'metaanalysis', locus);
+                async queryVariants(context, { locus }) {
+                    await query(context, 'setVariants', 'variants', locus);
                 },
                 async queryGenes(context, { locus }) {
                     await query(context, 'setGenes', 'genes', locus);
@@ -183,32 +182,27 @@
                     { title: 'End', field: 'end' },
                     { title: 'Type', field: 'type' },
                 ],
-                metaAnalysisColumns: [
+                variantColumns: [
+                    { title: 'Variant', field: 'varId' },
                     { title: 'Position', field: 'position' },
                     { title: 'Ref', field: 'reference' },
                     { title: 'Alt', field: 'alt' },
-                    { title: 'Phenotype', field: 'phenotype' },
-                    { title: 'P-Value', field: 'pValue' },
-                    { title: 'Effect', field: 'beta' },
-                    { title: 'StdErr', field: 'stdErr' },
-                    { title: 'Z-Score', field: 'zScore' },
-                    { title: 'N', field: 'n' },
                 ],
             },
             computed: {
                 tab() { return this.$store.state.tab },
 
-                noMetaAnalysis() { return !this.$store.state.metaAnalysisCount },
+                noVariants() { return !this.$store.state.variantCount },
                 noGenes() { return !this.$store.state.geneCount },
                 noRegions() { return !this.$store.state.regionCount },
 
-                metaAnalysisData() { return this.$store.state.metaAnalysis },
+                variantData() { return this.$store.state.metaAnalysis },
                 geneData() { return this.$store.state.genes },
                 regionData() { return this.$store.state.regions },
             },
             watch: {
                 locus: debounce(function (locus) {
-                    this.$store.dispatch('countMetaAnalysis', { locus });
+                    this.$store.dispatch('countVariants', { locus });
                     this.$store.dispatch('countGenes', { locus });
                     this.$store.dispatch('countRegions', { locus });
                 }, 500),
