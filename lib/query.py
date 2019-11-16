@@ -1,5 +1,7 @@
+import botocore.exceptions
 import concurrent.futures
 import io
+import logging
 import smart_open
 
 from .locus import *
@@ -30,17 +32,20 @@ def query(redis_client, key, chromosome, start, stop, bucket):
         table = tables[tid]
 
         # parse records from the table
-        stream = s3_read_object(bucket, table.path, offset=offset, length=length)
-        lines = smart_open.open(io.BytesIO(stream.read()))
-        records = table.reader(lines)
+        try:
+            stream = s3_read_object(bucket, table.path, offset=offset, length=length)
+            lines = smart_open.open(io.BytesIO(stream.read()))
+            records = table.reader(lines)
 
-        # parse the table locus into column names
-        locus_cols = parse_locus_columns(table.locus)
+            # parse the table locus into column names
+            locus_cols = parse_locus_columns(table.locus)
 
-        # final record list
-        for r in records:
-            if Locus.from_record(r, *locus_cols).overlaps(chromosome, start, stop):
-                yield r
+            # final record list
+            for r in records:
+                if Locus.from_record(r, *locus_cols).overlaps(chromosome, start, stop):
+                    yield r
+        except botocore.exceptions.ClientError:
+            logging.error('Failed to read table %s; some records missing', table.path)
 
     # create a thread pool to load records in parallel
     ex = concurrent.futures.ThreadPoolExecutor(max_workers=20)
