@@ -203,9 +203,9 @@
                 noGenes() { return !this.$store.state.geneCount },
                 noRegions() { return !this.$store.state.regionCount },
 
-                regionData() { return this.$store.state.regions },
-                geneData() { return this.$store.state.genes },
                 metaAnalysisData() { return this.$store.state.metaAnalysis },
+                geneData() { return this.$store.state.genes },
+                regionData() { return this.$store.state.regions },
             },
             watch: {
                 locus: debounce(function (locus) {
