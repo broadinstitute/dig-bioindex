@@ -23,7 +23,7 @@
 
 <body>
     <center>
-        <div id="app">
+        <div id="app" v-cloak>
             <div class="mt-5 mb-2">
                 <h1 style="font-family: 'Lato', sans-serif">KPN BIO Index</h1>
             </div>
@@ -137,13 +137,13 @@
             actions: {
                 // simple guess as to the number of records in the region
                 async countMetaAnalysis(context, { locus }) {
-                    await count(context, 'setMetaAnalysisCount', locus);
+                    await count(context, 'setMetaAnalysisCount', 'metaanalysis', locus);
                 },
                 async countGenes(context, { locus }) {
-                    await count(context, 'setGeneCount', locus);
+                    await count(context, 'setGeneCount', 'genes', locus);
                 },
                 async countRegions(context, { locus }) {
-                    await count(context, 'setRegionCount', locus);
+                    await count(context, 'setRegionCount', 'regions', locus);
                 },
 
                 // perform fetch queries to get the actual records
@@ -160,7 +160,7 @@
         });
 
         // entry point
-        export default new Vue({
+        let app = new Vue({
             el: '#app',
             store,
             components: {
