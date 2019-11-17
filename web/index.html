@@ -56,7 +56,7 @@
                     <div v-if="$store.state.variants===undefined" class="spinner-border text-primary" role="status">
                         <span class="sr-only">Loading...</span>
                     </div>
-                    <div v-if="variantsData">
+                    <div v-if="variantData">
                         <bootstrap-table id="variantTable" :columns="variantColumns" :data="variantData"
                             :options="{pagination:true,pageSize:25,search:true,sortName:'position',dataSortClass:'table-active'}"></bootstrap-table>
                     </div>
