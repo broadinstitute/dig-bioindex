@@ -53,11 +53,11 @@ def cli_index(only, exclude, new, update, dialect, header, key, prefix, locus):
         raise AssertionError('--header provided for json dialect; did you want a CSV dialect?')
 
     # fetch the list of all paths to index
-    paths = s3_list_objects(bucket, prefix, only=only, exclude=exclude)
+    s3_objs = s3_list_objects(bucket, prefix, only=only, exclude=exclude)
 
     # connect to redis
     with Client() as client:
-        n = index(client, key, dialect, locus, bucket, paths, header=header, update=update, new=new)
+        n = index(client, key, dialect, locus, bucket, s3_objs, header=header, update=update, new=new)
         dt = datetime.timedelta(seconds=time.time() - t0)
 
         # done output report

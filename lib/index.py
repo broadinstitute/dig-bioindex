@@ -6,7 +6,7 @@ from .s3 import *
 from .table import *
 
 
-def index(redis_client, key, dialect, locus, bucket, paths, header=None, update=False, new=False):
+def index(redis_client, key, dialect, locus, bucket, s3_objs, header=None, update=False, new=False):
     """
     Index table records in s3 to redis.
     """
@@ -17,7 +17,13 @@ def index(redis_client, key, dialect, locus, bucket, paths, header=None, update=
     n = 0
 
     # list all the input tables
-    for path in paths:
+    for obj in s3_objs:
+        path, tag = obj['Key'], obj['ETag']
+
+        # lookup the existing table and id (if already indexed)
+        table_id, existing_table = redis_client.get_table_from_path(path)
+
+        # stream the file from s3
         line_stream = LineStream(s3_uri(bucket, path))
 
         # if the dialect isn't json, it's csv, read the header
@@ -27,12 +33,19 @@ def index(redis_client, key, dialect, locus, bucket, paths, header=None, update=
             elif header != '-':
                 header = header.split(',')
 
-        # register the table in the db
-        table = Table(path=path, key=key, locus=locus, dialect=dialect, fieldnames=header)
-        table_id, already_exists = redis_client.register_table(table)
+        # create a new table object from the parameters
+        table = Table(path=path, tag=tag, key=key, locus=locus, dialect=dialect, fieldnames=header)
+
+        # if nothing has changed, don't re-index
+        if table == existing_table:
+            continue
+
+        # register a new table if not already indexed
+        if table_id is None:
+            table_id = redis_client.register_table(table)
 
         # skip already existing tables or die
-        if already_exists:
+        if existing_table:
             if update:
                 logging.info('Deleting %s...', path)
 

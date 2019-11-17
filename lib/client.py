@@ -42,27 +42,25 @@ class Client:
         """
         table_path = f'table/{table.path}'
 
-        # ensure the table isn't already indexed
-        table_id = self._r.get(table_path)
-        already_exists = table_id is not None
+        # ensure the table isn't already registered
+        if self._r.exists(table_path):
+            raise AssertionError(f'Table {table.path} already registered')
 
-        # create a new table id
-        if already_exists:
-            table_id = int(table_id)
-        else:
-            table_id = self._r.incr('table_id')
+        # register the new id
+        table_id = self._r.incr('table_id')
 
-            # index the table name to its value (can ensure unique tables)
-            self._r.set(table_path, table_id)
+        # index the table name to its value (can ensure unique tables)
+        self._r.set(table_path, table_id)
 
         # set - or update - the table values
         self._r.hset(f'table:{table_id}', 'path', table.path)
+        self._r.hset(f'table:{table_id}', 'tag', table.tag)
         self._r.hset(f'table:{table_id}', 'key', table.key)
         self._r.hset(f'table:{table_id}', 'locus', table.locus)
         self._r.hset(f'table:{table_id}', 'dialect', table.dialect)
         self._r.hset(f'table:{table_id}', 'fieldnames', msgpack.dumps(table.fieldnames))
 
-        return table_id, already_exists
+        return table_id
 
     def scan_tables(self, prefix=None):
         """
@@ -86,11 +84,24 @@ class Client:
 
         return Table(
             path=table[b'path'].decode('utf-8'),
+            tag=table[b'tag'].decode('utf-8'),
             key=table[b'key'].decode('utf-8'),
             locus=table[b'locus'].decode('utf-8'),
             dialect=table[b'dialect'].decode('utf-8'),
             fieldnames=cols,
         )
+
+    def get_table_from_path(self, path):
+        """
+        Returns the id and Table object associated with the given table if
+        it has been indexed already, otherwise None.
+        """
+        table_id = int(self._r.get(f'table/{path}'))
+
+        if table_id is None:
+            return None, None
+
+        return table_id, self.get_table(table_id)
 
     def delete_table(self, table_id):
         """

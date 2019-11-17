@@ -51,38 +51,26 @@
             </div>
 
             <div class="w-75 mx-auto">
-                <!-- variants -->
-                <div v-if="tab=='variants'" id="variants">
-                    <div v-if="$store.state.variants===undefined" class="spinner-border text-primary" role="status">
-                        <span class="sr-only">Loading...</span>
-                    </div>
-                    <div v-if="variantData">
-                        <bootstrap-table id="variantTable" :columns="variantColumns" :data="variantData"
-                            :options="{pagination:true,pageSize:25,search:true,sortName:'position',dataSortClass:'table-active'}"></bootstrap-table>
-                    </div>
+                <div v-if="$store.state.loading" class="spinner-border text-primary" role="status">
+                    <span class="sr-only">Loading...</span>
                 </div>
 
                 <!-- genes -->
-                <div v-if="tab=='genes'" id="genes">
-                    <div v-if="$store.state.genes===undefined" class="spinner-border text-primary" role="status">
-                        <span class="sr-only">Loading...</span>
-                    </div>
-                    <div v-if="geneData">
-                        <bootstrap-table id="geneTable" :columns="geneColumns" :data="geneData"
-                            :options="{pagination:true,pageSize:25,search:true,sortName:'name',dataSortClass:'table-active'}"></bootstrap-table>
-                    </div>
+                <div v-if="tab=='genes'">
+                    <bootstrap-table id="geneTable" :columns="geneColumns" :data="geneData"
+                        :options="{sortName:'name', ...tableOptions}"></bootstrap-table>
                 </div>
 
                 <!-- regions -->
-                <div v-if="tab=='regions'" id="regions">
-                    <div v-if="$store.state.regions===undefined" class="spinner-border text-primary mx-auto"
-                        role="status">
-                        <span class="sr-only">Loading...</span>
-                    </div>
-                    <div v-if="regionData">
-                        <bootstrap-table id="regionTable" :columns="regionColumns" :data="regionData"
-                            :options="{pagination:true,pageSize:25,search:true,sortName:'start',dataSortClass:'table-active'}"></bootstrap-table>
-                    </div>
+                <div v-if="tab=='regions'">
+                    <bootstrap-table id="regionTable" :columns="regionColumns" :data="regionData"
+                        :options="{sortName:'start', ...tableOptions}"></bootstrap-table>
+                </div>
+
+                <!-- variants -->
+                <div v-if="tab=='variants'">
+                    <bootstrap-table id="variantTable" :columns="variantColumns" :data="variantData"
+                        :options="{sortName:'pValue', ...tableOptions}"></bootstrap-table>
                 </div>
             </div>
         </div>
@@ -109,6 +97,7 @@
         let store = new Vuex.Store({
             state: {
                 tab: null,
+                loading: false,
 
                 // how many estimated records per key space
                 variantCount: 0,
@@ -122,6 +111,7 @@
             },
             mutations: {
                 setTab: (state, tab) => state.tab = tab,
+                setLoading: (state, flag) => state.loading = flag,
 
                 // estimated counts
                 setVariantCount: (state, n) => state.variantCount = n,
@@ -167,27 +157,38 @@
             },
             data: {
                 locus: '',
+                tableOptions: {
+                    pagination: true,
+                    pageSize: 25,
+                    search: true,
+                    dataSortClass: 'table-active',
+                },
                 regionColumns: [
-                    { title: 'Start', field: 'start' },
+                    { title: 'Start', field: 'start', sortable: true },
                     { title: 'End', field: 'end' },
-                    { title: 'Tissue', field: 'biosample' },
-                    { title: 'Method', field: 'method' },
-                    { title: 'Annotation', field: 'annotation' },
-                    { title: 'Gene', field: 'predictedTargetGene' },
-                    { title: 'Score', field: 'score' },
+                    { title: 'Tissue', field: 'biosample', sortable: true },
+                    { title: 'Method', field: 'method', sortable: true },
+                    { title: 'Annotation', field: 'annotation', sortable: true },
+                    { title: 'Gene', field: 'predictedTargetGene', sortable: true },
+                    { title: 'Score', field: 'score', sortable: true },
                 ],
                 geneColumns: [
-                    { title: 'Gene', field: 'name' },
-                    { title: 'ENS', field: 'ensemblId' },
-                    { title: 'Start', field: 'start' },
+                    { title: 'Gene', field: 'name', sortable: true },
+                    { title: 'ENS', field: 'ensemblId', sortable: true },
+                    { title: 'Start', field: 'start', sortable: true },
                     { title: 'End', field: 'end' },
-                    { title: 'Type', field: 'type' },
+                    { title: 'Type', field: 'type', sortable: true },
                 ],
                 variantColumns: [
-                    { title: 'Variant', field: 'varId' },
-                    { title: 'Position', field: 'position' },
+                    { title: 'Position', field: 'position', sortable: true },
                     { title: 'Ref', field: 'reference' },
                     { title: 'Alt', field: 'alt' },
+                    { title: 'Phenotype', field: 'phenotype', sortable: true },
+                    { title: 'P-Value', field: 'pValue', sortable: true },
+                    { title: 'Effect', field: 'beta', sortable: true },
+                    { title: 'Z-Score', field: 'zScore', sortable: true },
+                    { title: 'StdErr', field: 'stdErr', sortable: true },
+                    { title: 'N', field: 'n', sortable: true },
                 ],
             },
             computed: {
@@ -221,11 +222,15 @@
         // fetch all the records for a key in the given region
         function query({commit}, mutation, key, locus) {
             commit('setTab', key);
-            commit(mutation, undefined);
+            commit('setLoading', true);
+            commit(mutation, []);
 
-            return fetch(`/api/query/${key}?q=${encodeURIComponent(locus)}`)
+            return fetch(`/api/query/${key}?q=${encodeURIComponent(locus)}?limit=1000`)
                 .then(resp => resp.json())
-                .then(json => commit(mutation, json.records))
+                .then(json => {
+                    commit('setLoading', false);
+                    commit(mutation, json.records);
+                })
                 .catch(err => commit(mutation, []));
         }
 

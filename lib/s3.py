@@ -34,7 +34,7 @@ def s3_parse_url(uri):
 
 def s3_list_objects(bucket, prefix, only=None, exclude=None):
     """
-    Generator function that lists all the objects in S3 with a given prefix.
+    Generator function that returns all the objects in S3 with a given prefix.
     """
     kwargs = {
         'Bucket': bucket,
@@ -64,7 +64,7 @@ def s3_list_objects(bucket, prefix, only=None, exclude=None):
             if exclude and fnmatch.fnmatch(file, exclude):
                 continue
 
-            yield path
+            yield obj
 
         # recursively search the common prefixes for folder prefixes
         if prefix[-1] == '/':
