@@ -118,14 +118,14 @@ def chromosomes():
     """
     Return an iterator of all chromosomes.
     """
-    return itertools.chain(range(1, 23), ['X', 'Y', 'XY', 'M'])
+    return itertools.chain(range(1, 23), ['X', 'Y', 'XY', 'M', 'MT'])
 
 
 def parse_chromosome(s):
     """
     Parse and normalize a chromosome string, which may be prefixed with 'chr'.
     """
-    match = re.fullmatch(r'(?:chr)?(\d{1,2}|x|y|xy|m)', s, re.IGNORECASE)
+    match = re.fullmatch(r'(?:chr)?(\d{1,2}|x|y|xy|m|mt)', s, re.IGNORECASE)
 
     if not match:
         raise ValueError(f'Failed to match chromosome against {s}')
@@ -137,7 +137,7 @@ def parse_locus(s):
     """
     Parse a locus string and return the chromosome, start, stop.
     """
-    match = re.fullmatch(r'(?:chr)?(\d{1,2}|x|y|xy|m):(\d+)(?:([+-])(\d+))?', s, re.IGNORECASE)
+    match = re.fullmatch(r'(?:chr)?(\d{1,2}|x|y|xy|mt):(\d+)(?:([+-])(\d+))?', s, re.IGNORECASE)
 
     if not match:
         raise ValueError(f'Failed to match locus against {s}')
