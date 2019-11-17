@@ -168,7 +168,8 @@
             data: {
                 locus: '',
                 regionColumns: [
-                    { title: 'Region', formatter(v, r) { return `${r.chromosome}:${r.start}-${r.end}`; } },
+                    { title: 'Start', field: 'start' },
+                    { title: 'End', field: 'end' },
                     { title: 'Tissue', field: 'biosample' },
                     { title: 'Method', field: 'method' },
                     { title: 'Annotation', field: 'annotation' },
@@ -196,7 +197,7 @@
                 noGenes() { return !this.$store.state.geneCount },
                 noRegions() { return !this.$store.state.regionCount },
 
-                variantData() { return this.$store.state.metaAnalysis },
+                variantData() { return this.$store.state.variants },
                 geneData() { return this.$store.state.genes },
                 regionData() { return this.$store.state.regions },
             },
