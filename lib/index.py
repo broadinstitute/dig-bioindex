@@ -6,7 +6,7 @@ from .s3 import *
 from .table import *
 
 
-def index(redis_client, key, dialect, locus, bucket, paths, update=False, new=False):
+def index(redis_client, key, dialect, locus, bucket, paths, header=None, update=False, new=False):
     """
     Index table records in s3 to redis.
     """
@@ -20,8 +20,12 @@ def index(redis_client, key, dialect, locus, bucket, paths, update=False, new=Fa
     for path in paths:
         line_stream = LineStream(s3_uri(bucket, path))
 
-        # if the dialect isn't json, it's csv, read the first line as the header
-        header = next(csv.reader(line_stream, dialect)) if dialect != 'json' else None
+        # if the dialect isn't json, it's csv, read the header
+        if dialect != 'json':
+            if header is None:
+                header = next(csv.reader(line_stream, dialect))
+            elif header != '-':
+                header = header.split(',')
 
         # register the table in the db
         table = Table(path=path, key=key, locus=locus, dialect=dialect, fieldnames=header)

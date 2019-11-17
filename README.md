@@ -49,7 +49,7 @@ df.write.json('s3://my-bucket/key')
 df.write.csv('s3://my-bucket/key', sep='\t', header=True)
 ```
 
-The above code would write out many part files to the bucket/path that can now be indexed using the `index` CLI command. However, they will not be well suited for high-performance reading. It is best to always order the output files by locus before writing them. This will _dramatically_ improve the performance of Bio-Index:
+The above code would write out many part files to the bucket/path that can now be indexed using the `index` CLI command (details below). However, they will not be well suited for high-performance reading. It is best to always order the output by locus before writing them. This will _dramatically_ improve the performance of Bio-Index:
 
 ```python
 sorted_snp_df = df.orderBy(['chromosome', 'pos'])
@@ -96,6 +96,14 @@ It is also possible to recursively index all files in an entire folder of [S3][s
 $ python3 main.py index genes path/to/genes/ chrom:start-stop
 ```
 
+By default, tables are assumed to be in [JSON-lines][json-lines] format. To use a CSV-like format instead, use the `--dialect` flag on the command line and provide the one to use. For example:
+
+```bash
+$ python3 main.py index snps path/to/snps.tsv chrom:pos --dialect tsv
+```
+
+It is assumed for all CSV-like tables that any line beginning with `#` is a comment (and is ignored), and that the first non-comment line is the header row. If there is no header row then you can pass `--header` and either give a comma-separated list of column names or `"-"`, in which case column names will be generated named `"_0"`, `"_1"`, `"_2"`, ... and it will be up to you to use those column names for the locus parameter (e.g. `"_2:_4-_5"`).
+
 ### Querying Records
 
 Once you've built an index, you can then query the key space and retrieve all the records that overlap a given locus. For example, to query all records in the `genes` key space that overlap a given region:
@@ -127,7 +135,7 @@ Any tables that are no longer present will output a warning. If you pass `--dele
 
 #### Updating Tables
 
-If you have a table (or path of tables) that occupy the same space in [S3][s3] (i.e. have the same key), then you can just use the `index` command along with the `--update` flag. Any tables being indexed that already exist will have all their records deleted from the key space and then be re-indexed.
+If you have updated a table with the same [S3][s3] key as it had previously, then you can just use the `index` command along with the `--update` flag. Any tables being indexed that already exist will have all their records deleted from the key space and then be re-indexed.
 
 _Note: when updating tables, you still need to provide a "locus" string that identifies the JSON keys to use for indexing. Bio-Index does not assume they are the same as they were previously!_
 
@@ -158,6 +166,7 @@ TODO:
 ### Dependencies
 
 * [Python 3.6+][python]
+* [setuptools][setuptools]
 * [python-dotenv][dotenv]
 * [click][click]
 * [flask][flask]
@@ -169,6 +178,7 @@ TODO:
 # fin.
 
 [python]: https://www.python.org/
+[setuptools]: https://setuptools.readthedocs.io/en/latest/
 [dotenv]: https://saurabh-kumar.com/python-dotenv/
 [redis]: https://redis.io/
 [docker]: https://hub.docker.com/_/redis/

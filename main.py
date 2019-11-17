@@ -38,22 +38,26 @@ def cli_test():
 @click.option('--new', is_flag=True, help='skip tables already indexed')
 @click.option('--update', is_flag=True, help='update tables already indexed')
 @click.option('--dialect', default='json', help='record dialect to use (default=json)')
+@click.option('--header', default=None, help='header row column names')
 @click.argument('key')
 @click.argument('prefix')
 @click.argument('locus')
-def cli_index(only, exclude, new, update, dialect, key, prefix, locus):
+def cli_index(only, exclude, new, update, dialect, header, key, prefix, locus):
     """
     Index s3 table records in to a redis key.
     """
     bucket = os.getenv('S3_BUCKET')
     t0 = time.time()
 
+    if dialect == 'json' and header is not None:
+        raise AssertionError('--header provided for json dialect; did you want a CSV dialect?')
+
     # fetch the list of all paths to index
     paths = s3_list_objects(bucket, prefix, only=only, exclude=exclude)
 
     # connect to redis
     with Client() as client:
-        n = index(client, key, dialect, locus, bucket, paths, update=update, new=new)
+        n = index(client, key, dialect, locus, bucket, paths, header=header, update=update, new=new)
         dt = datetime.timedelta(seconds=time.time() - t0)
 
         # done output report

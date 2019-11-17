@@ -58,7 +58,7 @@
                     </div>
                     <div v-if="variantsData">
                         <bootstrap-table id="variantTable" :columns="variantColumns" :data="variantData"
-                            :options="{pagination:true,pageSize:25,search:true,sortName:'pValue',dataSortClass:'table-active'}"></bootstrap-table>
+                            :options="{pagination:true,pageSize:25,search:true,sortName:'position',dataSortClass:'table-active'}"></bootstrap-table>
                     </div>
                 </div>
 
@@ -183,15 +183,10 @@
                     { title: 'Type', field: 'type' },
                 ],
                 variantColumns: [
-                    { title: 'Dataset', field: 'dataset' },
+                    { title: 'Variant', field: 'varId' },
                     { title: 'Position', field: 'position' },
                     { title: 'Ref', field: 'reference' },
                     { title: 'Alt', field: 'alt' },
-                    { title: 'Phenotype', field: 'phenotype' },
-                    { title: 'Ancestry', field: 'ancestry' },
-                    { title: 'P-Value', field: 'pValue' },
-                    { title: 'Effect', field: 'beta' },
-                    { title: 'N', field: 'n' },
                 ],
             },
             computed: {
