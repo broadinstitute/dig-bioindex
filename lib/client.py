@@ -130,7 +130,7 @@ class Client:
                     continue
 
                 if self._r.type(k) == b'zset':
-                    pipe.zrem(k, *self._r.zscan_iter(k, match=match, count=10000))
+                    pipe.zrem(k, *map(lambda i: i[0], self._r.zscan_iter(k, match=match, count=10000)))
                 else:
                     for bucket in self._r.sscan_iter(k):
                         if self._r.type(bucket) == b'set':
