@@ -101,7 +101,7 @@ def api_query(key):
             'records': records,
         }
     except ValueError as e:
-        flask.abort(400, str(e))
+        flask.abort(400, str(e.msg))
 
 
 @app.route('/api/next/<token>')
@@ -134,7 +134,7 @@ def api_next(token: str):
             'records': records,
         }
     except (KeyError, ValueError) as e:
-        flask.abort(400, str(e))
+        flask.abort(400, str(e.msg))
 
 
 def fetch_records(results, limit=None, sort_col=None, format=None):
@@ -154,7 +154,7 @@ def fetch_records(results, limit=None, sort_col=None, format=None):
 
     # format must be row or columns
     if not re.fullmatch(r'rows?', format, re.IGNORECASE):
-        raise ValueError('Unknown record output format: %s (use "row" or "column")', format)
+        raise ValueError(f'Unknown record output format: {format}; use "row" or "column"')
 
     return records
 
