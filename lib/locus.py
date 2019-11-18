@@ -185,7 +185,7 @@ def request_ens_locus(q):
     Use the Ensembl REST API to try and find a given locus that may be
     identified by name.
     """
-    url = f'https://rest.ensembl.org/lookup/symbol/homo_sapiens/{q}'
+    url = f'https://grch37.rest.ensembl.org/lookup/symbol/homo_sapiens/{q}'
     resp = requests.get(url, headers={'Content-Type': 'application/json'})
 
     # not found or otherwise invalid
