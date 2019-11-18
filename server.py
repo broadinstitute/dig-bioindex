@@ -76,7 +76,7 @@ def api_query(key):
     """
     try:
         locus = flask.request.args.get('q')
-        output_format = flask.request.args.get('format')
+        output_format = flask.request.args.get('format', 'row')
         chromosome, start, stop = parse_locus(locus, allow_ens_lookup=True)
 
         # parse the query parameters
@@ -149,32 +149,29 @@ def fetch_records(results, limit=None, sort_col=None, format=None):
         records.sort(key=lambda r: (r[sort_col] is None, r[sort_col]))
 
     # convert the output format
-    if format == "lz" or format == "locuszoom":
-        return format_lz(records)
+    if re.fullmatch(r'col(?:umns?)?', format, re.IGNORECASE):
+        return format_columns(records)
 
-    # unknown format
-    if format is not None:
-        raise ValueError('Unknown record output format: %s', format)
+    # format must be row or columns
+    if not re.fullmatch(r'rows?', format, re.IGNORECASE):
+        raise ValueError('Unknown record output format: %s (use "row" or "column")', format)
 
     return records
 
 
-def format_lz(records):
+def format_columns(records):
     """
     Return an object that is the LocusZoom format of the records.
     """
-    data = {}
+    if len(records) == 0:
+        return {}
 
-    if len(records) > 0:
-        columns = records[0].keys()
+    # initialize output dictionary
+    columns = {k: list() for k in records[0].keys()}
 
-        # initialize the output columns
-        for column in columns:
-            data[column] = list()
+    # append the value to each column
+    for record in records:
+        for column in columns.keys():
+            columns[column].append(record.get(column))
 
-        # append the value to each column
-        for record in records:
-            for column in columns:
-                data[column].append(record.get(column))
-
-    return {"data": data, "lastPage": len(records) == 0}
+    return columns
