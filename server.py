@@ -1,5 +1,6 @@
 import flask
 import itertools
+import requests
 
 from lib.client import *
 from lib.continuation import *
@@ -76,7 +77,14 @@ def api_query(key):
     """
     try:
         locus = flask.request.args.get('q')
-        chromosome, start, stop = parse_locus(locus)
+
+        try:
+            chromosome, start, stop = parse_locus(locus)
+        except ValueError as e:
+            chromosome, start, stop = lookup_ens_locus(locus)
+
+            if not chromosome:
+                flask.abort(400, str(e))
 
         # parse the query parameters
         sort_col = flask.request.args.get('sort')
@@ -148,3 +156,37 @@ def fetch_records(results, limit=None, sort_col=None):
         records.sort(key=lambda r: (r[sort_col] is None, r[sort_col]))
 
     return records
+
+
+def lookup_ens_locus(q):
+    """
+    Use the Ensembl REST API to try and find a given locus that may be
+    identified by name.
+    """
+    url = f'https://rest.ensembl.org/lookup/symbol/homo_sapiens/{q}'
+    resp = requests.get(url, headers={'Content-Type': 'application/json'})
+
+    # not found or otherwise invalid
+    if not resp.ok:
+        return None
+
+    # parse as json or exit
+    try:
+        body = resp.json()
+
+        #
+        chromosome = body.get('seq_region_name')
+        start = body.get('start')
+        end = body.get('end')
+
+        # must have a valid chromosome and start position
+        if chromosome is None or start is None:
+            return None
+
+        # return the region
+        if end is None:
+            return chromosome, start, start + 1
+        else:
+            return chromosome, start, end
+    except (KeyError, ValueError, json.JSONDecodeError):
+        return None
