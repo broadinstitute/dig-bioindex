@@ -39,7 +39,6 @@ def index(redis_client, key, dialect, locus, bucket, s3_objs, header=None, updat
 
         # if nothing has changed, don't re-index
         if table == existing_table:
-            logging.info('Table %s already indexed; skipping...', path)
             continue
 
         # register a new table if not already indexed
