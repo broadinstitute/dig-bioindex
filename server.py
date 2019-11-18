@@ -98,7 +98,7 @@ def api_query(key):
             },
             'key': key,
             'locus': locus,
-            'records': records,
+            'data': records,
         }
     except ValueError as e:
         flask.abort(400, str(e))
@@ -131,7 +131,7 @@ def api_next(token: str):
             },
             'key': cont.key,
             'locus': cont.locus,
-            'records': records,
+            'data': records,
         }
     except (KeyError, ValueError) as e:
         flask.abort(400, str(e))

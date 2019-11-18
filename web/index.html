@@ -236,7 +236,7 @@
                 .then(resp => resp.json())
                 .then(json => {
                     commit('setLoading', false);
-                    commit(mutation, json.records);
+                    commit(mutation, json.data);
                 })
                 .catch(err => commit(mutation, []));
         }
