@@ -225,7 +225,7 @@
             commit('setLoading', true);
             commit(mutation, []);
 
-            return fetch(`/api/query/${key}?q=${encodeURIComponent(locus)}?limit=1000`)
+            return fetch(`/api/query/${key}?q=${encodeURIComponent(locus)}`)
                 .then(resp => resp.json())
                 .then(json => {
                     commit('setLoading', false);
