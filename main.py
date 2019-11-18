@@ -38,7 +38,7 @@ def cli_test():
 @click.option('--new', is_flag=True, help='skip tables already indexed')
 @click.option('--update', is_flag=True, help='update tables already indexed')
 @click.option('--dialect', default='json', help='record dialect to use (default=json)')
-@click.option('--header', default=None, help='header row column names')
+@click.option('--header', help='header row column names')
 @click.argument('key')
 @click.argument('prefix')
 @click.argument('locus')

@@ -25,16 +25,17 @@ def index(redis_client, key, dialect, locus, bucket, s3_objs, header=None, updat
 
         # stream the file from s3
         line_stream = LineStream(s3_uri(bucket, path))
+        fieldnames = None
 
         # if the dialect isn't json, it's csv, read the header
         if dialect != 'json':
             if header is None:
-                header = next(csv.reader(line_stream, dialect))
+                fieldnames = next(csv.reader(line_stream, dialect))
             elif header != '-':
-                header = header.split(',')
+                fieldnames = header.split(',')
 
         # create a new table object from the parameters
-        table = Table(path=path, tag=tag, key=key, locus=locus, dialect=dialect, fieldnames=header)
+        table = Table(path=path, tag=tag, key=key, locus=locus, dialect=dialect, fieldnames=fieldnames)
 
         # if nothing has changed, don't re-index
         if table == existing_table:
