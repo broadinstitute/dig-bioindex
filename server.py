@@ -101,7 +101,7 @@ def api_query(key):
             'records': records,
         }
     except ValueError as e:
-        flask.abort(400, str(e.msg))
+        flask.abort(400, str(e))
 
 
 @app.route('/api/next/<token>')
@@ -134,7 +134,7 @@ def api_next(token: str):
             'records': records,
         }
     except (KeyError, ValueError) as e:
-        flask.abort(400, str(e.msg))
+        flask.abort(400, str(e))
 
 
 def fetch_records(results, limit=None, sort_col=None, format=None):
