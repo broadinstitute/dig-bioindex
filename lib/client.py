@@ -96,10 +96,13 @@ class Client:
         Returns the id and Table object associated with the given table if
         it has been indexed already, otherwise None.
         """
-        table_id = int(self._r.get(f'table/{path}'))
+        table_id = self._r.get(f'table/{path}')
 
         if table_id is None:
             return None, None
+
+        # convert to integer from bytes
+        table_id = int(table_id)
 
         return table_id, self.get_table(table_id)
 
