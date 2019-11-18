@@ -1,7 +1,12 @@
 import abc
 import dataclasses
 import itertools
+import locale
 import re
+
+
+# used for parsing integers with commas
+locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
 
 
 @dataclasses.dataclass
@@ -137,7 +142,7 @@ def parse_locus(s):
     """
     Parse a locus string and return the chromosome, start, stop.
     """
-    match = re.fullmatch(r'(?:chr)?(\d{1,2}|x|y|xy|mt):(\d+)(?:([+-])(\d+))?', s, re.IGNORECASE)
+    match = re.fullmatch(r'(?:chr)?(\d{1,2}|x|y|xy|mt):([\d,]+)(?:([+-])([\d,]+))?', s, re.IGNORECASE)
 
     if not match:
         raise ValueError(f'Failed to match locus against {s}')
@@ -145,13 +150,13 @@ def parse_locus(s):
     chromosome, start, adjust, end = match.groups()
 
     # parse the start position
-    start = int(start)
+    start = locale.atoi(start)
 
     # if the adjustment is a + then end is a length, otherwise a position
     if adjust == '+':
-        end = start + int(end)
+        end = start + locale.atoi(end)
     else:
-        end = int(end) if end else start + 1
+        end = locale.atoi(end) if end else start + 1
 
     # stop position must be > start
     if end <= start:
