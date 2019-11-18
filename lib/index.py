@@ -62,20 +62,23 @@ def index(redis_client, key, dialect, locus, bucket, s3_objs, header=None, updat
 
         # create the record reader
         reader = table.reader(line_stream)
-        records = {}
+        records = list()
 
         # accumulate the records
         for row in reader:
             try:
                 locus_obj = locus_class(*(row.get(col) for col in locus_cols if col))
-                records[locus_obj] = Record(table_id, line_stream.offset, line_stream.length)
+                record = Record(table_id, line_stream.offset, line_stream.length)
 
-                # tally record
-                n += 1
+                # add the record to the insert list
+                records.append((locus_obj, record))
             except (KeyError, ValueError) as e:
                 logging.warning('Record error (line %d): %s; skipping...', line_stream.n, e)
 
         # add them all in a single batch
         redis_client.insert_records(key, records)
+
+        # tally all the records inserted
+        n += len(records)
 
     return n

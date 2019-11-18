@@ -1,3 +1,4 @@
+import logging
 import msgpack
 import redis
 
@@ -164,16 +165,16 @@ class Client:
 
         return list(keys)
 
-    def insert_records(self, base_key, records):
+    def insert_records(self, base_key, pairs):
         """
-        Use the key type of the records map to determine whether to insert
-        as SNPs or regions.
+        Use the key type of the records list to determine whether to insert as
+        SNPs or regions. Each pair is a (locus, region) tuple.
         """
         with self._r.pipeline() as pipe:
             pipe.multi()
 
             # add each record
-            for locus, record in records.items():
+            for locus, record in pairs:
                 value = record.pack()
                 base_chr = f'{base_key}:{locus.chromosome}'
 
@@ -181,8 +182,8 @@ class Client:
                 if isinstance(locus, SNPLocus):
                     pipe.zadd(base_chr, {value: locus.position})
 
-                # Regions are stored as sets across fixed-sized buckets
-                if isinstance(locus, RegionLocus):
+                # regions are stored as sets across fixed-sized buckets
+                elif isinstance(locus, RegionLocus):
                     for bucket in range(locus.start // 20000, locus.stop // 20000 + 1):
                         bucket_key = f'{base_chr}:{bucket}'
 
