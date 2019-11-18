@@ -1,6 +1,5 @@
 import flask
 import itertools
-import requests
 
 from lib.client import *
 from lib.continuation import *
@@ -77,6 +76,7 @@ def api_query(key):
     """
     try:
         locus = flask.request.args.get('q')
+        output_format = flask.request.args.get('format')
         chromosome, start, stop = parse_locus(locus, allow_ens_lookup=True)
 
         # parse the query parameters
@@ -85,7 +85,7 @@ def api_query(key):
 
         # perform the query and time it
         results, query_s = profile(query, client, key, chromosome, start, stop, bucket)
-        records, fetch_s = profile(fetch_records, results, limit=limit, sort_col=sort_col)
+        records, fetch_s = profile(fetch_records, results, limit=limit, sort_col=sort_col, format=output_format)
 
         # optionally generate a continuation token
         cont_token = make_continuation(results=results, key=key, locus=locus) if limit else None
@@ -137,7 +137,7 @@ def api_next(token: str):
         flask.abort(400, str(e))
 
 
-def fetch_records(results, limit=None, sort_col=None):
+def fetch_records(results, limit=None, sort_col=None, format=None):
     """
     Download records from s3 and optionally sort them.
     """
@@ -148,4 +148,33 @@ def fetch_records(results, limit=None, sort_col=None):
     if sort_col:
         records.sort(key=lambda r: (r[sort_col] is None, r[sort_col]))
 
+    # convert the output format
+    if format == "lz" or format == "locuszoom":
+        return format_lz(records)
+
+    # unknown format
+    if format is not None:
+        raise ValueError('Unknown record output format: %s', format)
+
     return records
+
+
+def format_lz(records):
+    """
+    Return an object that is the LocusZoom format of the records.
+    """
+    data = {}
+
+    if len(records) > 0:
+        columns = records[0].keys()
+
+        # initialize the output columns
+        for column in columns:
+            data[column] = list()
+
+        # append the value to each column
+        for record in records:
+            for column in columns:
+                data[column].append(record.get(column))
+
+    return {"data": data, "lastPage": len(records) == 0}

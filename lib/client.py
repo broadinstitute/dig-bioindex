@@ -1,4 +1,3 @@
-import logging
 import msgpack
 import redis
 
