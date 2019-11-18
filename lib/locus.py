@@ -185,8 +185,16 @@ def request_ens_locus(q):
     Use the Ensembl REST API to try and find a given locus that may be
     identified by name.
     """
-    url = f'https://grch37.rest.ensembl.org/lookup/symbol/homo_sapiens/{q}'
-    resp = requests.get(url, headers={'Content-Type': 'application/json'})
+    req = 'https://grch37.rest.ensembl.org/lookup'
+
+    # lookup the gene by ENS ID or canonical name
+    if q.upper().startswith('ENSG'):
+        req += f'/id/{q}'
+    else:
+        req += f'/symbol/homo_sapiens/{q}'
+
+    # make the request
+    resp = requests.get(req, headers={'Content-Type': 'application/json'})
 
     # not found or otherwise invalid
     if not resp.ok:
