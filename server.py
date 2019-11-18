@@ -80,11 +80,8 @@ def api_query(key):
 
         try:
             chromosome, start, stop = parse_locus(locus)
-        except ValueError as e:
+        except ValueError:
             chromosome, start, stop = lookup_ens_locus(locus)
-
-            if not chromosome:
-                flask.abort(400, str(e))
 
         # parse the query parameters
         sort_col = flask.request.args.get('sort')
@@ -171,22 +168,15 @@ def lookup_ens_locus(q):
         return None
 
     # parse as json or exit
-    try:
-        body = resp.json()
+    body = resp.json()
 
-        #
-        chromosome = body.get('seq_region_name')
-        start = body.get('start')
-        end = body.get('end')
+    # fetch the chromosome, start, and stop positions
+    chromosome = body.get('seq_region_name')
+    start = body.get('start')
+    stop = body.get('end')
 
-        # must have a valid chromosome and start position
-        if chromosome is None or start is None:
-            return None
+    # must have a valid chromosome and start position
+    if chromosome and start and stop:
+        return chromosome, start, stop
 
-        # return the region
-        if end is None:
-            return chromosome, start, start + 1
-        else:
-            return chromosome, start, end
-    except (KeyError, ValueError, json.JSONDecodeError):
-        return None
+    raise ValueError(f'Invalid locus or gene name: {q}')
