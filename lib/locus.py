@@ -3,6 +3,7 @@ import dataclasses
 import itertools
 import locale
 import re
+import requests
 
 
 # used for parsing integers with commas
@@ -138,14 +139,16 @@ def parse_chromosome(s):
     return match.group(1).upper()
 
 
-def parse_locus(s):
+def parse_locus(s, allow_ens_lookup=False):
     """
     Parse a locus string and return the chromosome, start, stop.
     """
     match = re.fullmatch(r'(?:chr)?(\d{1,2}|x|y|xy|mt):([\d,]+)(?:([+-])([\d,]+))?', s, re.IGNORECASE)
 
     if not match:
-        raise ValueError(f'Failed to match locus against {s}')
+        if not allow_ens_lookup:
+            raise ValueError(f'Failed to match locus against {s}')
+        return request_ens_locus(s)
 
     chromosome, start, adjust, end = match.groups()
 
@@ -175,3 +178,30 @@ def parse_locus_columns(s):
         raise ValueError(f'Failed to parse locus column names against {s}')
 
     return match.groups()
+
+
+def request_ens_locus(q):
+    """
+    Use the Ensembl REST API to try and find a given locus that may be
+    identified by name.
+    """
+    url = f'https://rest.ensembl.org/lookup/symbol/homo_sapiens/{q}'
+    resp = requests.get(url, headers={'Content-Type': 'application/json'})
+
+    # not found or otherwise invalid
+    if not resp.ok:
+        return None
+
+    # parse as json or exit
+    body = resp.json()
+
+    # fetch the chromosome, start, and stop positions
+    chromosome = body.get('seq_region_name')
+    start = body.get('start')
+    stop = body.get('end')
+
+    # must have a valid chromosome and start position
+    if chromosome and start and stop:
+        return chromosome, start, stop
+
+    raise ValueError(f'Invalid locus or gene name: {q}')
