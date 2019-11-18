@@ -139,6 +139,18 @@ def parse_chromosome(s):
     return match.group(1).upper()
 
 
+def parse_locus_columns(s):
+    """
+    Parse a locus string and return the chromosome, start, and stop columns.
+    """
+    match = re.fullmatch(r'([^:]+):([^-]+)(?:-(.+))?', s)
+
+    if not match:
+        raise ValueError(f'Failed to parse locus column names against {s}')
+
+    return match.groups()
+
+
 def parse_locus(s, allow_ens_lookup=False):
     """
     Parse a locus string and return the chromosome, start, stop.
@@ -168,18 +180,6 @@ def parse_locus(s, allow_ens_lookup=False):
     return chromosome.upper(), start, end
 
 
-def parse_locus_columns(s):
-    """
-    Parse a locus string and return the chromosome, start, and stop columns.
-    """
-    match = re.fullmatch(r'([^:]+):([^-]+)(?:-(.+))?', s)
-
-    if not match:
-        raise ValueError(f'Failed to parse locus column names against {s}')
-
-    return match.groups()
-
-
 def request_ens_locus(q):
     """
     Use the Ensembl REST API to try and find a given locus that may be
@@ -197,19 +197,16 @@ def request_ens_locus(q):
     resp = requests.get(req, headers={'Content-Type': 'application/json'})
 
     # not found or otherwise invalid
-    if not resp.ok:
-        return None
+    if resp.ok:
+        body = resp.json()
 
-    # parse as json or exit
-    body = resp.json()
+        # fetch the chromosome, start, and stop positions
+        chromosome = body.get('seq_region_name')
+        start = body.get('start')
+        stop = body.get('end')
 
-    # fetch the chromosome, start, and stop positions
-    chromosome = body.get('seq_region_name')
-    start = body.get('start')
-    stop = body.get('end')
-
-    # must have a valid chromosome and start position
-    if chromosome and start and stop:
-        return chromosome, start, stop
+        # must have a valid chromosome and start position
+        if chromosome and start and stop:
+            return chromosome, start, stop
 
     raise ValueError(f'Invalid locus or gene name: {q}')
