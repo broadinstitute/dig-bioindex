@@ -206,7 +206,7 @@ class Client:
 
         # does the chromosome maps to an ordered set (SNP records)?
         if self._r.type(chr_key) == b'zset':
-            n = len(self._r.zrangebyscore(chr_key, start, stop))
+            n = self._r.zcount(chr_key, start, stop)
         else:
             n = 0
 
