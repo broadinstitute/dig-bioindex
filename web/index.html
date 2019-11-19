@@ -118,6 +118,22 @@
     <script>
         Vue.use(BootstrapTable);
 
+        let assocDataSource = LocusZoom.KnownDataSources.extend('AssociationLZ', 'BioIndexAssocLZ', {
+            getURL() {
+                return this.url;
+
+                // could use this.params
+            },
+
+            annotateData(records) {
+                records.forEach(r => {
+                    r['log_pvalue'] = -Math.log10(r.pValue);
+                });
+
+                return records;
+            },
+        });
+
         // SPA state
         let store = new Vuex.Store({
             state: {
@@ -180,27 +196,48 @@
                     let ds = new LocusZoom.DataSources();
 
                     // show the p-value plot
-                    ds.add("variants", ["AssociationLZ", {
+                    ds.add("assoc", ["BioIndexAssocLZ", {
                         url: `/api/count/variants?q=${encodeURIComponent(locus)}&format=columns`,
+                        params: {
+                            q: locus,
+                            format: 'columns',
+                        },
+                    }]);
+
+                    ds.add("ld", ["LDLZ2", {
+                        url: "https://portaldev.sph.umich.edu/ld/",
+                        params: {
+                            source: '1000G',
+                            build: 'GRCh37',
+                            population: 'ALL',
+                        },
+                    }]);
+
+                    ds.add("recomb", ["RecombLZ", {
+                        url: "https://portaldev.sph.umich.edu/api/v1/annotation/recomb/results/",
+                        params: { build: 'GRCh37' },
+                    }]);
+
+                    ds.add("constraint", ["GeneConstraintLZ", {
+                        url: "http://exac.broadinstitute.org/api/constraint",
                     }]);
 
                     // genes
-                    ds.add("genes", ["GeneLZ", {
+                    ds.add("gene", ["GeneLZ", {
                         url: `/api/count/genes?q=${encodeURIComponent(locus)}&format=columns`,
                     }]);
 
                     // create the layout
                     let layout = {
                         panels: [
-                            {
-                                id: "associations",
-                            },
+                            LocusZoom.Layouts.get('panel', 'association')
                         ]
                     };
 
                     // show the plot
                     context.commit('setTab', 'lz');
-                    LocusZoom.populate('#locuszoom', ds);
+
+                    window.plot = LocusZoom.populate('#locuszoom', ds);
                 },
             }
         });
