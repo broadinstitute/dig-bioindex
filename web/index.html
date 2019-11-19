@@ -180,12 +180,12 @@
                     // show the p-value plot
                     ds.add("variants", ["AssociationLZ", {
                         url: `/api/count/variants?q=${encodeURIComponent(locus)&format=columns`
-                    });
+                    }]);
 
                     // genes
                     ds.add("genes", ["GeneLZ", {
                         url: `/api/count/genes?q=${encodeURIComponent(locus)&format=columns`
-                    });
+                    }]);
 
                     // create the layout
                     let layout = {
