@@ -79,21 +79,18 @@
                 </div>
 
                 <!-- locuszoom plot -->
-                <div v-if="showLocusZoom">
-                    <ul class="nav nav-tabs">
-                        <li class="nav-item"><a class="nav-link" href="#"
-                                @click="$store.commit('setLZPlot','phewas')">PheWAS</a></li>
-                        <li class="nav-item"><a class="nav-link" href="#"
-                                @click="$store.commit('setLZPlot','associations')">Associations</a></li>
-                    </ul>
-                    <select v-if="showAssociations" v-model="phenotype"
-                        @change="$store.commit('setPhenotype', phenotype)">
-                        <option v-for="phenotype in phenotypes" :value="phenotype">
-                            {{ phenotype }}
-                        </option>
-                    </select>
-                    <div id="locuszoom"></div>
-                </div>
+                <ul class="nav nav-tabs">
+                    <li class="nav-item"><a class="nav-link" href="#"
+                            @click="$store.commit('setLZPlot','phewas')">PheWAS</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#"
+                            @click="$store.commit('setLZPlot','associations')">Associations</a></li>
+                </ul>
+                <select v-if="showAssociations" v-model="phenotype" @change="$store.commit('setPhenotype', phenotype)">
+                    <option v-for="phenotype in phenotypes" :value="phenotype">
+                        {{ phenotype }}
+                    </option>
+                </select>
+                <div id="locuszoom"></div>
             </div>
         </div>
     </center>
@@ -113,9 +110,9 @@
     <script src="https://unpkg.com/bootstrap-table@1.15.5/dist/bootstrap-table-vue.min.js"></script>
 
     <!-- d3 graphing and locuszoom -->
-    <script src="https://d3js.org/d3.v5.min.js"></script>
-    <!--<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>-->
-    <script src="/static/locuszoom.app.min.js"></script>
+    <!--<script src="https://d3js.org/d3.v5.min.js"></script>-->
+    <script src="/static/locuszoom.vender.min.js"></script>
+    <script src="/static/locuszoom.vender.min.js.map"></script>
 
     <!-- vue app -->
     <script>
@@ -180,7 +177,7 @@
 
                 // open lz plot
                 async viewPlot(context, { locus }) {
-                    let ds = LocusZoom.DataSources();
+                    let ds = new LocusZoom.DataSources();
 
                     // show the p-value plot
                     ds.add("variants", ["AssociationLZ", {
