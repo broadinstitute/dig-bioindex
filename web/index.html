@@ -224,7 +224,9 @@
 
                     // genes
                     ds.add("gene", ["GeneLZ", {
-                        url: `/api/count/genes?q=${encodeURIComponent(locus)}&format=columns`,
+                        //url: `/api/query/genes?q=${encodeURIComponent(locus)}&format=columns`,
+                        url: "https://portaldev.sph.umich.edu/api/v1/annotation/genes/",
+                        params: { build: 'GRCh37' },
                     }]);
 
                     // create the layout
