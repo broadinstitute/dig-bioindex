@@ -60,19 +60,19 @@
 
                 <!-- genes -->
                 <div v-if="tab=='genes'">
-                    <bootstrap-table v-if="!$store.state.loading" id="geneTable" :columns="geneColumns" :data="geneData"
+                    <bootstrap-table id="geneTable" :columns="geneColumns" :data="geneData"
                         :options="{sortName:'name', ...tableOptions}"></bootstrap-table>
                 </div>
 
                 <!-- regions -->
                 <div v-if="tab=='regions'">
-                    <bootstrap-table v-if="!$store.state.loading" id="regionTable" :columns="regionColumns" :data="regionData"
+                    <bootstrap-table id="regionTable" :columns="regionColumns" :data="regionData"
                         :options="{sortName:'start', ...tableOptions}"></bootstrap-table>
                 </div>
 
                 <!-- variants -->
                 <div v-if="tab=='variants'">
-                    <bootstrap-table v-if="!$store.state.loading" id="variantTable" :columns="variantColumns" :data="variantData"
+                    <bootstrap-table id="variantTable" :columns="variantColumns" :data="variantData"
                         :options="{sortName:'pValue', ...tableOptions}"></bootstrap-table>
                 </div>
 
@@ -111,6 +111,7 @@
 
     <!-- d3 graphing and locuszoom -->
     <script src="https://d3js.org/d3.v5.min.js"></script>
+    <!--<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>-->
     <script src="/static/locuszoom.app.min.js"></script>
 
     <!-- vue app -->
