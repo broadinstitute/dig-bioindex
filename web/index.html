@@ -193,53 +193,59 @@
 
                 // open lz plot
                 async viewPlot(context, { locus }) {
-                    let ds = new LocusZoom.DataSources();
+                    let ds = new LocusZoom.DataSources()
+                        .add("assoc", ["BioIndexAssocLZ", {
+                            url: `/api/count/variants?q=${encodeURIComponent(locus)}&format=columns`,
+                            params: {
+                                q: locus,
+                                format: 'columns',
+                            },
+                        }])
 
-                    // show the p-value plot
-                    ds.add("assoc", ["BioIndexAssocLZ", {
-                        url: `/api/count/variants?q=${encodeURIComponent(locus)}&format=columns`,
-                        params: {
-                            q: locus,
-                            format: 'columns',
-                        },
-                    }]);
+                        // LD server
+                        .add("ld", ["LDLZ2", {
+                            url: "https://portaldev.sph.umich.edu/ld/",
+                            params: {
+                                source: '1000G',
+                                build: 'GRCh37',
+                                population: 'ALL',
+                            },
+                        }])
 
-                    ds.add("ld", ["LDLZ2", {
-                        url: "https://portaldev.sph.umich.edu/ld/",
-                        params: {
-                            source: '1000G',
-                            build: 'GRCh37',
-                            population: 'ALL',
-                        },
-                    }]);
+                        // recombinations
+                        .add("recomb", ["RecombLZ", {
+                            url: "https://portaldev.sph.umich.edu/api/v1/annotation/recomb/results/",
+                            params: {
+                                build: 'GRCh37',
+                            },
+                        }])
 
-                    ds.add("recomb", ["RecombLZ", {
-                        url: "https://portaldev.sph.umich.edu/api/v1/annotation/recomb/results/",
-                        params: { build: 'GRCh37' },
-                    }]);
+                        // genes
+                        .add("gene", ["GeneLZ", {
+                            url: "https://portaldev.sph.umich.edu/api/v1/annotation/genes/",
+                            params: {
+                                build: 'GRCh37',
+                            },
+                        }])
 
-                    ds.add("constraint", ["GeneConstraintLZ", {
-                        url: "http://exac.broadinstitute.org/api/constraint",
-                    }]);
-
-                    // genes
-                    ds.add("gene", ["GeneLZ", {
-                        //url: `/api/query/genes?q=${encodeURIComponent(locus)}&format=columns`,
-                        url: "https://portaldev.sph.umich.edu/api/v1/annotation/genes/",
-                        params: { build: 'GRCh37' },
-                    }]);
+                        // gene constraints
+                        .add("constraint", ["GeneConstraintLZ", {
+                            url: "http://exac.broadinstitute.org/api/constraint",
+                        }]);
 
                     // create the layout
-                    let layout = {
-                        panels: [
-                            LocusZoom.Layouts.get('panel', 'association')
-                        ]
-                    };
+                    let layout = LocusZoom.Layouts.get('plot', 'standard_association', {
+                        state: {
+                            chr: 8,
+                            start: 114550452,
+                            end: 115067678,
+                        },
+                    });
 
                     // show the plot
                     context.commit('setTab', 'lz');
 
-                    window.plot = LocusZoom.populate('#locuszoom', ds);
+                    window.plot = LocusZoom.populate('#locuszoom', ds, layout);
                 },
             }
         });
