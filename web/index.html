@@ -21,13 +21,12 @@
     <!-- don't show vue app until compiled, don't let alleles overflow -->
     <style>
         [v-cloak] { display: none; }
-        /*
+
         .table td {
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        */
     </style>
 </head>
 
@@ -187,12 +186,13 @@
 
                 // download variants and genes for plot
                 async queryPlotData(context, params) {
-                    context.dispatch('queryGenes', params);
-                    context.dispatch('queryVariants', params);
+                    //context.dispatch('queryGenes', params);
+                    //context.dispatch('queryVariants', params);
                 },
 
                 // open locuszoom plot
                 async viewPlot(context, { locus }) {
+                    /*
                     let ds = LocusZoom.DataSources();
 
                     // show the p-value plot
@@ -217,6 +217,7 @@
                     // show the plot
                     LocusZoom.populate('#locuszoom', ds, layout);
                     context.commit('setTab', 'lz');
+                    */
                 },
             }
         });
