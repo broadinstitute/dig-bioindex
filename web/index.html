@@ -112,7 +112,7 @@
     <!-- d3 graphing and locuszoom -->
     <!--<script src="https://d3js.org/d3.v5.min.js"></script>-->
     <script src="/static/locuszoom.vendor.min.js"></script>
-    <script src="/static/locuszoom.vendor.min.js.map"></script>
+    <script src="/static/locuszoom.app.min.js"></script>
 
     <!-- vue app -->
     <script>
@@ -200,7 +200,7 @@
 
                     // show the plot
                     context.commit('setTab', 'lz');
-                    LocusZoom.populate('#locuszoom', ds, layout);
+                    LocusZoom.populate('#locuszoom', ds);
                 },
             }
         });
