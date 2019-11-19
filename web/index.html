@@ -20,7 +20,9 @@
 
     <!-- don't show vue app until compiled, don't let alleles overflow -->
     <style>
-        [v-cloak] { display: none; }
+        [v-cloak] {
+            display: none;
+        }
     </style>
 </head>
 
@@ -40,16 +42,16 @@
             <!-- match group -->
             <div class="btn-group mb-5" role="group" aria-label="Matches">
                 <a class="btn btn-light btn-sm" href="#" @click="$store.dispatch('queryGenes', {locus})">Genes
-                    <span v-if="$store.state.geneCount>0"
-                        class="badge badge-primary badge-pill">{{$store.state.geneCount}}</span>
+                    <span v-if="hasGenes" class="badge badge-primary badge-pill">{{$store.state.geneCount}}</span>
                 </a>
                 <a class="btn btn-light btn-sm" href="#" @click="$store.dispatch('queryRegions', {locus})">Regions
-                    <span v-if="$store.state.regionCount>0"
-                        class="badge badge-primary badge-pill">{{$store.state.regionCount}}</span>
+                    <span v-if="hasRegions" class="badge badge-primary badge-pill">{{$store.state.regionCount}}</span>
                 </a>
                 <a class="btn btn-light btn-sm" href="#" @click="$store.dispatch('queryVariants', {locus})">Variants
-                    <span v-if="$store.state.variantCount>0"
+                    <span v-if="hasVariants"
                         class=" badge badge-primary badge-pill">{{$store.state.variantCount}}</span>
+                </a>
+                <a class="btn btn-light btn-sm" href="#" @click="$store.dispatch('showPlot', {locus})">LocusZoom
                 </a>
             </div>
 
@@ -59,33 +61,33 @@
                 </div>
 
                 <!-- genes -->
-                <div v-if="tab=='genes'">
+                <div v-if="showGenes">
                     <bootstrap-table id="geneTable" :columns="geneColumns" :data="geneData"
                         :options="{sortName:'name', ...tableOptions}"></bootstrap-table>
                 </div>
 
                 <!-- regions -->
-                <div v-if="tab=='regions'">
+                <div v-if="showRegions">
                     <bootstrap-table id="regionTable" :columns="regionColumns" :data="regionData"
                         :options="{sortName:'start', ...tableOptions}"></bootstrap-table>
                 </div>
 
                 <!-- variants -->
-                <div v-if="tab=='variants'">
+                <div v-if="showVariants">
                     <bootstrap-table id="variantTable" :columns="variantColumns" :data="variantData"
                         :options="{sortName:'pValue', ...tableOptions}"></bootstrap-table>
                 </div>
 
                 <!-- locuszoom plot -->
-                <div v-if="tab=='lz'">
+                <div v-if="showLocusZoom">
                     <ul class="nav nav-tabs">
                         <li class="nav-item"><a class="nav-link" href="#"
-                            @click="$store.commit('setLZPlot','PheWAS')">PheWAS</a></li>
+                                @click="$store.commit('setLZPlot','PheWAS')">PheWAS</a></li>
                         <li class="nav-item"><a class="nav-link" href="#"
-                            @click="$store.commit('setLZPlot','Associations')">Associations</a></li>
+                                @click="$store.commit('setLZPlot','Associations')">Associations</a></li>
                     </ul>
                     <select v-if="lzPlot == 'Associations'" v-model="phenotype"
-                            @change="$store.commit('setPhenotype', phenotype)">
+                        @change="$store.commit('setPhenotype', phenotype)">
                         <option v-for="phenotype in phenotypes" :value="phenotype">
                             {{ phenotype }}
                         </option>
@@ -177,7 +179,6 @@
 
                 // open lz plot
                 async viewPlot(context, { locus }) {
-                    /*
                     let ds = LocusZoom.DataSources();
 
                     // show the p-value plot
@@ -200,9 +201,8 @@
                     };
 
                     // show the plot
-                    LocusZoom.populate('#locuszoom', ds, layout);
                     context.commit('setTab', 'lz');
-                    */
+                    LocusZoom.populate('#locuszoom', ds, layout);
                 },
             }
         });
@@ -253,9 +253,14 @@
             computed: {
                 tab() { return this.$store.state.tab },
 
-                noVariants() { return !this.$store.state.variantCount },
-                noGenes() { return !this.$store.state.geneCount },
-                noRegions() { return !this.$store.state.regionCount },
+                hasVariants() { return this.$store.state.variantCount > 0 },
+                hasGenes() { return this.$store.state.geneCount > 0 },
+                hasRegions() { return this.$store.state.regionCount > 0 },
+
+                showGenes() { return this.$store.state.tab == 'genes' },
+                showRegions() { return this.$store.state.tab == 'regions' },
+                showVariants() { return this.$store.state.tab == 'variants' },
+                showLocusZoom() { return this.$store.state.tab == 'lz' },
 
                 variantData() { return this.$store.state.variants },
                 geneData() { return this.$store.state.genes },
@@ -282,7 +287,7 @@
         });
 
         // request the estimated count for the number of records
-        function count({commit}, mutation, key, locus) {
+        function count({ commit }, mutation, key, locus) {
             return fetch(`/api/count/${key}?q=${encodeURIComponent(locus)}`)
                 .then(resp => resp.json())
                 .then(json => commit(mutation, json.n))
@@ -290,7 +295,7 @@
         }
 
         // fetch all the records for a key in the given region
-        function query({commit}, mutation, key, locus) {
+        function query({ commit }, mutation, key, locus) {
             commit('setTab', key);
             commit('setLoading', true);
             commit(mutation, []);
