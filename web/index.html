@@ -21,12 +21,13 @@
     <!-- don't show vue app until compiled, don't let alleles overflow -->
     <style>
         [v-cloak] { display: none; }
-
+        /*
         .table td {
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        */
     </style>
 </head>
 
@@ -69,25 +70,25 @@
                 </div>
 
                 <!-- genes -->
-                <div v-if="tab=='genes' && !$store.state.loading">
+                <div v-if="tab=='genes'">
                     <bootstrap-table v-if="!$store.state.loading" id="geneTable" :columns="geneColumns" :data="geneData"
                         :options="{sortName:'name', ...tableOptions}"></bootstrap-table>
                 </div>
 
                 <!-- regions -->
-                <div v-if="tab=='regions' && !$store.state.loading">
-                    <bootstrap-table id="regionTable" :columns="regionColumns" :data="regionData"
+                <div v-if="tab=='regions'">
+                    <bootstrap-table v-if="!$store.state.loading" id="regionTable" :columns="regionColumns" :data="regionData"
                         :options="{sortName:'start', ...tableOptions}"></bootstrap-table>
                 </div>
 
                 <!-- variants -->
-                <div v-if="tab=='variants' && !$store.state.loading">
+                <div v-if="tab=='variants'">
                     <bootstrap-table v-if="!$store.state.loading" id="variantTable" :columns="variantColumns" :data="variantData"
                         :options="{sortName:'pValue', ...tableOptions}"></bootstrap-table>
                 </div>
 
                 <!-- locuszoom plot -->
-                <div v-if="tab=='lz' && !$store.state.loading">
+                <div v-if="tab=='lz'">
                     <ul class="nav nav-tabs">
                         <li class="nav-item"><a class="nav-link" href="#"
                             @click="$store.commit('setLZPlot','PheWAS')">PheWAS</a></li>
