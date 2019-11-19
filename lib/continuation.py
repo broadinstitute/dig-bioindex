@@ -12,7 +12,9 @@ _cont_lock = threading.RLock()
 class Cont:
     results: any
     key: str
-    locus: str
+    chromosome: str
+    start: int
+    stop: int
     expiration: float = None
 
     def __post_init__(self):

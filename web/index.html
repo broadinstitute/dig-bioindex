@@ -121,13 +121,16 @@
         let assocDataSource = LocusZoom.KnownDataSources.extend('AssociationLZ', 'BioIndexAssocLZ', {
             getURL() {
                 return this.url;
-
-                // could use this.params
             },
 
             annotateData(records) {
                 records.forEach(r => {
+                    r['id'] = r.varId;
                     r['log_pvalue'] = -Math.log10(r.pValue);
+                    r['log_pvalue|logtoscinotation'] = -Math.log10(r.pValue);
+                    r['ref_allele'] = r.reference;
+                    r['trait'] = r.phenotype;
+                    r['variant'] = r.alt;
                 });
 
                 return records;
@@ -195,11 +198,7 @@
                 async viewPlot(context, { locus }) {
                     let ds = new LocusZoom.DataSources()
                         .add("assoc", ["BioIndexAssocLZ", {
-                            url: `/api/count/variants?q=${encodeURIComponent(locus)}&format=columns`,
-                            params: {
-                                q: locus,
-                                format: 'columns',
-                            },
+                            url: `/api/query/variants?q=${encodeURIComponent(locus)}&format=columns`,
                         }])
 
                         // LD server
@@ -237,8 +236,8 @@
                     let layout = LocusZoom.Layouts.get('plot', 'standard_association', {
                         state: {
                             chr: 8,
-                            start: 114550452,
-                            end: 115067678,
+                            start: 117962512,
+                            end: 118188953,
                         },
                     });
 
@@ -261,7 +260,7 @@
                 locus: '',
                 tableOptions: {
                     pagination: true,
-                    pageSize: 25,
+                    pageSize: 10,
                     search: true,
                     dataSortClass: 'table-active',
                 },

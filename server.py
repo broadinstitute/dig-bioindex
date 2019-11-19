@@ -61,7 +61,11 @@ def api_count(key):
                 'query': query_s,
             },
             'key': key,
-            'locus': locus,
+            'locus': {
+                'chromosome': chromosome,
+                'start': start,
+                'stop': stop,
+            },
             'n': n,
         }
     except ValueError as e:
@@ -88,7 +92,10 @@ def api_query(key):
         records, fetch_s = profile(fetch_records, results, limit=limit, sort_col=sort_col, format=output_format)
 
         # optionally generate a continuation token
-        cont_token = make_continuation(results=results, key=key, locus=locus) if limit else None
+        if limit:
+            cont_token = make_continuation(results=results, key=key, chromosome=chromosome, start=start, stop=stop)
+        else:
+            cont_token = None
 
         return {
             'cont_token': cont_token,
@@ -97,7 +104,11 @@ def api_query(key):
                 'fetch': fetch_s,
             },
             'key': key,
-            'locus': locus,
+            'locus': {
+                'chromosome': chromosome,
+                'start': start,
+                'stop': stop,
+            },
             'data': records,
         }
     except ValueError as e:
@@ -130,7 +141,11 @@ def api_next(token: str):
                 'fetch': fetch_s,
             },
             'key': cont.key,
-            'locus': cont.locus,
+            'locus': {
+                'chromosome': cont.chromosome,
+                'start': cont.start,
+                'stop': cont.stop,
+            },
             'data': records,
         }
     except (KeyError, ValueError) as e:
