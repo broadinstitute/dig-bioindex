@@ -51,7 +51,7 @@
                     <span v-if="hasVariants"
                         class=" badge badge-primary badge-pill">{{$store.state.variantCount}}</span>
                 </a>
-                <a class="btn btn-light btn-sm" href="#" @click="$store.dispatch('showPlot', {locus})">LocusZoom
+                <a class="btn btn-light btn-sm" href="#" @click="$store.dispatch('viewPlot', {locus})">LocusZoom
                 </a>
             </div>
 
@@ -82,11 +82,11 @@
                 <div v-if="showLocusZoom">
                     <ul class="nav nav-tabs">
                         <li class="nav-item"><a class="nav-link" href="#"
-                                @click="$store.commit('setLZPlot','PheWAS')">PheWAS</a></li>
+                                @click="$store.commit('setLZPlot','phewas')">PheWAS</a></li>
                         <li class="nav-item"><a class="nav-link" href="#"
-                                @click="$store.commit('setLZPlot','Associations')">Associations</a></li>
+                                @click="$store.commit('setLZPlot','associations')">Associations</a></li>
                     </ul>
-                    <select v-if="lzPlot == 'Associations'" v-model="phenotype"
+                    <select v-if="showAssociations" v-model="phenotype"
                         @change="$store.commit('setPhenotype', phenotype)">
                         <option v-for="phenotype in phenotypes" :value="phenotype">
                             {{ phenotype }}
@@ -262,6 +262,8 @@
                 showRegions() { return this.$store.state.tab == 'regions' },
                 showVariants() { return this.$store.state.tab == 'variants' },
                 showLocusZoom() { return this.$store.state.tab == 'lz' },
+                showAssociations() { return this.$store.state.lzPlot == 'associations' },
+                showPheWAS() { return this.$store.state.lzPlot == 'phewas' },
 
                 variantData() { return this.$store.state.variants },
                 geneData() { return this.$store.state.genes },
