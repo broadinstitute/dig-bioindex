@@ -18,9 +18,15 @@
     <!-- title last -->
     <title>KPN Bio Index</title>
 
-    <!-- don't show vue app until compiled -->
+    <!-- don't show vue app until compiled, don't let alleles overflow -->
     <style>
         [v-cloak] { display: none; }
+
+        .table td {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
     </style>
 </head>
 
@@ -51,29 +57,43 @@
                     <span v-if="$store.state.variantCount>0"
                         class=" badge badge-primary badge-pill">{{$store.state.variantCount}}</span>
                 </a>
+                <a class="btn btn-light btn-sm" href="#" @click="$store.dispatch('viewPlot', {locus})">LocusZoom
+                </a>
             </div>
 
             <div class="w-75 mx-auto">
-                <div v-if="$store.state.loading" class="spinner-border text-primary" role="status">
-                    <span class="sr-only">Loading...</span>
+                <div v-if="$store.state.loading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading...</span>
+                    </div>
                 </div>
 
                 <!-- genes -->
-                <div v-if="tab=='genes'">
-                    <bootstrap-table id="geneTable" :columns="geneColumns" :data="geneData"
+                <div v-if="tab=='genes' && !$store.state.loading">
+                    <bootstrap-table v-if="!$store.state.loading" id="geneTable" :columns="geneColumns" :data="geneData"
                         :options="{sortName:'name', ...tableOptions}"></bootstrap-table>
                 </div>
 
                 <!-- regions -->
-                <div v-if="tab=='regions'">
+                <div v-if="tab=='regions' && !$store.state.loading">
                     <bootstrap-table id="regionTable" :columns="regionColumns" :data="regionData"
                         :options="{sortName:'start', ...tableOptions}"></bootstrap-table>
                 </div>
 
                 <!-- variants -->
-                <div v-if="tab=='variants'">
-                    <bootstrap-table id="variantTable" :columns="variantColumns" :data="variantData"
+                <div v-if="tab=='variants' && !$store.state.loading">
+                    <ul class="nav nav-tabs">
+                        <li class="nav-item"><a class="nav-link active" href="#">Table</a></li>
+                        <li class="nav-item"><a class="nav-link active" href="#">Associations</a></li>
+                        <li class="nav-item"><a class="nav-link active" href="#">PheWAS</a></li>
+                    </ul>
+                    <bootstrap-table v-if="!$store.state.loading" id="variantTable" :columns="variantColumns" :data="variantData"
                         :options="{sortName:'pValue', ...tableOptions}"></bootstrap-table>
+                </div>
+
+                <!-- locuszoom plot -->
+                <div v-if="tab=='lz' && !$store.state.loading">
+                    <div id="locuszoom"></div>
                 </div>
             </div>
         </div>
@@ -152,6 +172,34 @@
                 async queryRegions(context, { locus }) {
                     await query(context, 'setRegions', 'regions', locus);
                 }
+
+                // open locuszoom plot
+                async viewPlot(context, { locus }) {
+                    let ds = LocusZoom.DataSources();
+
+                    // show the p-value plot
+                    ds.add("variants", ["AssociationLZ", {
+                        url: `/api/count/variants?q=${encodeURIComponent(locus)&format=columns`
+                    });
+
+                    // genes
+                    ds.add("genes", ["GeneLZ", {
+                        url: `/api/count/genes?q=${encodeURIComponent(locus)&format=columns`
+                    });
+
+                    // create the layout
+                    let layout = {
+                        panels: [
+                            {
+                                id: "associations",
+                            },
+                        ]
+                    };
+
+                    // show the plot
+                    LocusZoom.populate('#locuszoom', ds, layout);
+                    context.commit('setTab', 'lz');
+                }
             }
         });
 
@@ -172,7 +220,7 @@
                 },
                 regionColumns: [
                     { title: 'Start', field: 'start', sortable: true },
-                    { title: 'End', field: 'end' },
+                    { title: 'End', field: 'end', sortable: true },
                     { title: 'Tissue', field: 'biosample', sortable: true },
                     { title: 'Method', field: 'method', sortable: true },
                     { title: 'Annotation', field: 'annotation', sortable: true },
@@ -183,7 +231,7 @@
                     { title: 'Gene', field: 'name', sortable: true },
                     { title: 'ENS', field: 'ensemblId', sortable: true },
                     { title: 'Start', field: 'start', sortable: true },
-                    { title: 'End', field: 'end' },
+                    { title: 'End', field: 'end', sortable: true },
                     { title: 'Type', field: 'type', sortable: true },
                 ],
                 variantColumns: [
@@ -208,6 +256,17 @@
                 variantData() { return this.$store.state.variants },
                 geneData() { return this.$store.state.genes },
                 regionData() { return this.$store.state.regions },
+
+                phenotypes() {
+                    let ph = {};
+
+                    // find all the unique phenotypes across all variants
+                    for (let v in this.$store.state.variants) {
+                        ph[v.phenotype] = 1;
+                    }
+
+                    return Object.keys(ph);
+                },
             },
             watch: {
                 locus: debounce(function (locus) {
