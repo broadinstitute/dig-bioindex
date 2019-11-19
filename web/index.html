@@ -82,17 +82,24 @@
 
                 <!-- variants -->
                 <div v-if="tab=='variants' && !$store.state.loading">
-                    <ul class="nav nav-tabs">
-                        <li class="nav-item"><a class="nav-link active" href="#">Table</a></li>
-                        <li class="nav-item"><a class="nav-link active" href="#">Associations</a></li>
-                        <li class="nav-item"><a class="nav-link active" href="#">PheWAS</a></li>
-                    </ul>
                     <bootstrap-table v-if="!$store.state.loading" id="variantTable" :columns="variantColumns" :data="variantData"
                         :options="{sortName:'pValue', ...tableOptions}"></bootstrap-table>
                 </div>
 
                 <!-- locuszoom plot -->
                 <div v-if="tab=='lz' && !$store.state.loading">
+                    <ul class="nav nav-tabs">
+                        <li class="nav-item"><a class="nav-link" href="#"
+                            @click="$store.commit('setLZPlot','PheWAS')">PheWAS</a></li>
+                        <li class="nav-item"><a class="nav-link" href="#"
+                            @click="$store.commit('setLZPlot','Associations')">Associations</a></li>
+                    </ul>
+                    <select v-if="lzPlot == 'Associations'" v-model="phenotype"
+                            @change="$store.commit('setPhenotype', phenotype)">
+                        <option v-for="phenotype in phenotypes" :value="phenotype">
+                            {{ phenotype }}
+                        </option>
+                    </select>
                     <div id="locuszoom"></div>
                 </div>
             </div>
@@ -124,7 +131,9 @@
         let store = new Vuex.Store({
             state: {
                 tab: null,
+                lzPlot: 'PheWAS',
                 loading: false,
+                phenotype: null,
 
                 // how many estimated records per key space
                 variantCount: 0,
@@ -138,7 +147,9 @@
             },
             mutations: {
                 setTab: (state, tab) => state.tab = tab,
+                setLZPlot: (state, plot) => state.lzPlot = plot,
                 setLoading: (state, flag) => state.loading = flag,
+                setPhenotype: (state, phenotype) => state.phenotype = phenotype,
 
                 // estimated counts
                 setVariantCount: (state, n) => state.variantCount = n,
@@ -171,6 +182,12 @@
                 },
                 async queryRegions(context, { locus }) {
                     await query(context, 'setRegions', 'regions', locus);
+                },
+
+                // download variants and genes for plot
+                async queryPlotData(context, params) {
+                    context.dispatch('queryGenes', params);
+                    context.dispatch('queryVariants', params);
                 },
 
                 // open locuszoom plot
