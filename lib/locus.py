@@ -155,7 +155,7 @@ def parse_locus(s, allow_ens_lookup=False):
     """
     Parse a locus string and return the chromosome, start, stop.
     """
-    match = re.fullmatch(r'(?:chr)?(\d{1,2}|x|y|xy|mt):([\d,]+)(?:([+-])([\d,]+))?', s, re.IGNORECASE)
+    match = re.fullmatch(r'(?:chr)?(\d{1,2}|x|y|xy|mt):([\d,]+)(?:([+/-])([\d,]+))?', s, re.IGNORECASE)
 
     if not match:
         if not allow_ens_lookup:
@@ -170,6 +170,9 @@ def parse_locus(s, allow_ens_lookup=False):
     # if the adjustment is a + then end is a length, otherwise a position
     if adjust == '+':
         end = start + locale.atoi(end)
+    elif adjust == '/':
+        shift = locale.atoi(end)
+        start, end = start - shift, start + shift + 1
     else:
         end = locale.atoi(end) if end else start + 1
 

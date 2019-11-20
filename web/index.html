@@ -34,8 +34,8 @@
             </div>
 
             <!-- locus input -->
-            <div class="input-group mx-auto p-3 px-md-5 bg-white rounded w-50">
-                <input v-model="locus" class="form-control" aria-describedby="locus" placeholder="chromosome:start-stop or gene"
+            <div class="input-group mx-auto px-md-5 bg-white rounded w-50">
+                <input v-model="locus" class="form-control" aria-describedby="locus" placeholder="gene or region"
                        @change="" type="text">
                 <div class="input-group-append">
                     <button type="button" class="btn btn-primary mb-3"
@@ -43,6 +43,10 @@
                         Query
                     </button>
                 </div>
+            </div>
+            <div class="sm mb-4">Ex:
+                <a href="#" @click="locus='SLC30A8'">SLC30A8</a>,
+                <a href="#" @click="locus='chr9:21,940,000-22,190,000'">chr9:21,940,000-22,190,000</a>
             </div>
 
             <!-- match group -->
@@ -77,6 +81,14 @@
                         >{{ i[0] }}</button>
                     </div>
 
+                    <ul class="nav nav-tabs justify-content-center mb-3">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="#">Associations</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#">PheWAS</a>
+                        </li>
+                    </ul>
                     <div id="locuszoom"></div>
 
                     <div>
@@ -263,12 +275,13 @@
             },
             methods: {
                 updateLZ(variants, phenotype) {
-                    let data = [];
+                    let assocData = [];
+                    let phewasData = [];
 
                     // filter and transform the variants into LZ format
                     variants.forEach(r => {
                         if (r.phenotype == phenotype) {
-                            data.push({
+                            assocData.push({
                                 id: r.varId,
                                 position: r.position,
                                 log_pvalue: -Math.log10(r.pValue),
@@ -278,10 +291,19 @@
                         }
                     });
 
+                    // create the phewas data from the variants
+                    this.phenotypes.forEach(p => {
+                        phewasData.push({
+                            id: p[0],
+                            trait_label: p[0],
+                            trait_group: 'GLYCEMIC',
+                            log_pvalue: -Math.log10(p[1]),
+                        });
+                    });
+
                     let ds = new LocusZoom.DataSources()
-                        .add("assoc", ["StaticJSON", {
-                            data: data,
-                        }])
+                        .add("assoc", ["StaticJSON", { data: assocData }])
+                        .add("phewas", ["StaticJSON", { data: phewasData }])
 
                         // LD server
                         .add("ld", ["LDLZ2", {
@@ -314,8 +336,20 @@
                             url: "http://exac.broadinstitute.org/api/constraint",
                         }]);
 
-                    // create the layout
+                    let panelOptions = {
+                        unnamespaced: true,
+                        proportional_height: 0.5,
+                        dashboard: null,
+                    };
+
+                    let panels = [
+                        LocusZoom.Layouts.get('panel', 'association', { ...panelOptions }),
+                        //LocusZoom.Layouts.get('panel', 'phewas', { ...panelOptions }),
+                        LocusZoom.Layouts.get('panel', 'genes', { ...panelOptions }),
+                    ];
+
                     let layout = LocusZoom.Layouts.get('plot', 'standard_association', {
+                        panels,
                         state: {
                             chr: this.$store.state.region.chromosome,
                             start: this.$store.state.region.start,
