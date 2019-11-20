@@ -15,6 +15,7 @@ class Cont:
     chromosome: str
     start: int
     stop: int
+    format: str = 'row'
     expiration: float = None
 
     def __post_init__(self):

@@ -93,7 +93,14 @@ def api_query(key):
 
         # optionally generate a continuation token
         if limit:
-            cont_token = make_continuation(results=results, key=key, chromosome=chromosome, start=start, stop=stop)
+            cont_token = make_continuation(
+                results=results,
+                key=key,
+                chromosome=chromosome,
+                start=start,
+                stop=stop,
+                format=output_format,
+            )
         else:
             cont_token = None
 
@@ -129,7 +136,7 @@ def api_next(token: str):
         limit = flask.request.args.get('limit', type=int)
 
         # load records
-        records, fetch_s = profile(fetch_records, results, limit=limit, sort_col=sort_col)
+        records, fetch_s = profile(fetch_records, results, limit=limit, sort_col=sort_col, format=cont.format)
 
         # update the continuation if records were fetched
         if len(records) > 0:

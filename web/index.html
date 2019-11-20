@@ -51,9 +51,6 @@
 
             <!-- match group -->
             <div class="btn-group mb-4" role="group" aria-label="Matches">
-                <span class="btn btn-light btn-sm">Genes
-                    <span v-if="hasGenes" class="badge badge-primary badge-pill">{{$store.state.geneCount}}</span>
-                </span>
                 <span class="btn btn-light btn-sm">Regions
                     <span v-if="hasRegions" class="badge badge-primary badge-pill">{{$store.state.regionCount}}</span>
                 </span>
@@ -68,7 +65,7 @@
                     <div class="spinner-border text-primary" role="status"></div>
                 </div>
 
-                <div v-show="dataLoaded" >
+                <div v-show="dataLoaded">
                     <div class="mb-4">
                         <button type="button" class="btn btn-sm m-1 py-1 px-2"
                                 v-for="i in phenotypes.slice(0, 20)"
@@ -91,7 +88,7 @@
                     </ul>
                     <div id="locuszoom"></div>
 
-                    <div>
+                    <div v-show="dataLoaded">
                         <bootstrap-table id="table" :columns="tableColumns" :data="variants"
                             :options="{sortName:'pValue', ...tableOptions}"></bootstrap-table>
                     </div>
@@ -148,7 +145,6 @@
 
                 // how many estimated records per key space
                 variantCount: 0,
-                geneCount: 0,
                 regionCount: 0,
 
                 // records per key space
@@ -161,7 +157,6 @@
 
                 // estimated counts
                 setVariantCount: (state, n) => state.variantCount = n,
-                setGeneCount: (state, n) => state.geneCount = n,
                 setRegionCount: (state, n) => state.regionCount = n,
 
                 // fetched records
@@ -171,9 +166,6 @@
                 // simple guess as to the number of records in the region
                 async countVariants(context, { locus }) {
                     await count(context, 'setVariantCount', 'variants', locus);
-                },
-                async countGenes(context, { locus }) {
-                    await count(context, 'setGeneCount', 'genes', locus);
                 },
                 async countRegions(context, { locus }) {
                     await count(context, 'setRegionCount', 'regions', locus);
@@ -358,17 +350,19 @@
                     });
 
                     // update the plot with the data sources and layout
-                    window.plot = LocusZoom.populate('#locuszoom', ds, layout);
+                    this.plot = LocusZoom.populate('#locuszoom', ds, layout);
 
                     // when scrolling a new data is requested, do something
-                    window.plot.on('data_requested', () => {
+                    this.plot.on('data_requested', () => {
                         let { chr, start, end } = window.plot.state;
 
                         // update the input and dispatch
                         this.locus = `${chr}:${start}-${end}`;
                         this.$store.dispatch('queryVariants', { locus: this.locus });
                     });
-                }
+                },
+                switchPheWAS() {
+                },
             },
         });
 
