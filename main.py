@@ -39,10 +39,11 @@ def cli_test():
 @click.option('--update', is_flag=True, help='update tables already indexed')
 @click.option('--dialect', default='json', help='record dialect to use (default=json)')
 @click.option('--header', help='header row column names')
+@click.option('--partition', help='Partition chromosomes by column')
 @click.argument('key')
 @click.argument('prefix')
 @click.argument('locus')
-def cli_index(only, exclude, new, update, dialect, header, key, prefix, locus):
+def cli_index(only, exclude, new, update, dialect, header, partition, key, prefix, locus):
     """
     Index s3 table records in to a redis key.
     """
@@ -57,7 +58,7 @@ def cli_index(only, exclude, new, update, dialect, header, key, prefix, locus):
 
     # connect to redis
     with Client() as client:
-        n = index(client, key, dialect, locus, bucket, s3_objs, header=header, update=update, new=new)
+        n = index(client, key, dialect, locus, bucket, s3_objs, header=header, update=update, new=new, partition=partition)
         dt = datetime.timedelta(seconds=time.time() - t0)
 
         # done output report

@@ -34,63 +34,56 @@
             </div>
 
             <!-- locus input -->
-            <div class="mx-auto p-3 mb-2 px-md-5 bg-white rounded w-50">
-                <input v-model="locus" @change="" type="text" class="form-control" aria-describedby="locus"
-                    placeholder="chromosome:start-stop or gene">
+            <div class="input-group mx-auto p-3 px-md-5 bg-white rounded w-50">
+                <input v-model="locus" class="form-control" aria-describedby="locus" placeholder="chromosome:start-stop or gene"
+                       @change="" type="text">
+                <div class="input-group-append">
+                    <button type="button" class="btn btn-primary mb-3"
+                            @click="$store.dispatch('queryVariants', {locus})">
+                        Query
+                    </button>
+                </div>
             </div>
 
             <!-- match group -->
-            <div class="btn-group mb-5" role="group" aria-label="Matches">
-                <a class="btn btn-light btn-sm" href="#" @click="$store.dispatch('queryGenes', {locus})">Genes
+            <div class="btn-group mb-4" role="group" aria-label="Matches">
+                <span class="btn btn-light btn-sm">Genes
                     <span v-if="hasGenes" class="badge badge-primary badge-pill">{{$store.state.geneCount}}</span>
-                </a>
-                <a class="btn btn-light btn-sm" href="#" @click="$store.dispatch('queryRegions', {locus})">Regions
+                </span>
+                <span class="btn btn-light btn-sm">Regions
                     <span v-if="hasRegions" class="badge badge-primary badge-pill">{{$store.state.regionCount}}</span>
-                </a>
-                <a class="btn btn-light btn-sm" href="#" @click="$store.dispatch('queryVariants', {locus})">Variants
+                </span>
+                <span class="btn btn-light btn-sm">Variants
                     <span v-if="hasVariants"
                         class=" badge badge-primary badge-pill">{{$store.state.variantCount}}</span>
-                </a>
-                <a class="btn btn-light btn-sm" href="#" @click="$store.dispatch('viewPlot', {locus})">LocusZoom
-                </a>
+                </span>
             </div>
 
-            <div class="w-75 mx-auto">
+            <div class="w-75">
                 <div v-if="$store.state.loading">
                     <div class="spinner-border text-primary" role="status"></div>
                 </div>
 
-                <!-- genes -->
-                <div v-if="showGenes">
-                    <bootstrap-table id="geneTable" :columns="geneColumns" :data="geneData"
-                        :options="{sortName:'name', ...tableOptions}"></bootstrap-table>
-                </div>
+                <div v-show="dataLoaded" >
+                    <div class="mb-4">
+                        <button type="button" class="btn btn-sm m-1 py-1 px-2"
+                                v-for="i in phenotypes.slice(0, 20)"
+                                @click="$store.commit('setPhenotype', i[0])"
+                                :class="{ 'btn-primary': i[0] == phenotype
+                                        , 'btn-success': i[0] != phenotype && i[1] <= 5.0e-8
+                                        , 'btn-warning': i[0] != phenotype && i[1] <= 0.05 && i[1] > 5.0e-8
+                                        , 'btn-secondary': i[0] != phenotype && 0.05 < i[1]
+                                        }"
+                        >{{ i[0] }}</button>
+                    </div>
 
-                <!-- regions -->
-                <div v-if="showRegions">
-                    <bootstrap-table id="regionTable" :columns="regionColumns" :data="regionData"
-                        :options="{sortName:'start', ...tableOptions}"></bootstrap-table>
-                </div>
+                    <div id="locuszoom"></div>
 
-                <!-- variants -->
-                <div v-if="showVariants">
-                    <bootstrap-table id="variantTable" :columns="variantColumns" :data="variantData"
-                        :options="{sortName:'pValue', ...tableOptions}"></bootstrap-table>
+                    <div>
+                        <bootstrap-table id="table" :columns="tableColumns" :data="variants"
+                            :options="{sortName:'pValue', ...tableOptions}"></bootstrap-table>
+                    </div>
                 </div>
-
-                <!-- locuszoom plot -->
-                <ul class="nav nav-tabs">
-                    <li class="nav-item"><a class="nav-link" href="#"
-                            @click="$store.commit('setLZPlot','phewas')">PheWAS</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#"
-                            @click="$store.commit('setLZPlot','associations')">Associations</a></li>
-                </ul>
-                <select v-if="showAssociations" v-model="phenotype" @change="$store.commit('setPhenotype', phenotype)">
-                    <option v-for="phenotype in phenotypes" :value="phenotype">
-                        {{ phenotype }}
-                    </option>
-                </select>
-                <div id="locuszoom"></div>
             </div>
         </div>
     </center>
@@ -110,7 +103,6 @@
     <script src="https://unpkg.com/bootstrap-table@1.15.5/dist/bootstrap-table-vue.min.js"></script>
 
     <!-- d3 graphing and locuszoom -->
-    <!--<script src="https://d3js.org/d3.v5.min.js"></script>-->
     <script src="/static/locuszoom.vendor.min.js"></script>
     <script src="/static/locuszoom.app.min.js"></script>
 
@@ -118,18 +110,16 @@
     <script>
         Vue.use(BootstrapTable);
 
-        let assocDataSource = LocusZoom.KnownDataSources.extend('AssociationLZ', 'BioIndexAssocLZ', {
-            getURL() {
-                return this.url;
+        let assocDataSource = LocusZoom.KnownDataSources.extend('StaticJSON', 'BioIndexAssocLZ', {
+            getURL(state) {
+                return `/api/query/variants?q=${state.chr}:${state.start}-${state.end}`;
             },
 
             annotateData(records) {
                 records.forEach(r => {
                     r['id'] = r.varId;
                     r['log_pvalue'] = -Math.log10(r.pValue);
-                    r['log_pvalue|logtoscinotation'] = -Math.log10(r.pValue);
                     r['ref_allele'] = r.reference;
-                    r['trait'] = r.phenotype;
                     r['variant'] = r.alt;
                 });
 
@@ -140,8 +130,7 @@
         // SPA state
         let store = new Vuex.Store({
             state: {
-                tab: null,
-                lzPlot: 'PheWAS',
+                region: {},
                 loading: false,
                 phenotype: null,
 
@@ -152,13 +141,10 @@
 
                 // records per key space
                 variants: [],
-                genes: [],
-                regions: [],
             },
             mutations: {
-                setTab: (state, tab) => state.tab = tab,
-                setLZPlot: (state, plot) => state.lzPlot = plot,
                 setLoading: (state, flag) => state.loading = flag,
+                setRegion: (state, region) => state.region = region,
                 setPhenotype: (state, phenotype) => state.phenotype = phenotype,
 
                 // estimated counts
@@ -168,8 +154,6 @@
 
                 // fetched records
                 setVariants: (state, records) => state.variants = records,
-                setGenes: (state, records) => state.genes = records,
-                setRegions: (state, records) => state.regions = records,
             },
             actions: {
                 // simple guess as to the number of records in the region
@@ -184,21 +168,119 @@
                 },
 
                 // perform fetch queries to get the actual records
-                async queryVariants(context, { locus }) {
-                    await query(context, 'setVariants', 'variants', locus);
+                async queryVariants({ commit }, { locus }) {
+                    commit('setLoading', true);
+                    commit('setVariants', []);
+
+                    return fetch(`/api/query/variants?q=${encodeURIComponent(locus)}&sort=pValue`)
+                        .then(resp => resp.json())
+                        .then(json => {
+                            commit('setLoading', false);
+                            commit('setRegion', json.locus);
+                            commit('setVariants', json.data);
+
+                            if (json.data.length > 0) {
+                                commit('setPhenotype', json.data[0].phenotype);
+                            } else {
+                                commit('setPhenotype', null);
+                            }
+                        })
+                        .catch(err => {
+                            commit('setLoading', false);
+                        });
                 },
-                async queryGenes(context, { locus }) {
-                    await query(context, 'setGenes', 'genes', locus);
+            }
+        });
+
+        // entry point
+        let app = new Vue({
+            el: '#app',
+            store,
+            components: {
+                'BootstrapTable': BootstrapTable,
+            },
+            data: {
+                locus: '',
+                tableOptions: {
+                    pagination: true,
+                    pageSize: 10,
+                    search: true,
+                    dataSortClass: 'table-active',
                 },
-                async queryRegions(context, { locus }) {
-                    await query(context, 'setRegions', 'regions', locus);
+                tableColumns: [
+                    { title: 'Position', field: 'position', sortable: true },
+                    { title: 'Ref', field: 'reference' },
+                    { title: 'Alt', field: 'alt' },
+                    { title: 'Phenotype', field: 'phenotype', sortable: true },
+                    { title: 'P-Value', field: 'pValue', sortable: true },
+                    { title: 'Effect', field: 'beta', sortable: true },
+                    { title: 'Z-Score', field: 'zScore', sortable: true },
+                    { title: 'StdErr', field: 'stdErr', sortable: true },
+                    { title: 'N', field: 'n', sortable: true },
+                ],
+            },
+            computed: {
+                hasVariants() { return this.$store.state.variantCount > 0 },
+                hasGenes() { return this.$store.state.geneCount > 0 },
+                hasRegions() { return this.$store.state.regionCount > 0 },
+
+                // true if there are loaded variants
+                dataLoaded() { return this.$store.state.variants.length > 0 },
+
+                // all the variants returned by the query
+                variants() { return this.$store.state.variants },
+                phenotype() { return this.$store.state.phenotype },
+
+                // all the unique phenotypes in the region
+                phenotypes() {
+                    let ph = new Map();
+
+                    // find all the unique phenotypes across all variants
+                    this.$store.state.variants.forEach(v => {
+                        if (!ph.has(v.phenotype)) {
+                            ph.set(v.phenotype, v.pValue);
+                        }
+                    });
+
+                    return Array.from(ph.entries());
+                },
+            },
+            watch: {
+                locus: debounce(function (locus) {
+                    this.$store.dispatch('countVariants', { locus });
+                    this.$store.dispatch('countGenes', { locus });
+                    this.$store.dispatch('countRegions', { locus });
+                }, 500),
+
+                // update lz when variant data is updated
+                variants(variants) {
+                    this.updateLZ(variants, this.phenotype);
                 },
 
-                // open lz plot
-                async viewPlot(context, { locus }) {
+                phenotype(phenotype) {
+                    this.updateLZ(this.$store.state.variants, phenotype);
+                },
+            },
+            methods: {
+                updateLZ(variants, phenotype) {
+                    let data = [];
+
+                    // filter and transform the variants into LZ format
+                    variants.forEach(r => {
+                        if (r.phenotype == phenotype) {
+                            data.push({
+                                id: r.varId,
+                                position: r.position,
+                                log_pvalue: -Math.log10(r.pValue),
+                                ref_allele: r.reference,
+                                variant: r.varId,
+                            });
+                        }
+                    });
+
                     let ds = new LocusZoom.DataSources()
-                        .add("assoc", ["BioIndexAssocLZ", {
-                            url: `/api/query/variants?q=${encodeURIComponent(locus)}&format=columns`,
+                        .add("assoc", ["StaticJSON", {
+                            data: data,
                         }])
 
                         // LD server
@@ -235,99 +317,25 @@
                     // create the layout
                     let layout = LocusZoom.Layouts.get('plot', 'standard_association', {
                         state: {
-                            chr: 8,
-                            start: 117962512,
-                            end: 118188953,
+                            chr: this.$store.state.region.chromosome,
+                            start: this.$store.state.region.start,
+                            end: this.$store.state.region.stop,
                         },
                     });
 
-                    // show the plot
-                    context.commit('setTab', 'lz');
-
+                    // update the plot with the data sources and layout
                     window.plot = LocusZoom.populate('#locuszoom', ds, layout);
-                },
-            }
-        });
 
-        // entry point
-        let app = new Vue({
-            el: '#app',
-            store,
-            components: {
-                'BootstrapTable': BootstrapTable,
+                    // when scrolling a new data is requested, do something
+                    window.plot.on('data_requested', () => {
+                        let { chr, start, end } = window.plot.state;
+
+                        // update the input and dispatch
+                        this.locus = `${chr}:${start}-${end}`;
+                        this.$store.dispatch('queryVariants', { locus: this.locus });
+                    });
+                }
             },
-            data: {
-                locus: '',
-                tableOptions: {
-                    pagination: true,
-                    pageSize: 10,
-                    search: true,
-                    dataSortClass: 'table-active',
-                },
-                regionColumns: [
-                    { title: 'Start', field: 'start', sortable: true },
-                    { title: 'End', field: 'end', sortable: true },
-                    { title: 'Tissue', field: 'biosample', sortable: true },
-                    { title: 'Method', field: 'method', sortable: true },
-                    { title: 'Annotation', field: 'annotation', sortable: true },
-                    { title: 'Gene', field: 'predictedTargetGene', sortable: true },
-                    { title: 'Score', field: 'score', sortable: true },
-                ],
-                geneColumns: [
-                    { title: 'Gene', field: 'name', sortable: true },
-                    { title: 'ENS', field: 'ensemblId', sortable: true },
-                    { title: 'Start', field: 'start', sortable: true },
-                    { title: 'End', field: 'end', sortable: true },
-                    { title: 'Type', field: 'type', sortable: true },
-                ],
-                variantColumns: [
-                    { title: 'Position', field: 'position', sortable: true },
-                    { title: 'Ref', field: 'reference' },
-                    { title: 'Alt', field: 'alt' },
-                    { title: 'Phenotype', field: 'phenotype', sortable: true },
-                    { title: 'P-Value', field: 'pValue', sortable: true },
-                    { title: 'Effect', field: 'beta', sortable: true },
-                    { title: 'Z-Score', field: 'zScore', sortable: true },
-                    { title: 'StdErr', field: 'stdErr', sortable: true },
-                    { title: 'N', field: 'n', sortable: true },
-                ],
-            },
-            computed: {
-                tab() { return this.$store.state.tab },
-
-                hasVariants() { return this.$store.state.variantCount > 0 },
-                hasGenes() { return this.$store.state.geneCount > 0 },
-                hasRegions() { return this.$store.state.regionCount > 0 },
-
-                showGenes() { return this.$store.state.tab == 'genes' },
-                showRegions() { return this.$store.state.tab == 'regions' },
-                showVariants() { return this.$store.state.tab == 'variants' },
-                showLocusZoom() { return this.$store.state.tab == 'lz' },
-                showAssociations() { return this.$store.state.lzPlot == 'associations' },
-                showPheWAS() { return this.$store.state.lzPlot == 'phewas' },
-
-                variantData() { return this.$store.state.variants },
-                geneData() { return this.$store.state.genes },
-                regionData() { return this.$store.state.regions },
-
-                phenotypes() {
-                    let ph = {};
-
-                    // find all the unique phenotypes across all variants
-                    for (let v in this.$store.state.variants) {
-                        ph[v.phenotype] = 1;
-                    }
-
-                    return Object.keys(ph);
-                },
-            },
-            watch: {
-                locus: debounce(function (locus) {
-                    this.$store.dispatch('countVariants', { locus });
-                    this.$store.dispatch('countGenes', { locus });
-                    this.$store.dispatch('countRegions', { locus });
-                }, 500),
-            }
         });
 
         // request the estimated count for the number of records
@@ -336,24 +344,6 @@
                 .then(resp => resp.json())
                 .then(json => commit(mutation, json.n))
                 .catch(err => commit(mutation, 0));
-        }
-
-        // fetch all the records for a key in the given region
-        function query({ commit }, mutation, key, locus) {
-            commit('setTab', key);
-            commit('setLoading', true);
-            commit(mutation, []);
-
-            return fetch(`/api/query/${key}?q=${encodeURIComponent(locus)}`)
-                .then(resp => resp.json())
-                .then(json => {
-                    commit('setLoading', false);
-                    commit(mutation, json.data);
-                })
-                .catch(err => {
-                    commit('setLoading', false);
-                    commit(mutation, []);
-                });
         }
 
         // call function after a delay, overwrite any previous delay in place
