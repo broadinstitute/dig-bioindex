@@ -52,11 +52,22 @@
             <!-- match group -->
             <div class="btn-group mb-4" role="group" aria-label="Matches">
                 <span class="btn btn-light btn-sm">Regions
-                    <span v-if="hasRegions" class="badge badge-primary badge-pill">{{$store.state.regionCount}}</span>
+                    <span v-if="hasRegions"
+                        class=" badge badge-pill"
+                        :class="{ 'badge-primary': !$store.state.outOfSync
+                                , 'badge-danger': $store.state.outOfSync
+                                }">
+                        {{$store.state.regionCount}}
+                    </span>
                 </span>
                 <span class="btn btn-light btn-sm">Variants
                     <span v-if="hasVariants"
-                        class=" badge badge-primary badge-pill">{{$store.state.variantCount}}</span>
+                        class=" badge badge-pill"
+                        :class="{ 'badge-primary': !$store.state.outOfSync
+                                , 'badge-danger': $store.state.outOfSync
+                                }">
+                        {{$store.state.variantCount}}
+                    </span>
                 </span>
             </div>
 
@@ -67,7 +78,7 @@
                         Loading...
                     </button>
                 </div>
-                <div class="card" v-show="dataLoaded">
+                <div class="card" :class="{'border-danger': $store.state.outOfSync}" v-show="dataLoaded">
                     <div class="shadow card-body py-4">
 
                         <!-- phenotypes -->
@@ -161,6 +172,7 @@
             state: {
                 region: {},
                 loading: false,
+                outOfSync: false,
                 phenotype: null,
 
                 // how many estimated records per key space
@@ -173,6 +185,7 @@
             },
             mutations: {
                 setLoading: (state, flag) => state.loading = flag,
+                setOutOfSync: (state, flag) => state.outOfSync = flag,
                 setRegion: (state, region) => state.region = region,
                 setPhenotype: (state, phenotype) => state.phenotype = phenotype,
 
@@ -206,6 +219,7 @@
                             commit('setRegion', json.locus);
                             commit('setVariants', json.data);
                             commit('setProfile', json.profile);
+                            commit('setOutOfSync', false);
 
                             if (json.data.length > 0) {
                                 commit('setPhenotype', json.data[0].phenotype);
@@ -214,6 +228,7 @@
                             }
                         })
                         .catch(err => {
+                            commit('setOutOfSync', true);
                             commit('setLoading', false);
                         });
                 },
@@ -280,6 +295,7 @@
             },
             watch: {
                 locus: debounce(function (locus) {
+                    this.$store.commit('setOutOfSync', this.dataLoaded);
                     this.$store.dispatch('countVariants', { locus });
                     this.$store.dispatch('countGenes', { locus });
                     this.$store.dispatch('countRegions', { locus });
