@@ -358,10 +358,10 @@
                     });
 
                     // update the plot with the data sources and layout
-                    this.plot = LocusZoom.populate('#locuszoom', ds, layout);
+                    window.plot = LocusZoom.populate('#locuszoom', ds, layout);
 
                     // when scrolling a new data is requested, do something
-                    this.plot.on('data_requested', () => {
+                    window.plot.on('data_requested', () => {
                         let { chr, start, end } = window.plot.state;
 
                         // update the input and dispatch
@@ -370,6 +370,7 @@
                     });
                 },
                 switchPheWAS() {
+                    // TODO:
                 },
             },
         });
