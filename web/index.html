@@ -68,7 +68,7 @@
                 <div v-show="dataLoaded">
                     <div class="mb-4">
                         <button type="button" class="btn btn-sm m-1 py-1 px-2"
-                                v-for="i in phenotypes.slice(0, 20)"
+                                v-for="i in (showAllPhenotypes ? phenotypes : phenotypes.slice(0, 20))"
                                 @click="$store.commit('setPhenotype', i[0])"
                                 :class="{ 'btn-primary': i[0] == phenotype
                                         , 'btn-success': i[0] != phenotype && i[1] <= 5.0e-8
@@ -76,6 +76,13 @@
                                         , 'btn-secondary': i[0] != phenotype && 0.05 < i[1]
                                         }"
                         >{{ i[0] }}</button>
+
+                        <span v-if="!showAllPhenotypes">
+                            <a href="#" @click="showAllPhenotypes=true">All...</a>
+                        </span>
+                        <span v-else>
+                            <a href="#" @click="showAllPhenotypes=false">Less...</a>
+                        </span>
                     </div>
 
                     <ul class="nav nav-tabs justify-content-center mb-3">
@@ -205,6 +212,7 @@
             },
             data: {
                 locus: '',
+                showAllPhenotypes: false,
                 tableOptions: {
                     pagination: true,
                     pageSize: 10,
