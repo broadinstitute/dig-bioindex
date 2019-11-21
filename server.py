@@ -1,3 +1,4 @@
+import dotenv
 import flask
 import itertools
 
@@ -7,6 +8,9 @@ from lib.locus import *
 from lib.profile import *
 from lib.query import *
 
+
+# load dot files
+dotenv.load_dotenv()
 
 # create flask app; this will load .env
 app = flask.Flask(__name__, static_folder='web/static')
