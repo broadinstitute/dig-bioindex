@@ -100,12 +100,12 @@ def s3_read_object(bucket, path, offset=None, length=None):
     return s3_client.get_object(**kwargs).get('Body')
 
 
-def s3_test_object(bucket, path):
+def s3_test_object(bucket, s3_obj):
     """
     Checks to see if the path exists in the bucket.
     """
     try:
-        s3_client.head_object(Bucket=bucket, Key=path)
+        s3_client.head_object(Bucket=bucket, Key=s3_obj['Key'])
         return True
     except botocore.errorfactory.ClientError:
         return False
