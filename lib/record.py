@@ -2,7 +2,7 @@ import dataclasses
 import msgpack
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass
 class Record:
     """
     File position and length of a record in a table.

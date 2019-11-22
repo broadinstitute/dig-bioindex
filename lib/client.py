@@ -1,3 +1,4 @@
+import dataclasses
 import msgpack
 import redis
 
@@ -49,18 +50,25 @@ class Client:
         # register the new id
         table_id = self._r.incr('table_id')
 
+        # commit a "dummy" table entry with an empty hash, so it will never match
+        self.commit_table(table_id, dataclasses.replace(table, hash=''))
+
         # index the table name to its value (can ensure unique tables)
         self._r.set(table_path, table_id)
 
-        # set - or update - the table values
+        return table_id
+
+    def commit_table(self, table_id, table):
+        """
+        Assert that the table exists, then set the tag of the table to its new value
+        since all the records have been fulling loaded.
+        """
         self._r.hset(f'table:{table_id}', 'path', table.path)
-        self._r.hset(f'table:{table_id}', 'tag', table.tag)
+        self._r.hset(f'table:{table_id}', 'hash', table.hash)
         self._r.hset(f'table:{table_id}', 'key', table.key)
         self._r.hset(f'table:{table_id}', 'locus', table.locus)
         self._r.hset(f'table:{table_id}', 'dialect', table.dialect)
         self._r.hset(f'table:{table_id}', 'fieldnames', msgpack.dumps(table.fieldnames))
-
-        return table_id
 
     def scan_tables(self, prefix=None):
         """
@@ -75,7 +83,7 @@ class Client:
         """
         table = self._r.hgetall(f'table:{table_id}')
         if not table:
-            raise KeyError(f'Table {table_id} does not exist')
+            return None
 
         # if this table has field names (CSV), unpack them
         cols = msgpack.loads(table.get(b'fieldnames'))
@@ -84,7 +92,7 @@ class Client:
 
         return Table(
             path=table[b'path'].decode('utf-8'),
-            tag=table[b'tag'].decode('utf-8'),
+            hash=table[b'hash'].decode('utf-8'),
             key=table[b'key'].decode('utf-8'),
             locus=table[b'locus'].decode('utf-8'),
             dialect=table[b'dialect'].decode('utf-8'),

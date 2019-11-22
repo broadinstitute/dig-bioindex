@@ -18,7 +18,7 @@ class Table:
     columns in locus to map to a position or region.
     """
     path: str
-    tag: str
+    hash: str
     key: str
     locus: str
     dialect: str

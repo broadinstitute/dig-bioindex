@@ -35,7 +35,7 @@ def index(redis_client, key, dialect, locus, bucket, s3_objs, header=None, updat
                 fieldnames = header.split(',')
 
         # create a new table object from the parameters
-        table = Table(path=path, tag=tag, key=key, locus=locus, dialect=dialect, fieldnames=fieldnames)
+        table = Table(path=path, hash=tag, key=key, locus=locus, dialect=dialect, fieldnames=fieldnames)
 
         # if nothing has changed, don't re-index
         if table == existing_table:
@@ -70,13 +70,17 @@ def index(redis_client, key, dialect, locus, bucket, s3_objs, header=None, updat
                 locus_obj = locus_class(*(row.get(col) for col in locus_cols if col))
                 record = Record(table_id, line_stream.offset, line_stream.length)
 
-                # add the record to the insert list
-                records.append((locus_obj, record))
+                # append to previous record or append to record list
+                if len(records) > 0 and locus_obj.co_located(records[-1][0]):
+                    records[-1][1].length = (record.offset + record.length) - records[-1][1].offset
+                else:
+                    records.append((locus_obj, record))
             except (KeyError, ValueError) as e:
                 logging.warning('Record error (line %d): %s; skipping...', line_stream.n, e)
 
-        # add them all in a single batch
+        # add them all in a single batch and commit the table
         redis_client.insert_records(key, records)
+        redis_client.commit_table(table_id, table)
 
         # tally all the records inserted
         n += len(records)

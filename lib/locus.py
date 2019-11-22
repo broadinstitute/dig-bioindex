@@ -43,6 +43,16 @@ class Locus(abc.ABC):
 
     @abc.abstractmethod
     def overlaps(self, chromosome, start, stop):
+        """
+        True if this locus overlaps a region.
+        """
+        pass
+
+    @abc.abstractmethod
+    def co_located(self, other):
+        """
+        True if the locus will always index with another locus.
+        """
         pass
 
 
@@ -79,6 +89,15 @@ class SNPLocus(Locus):
         True if this locus is overlapped by the region.
         """
         return self.chromosome == chromosome and start <= self.position < stop
+
+    def co_located(self, other):
+        """
+        True if the locus will always index with another locus.
+        """
+        if not isinstance(other, SNPLocus):
+            return False
+
+        return other.chromosome == self.chromosome and other.position == self.position
 
 
 @dataclasses.dataclass(eq=True)
@@ -118,6 +137,15 @@ class RegionLocus(Locus):
         True if this locus is overlapped by the region.
         """
         return self.chromosome == chromosome and stop > self.start and start < self.stop
+
+    def co_located(self, other):
+        """
+        True if the locus will always index with another locus.
+        """
+        if not isinstance(other, RegionLocus):
+            return False
+
+        return other.chromosome == self.chromosome and other.start == self.start
 
 
 def chromosomes():
