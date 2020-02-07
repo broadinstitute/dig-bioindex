@@ -1,83 +1,45 @@
 import botocore.exceptions
 import concurrent.futures
 import io
+import json
 import logging
-import smart_open
 
-from .locus import *
-from .s3 import *
+import lib.locus
+import lib.s3
+
+from lib.profile import profile
 
 
-def query(redis_client, key, chromosome, start, stop, bucket):
+def by_locus(engine, bucket, table, locus):
     """
-    Query redis db for all objects that a region overlaps.
+    Query the database for all records that a region overlaps.
     """
-    results = redis_client.query_records(key, chromosome, start, stop)
+    chromosome, start, stop = lib.locus.parse(locus, allow_ens_lookup=True)
 
-    # mapping of table info and all coalesced ranges
-    tables = {}
-    ranges = []
+    q = (
+        f'SELECT path, MIN(offset), MAX(offset) + length AS END_OFFSET '
+        f'FROM {table.name} '
+        f'WHERE chromosome = %s AND position BETWEEN %s AND %s '
+        f'GROUP BY path '
+    )
 
-    # sort result ranges and fetch table location
-    for table_id in results.keys():
-        tables[table_id] = redis_client.get_table(table_id)
-
-        # table_id may be represented once per coalesced range
-        for rng in coalesce_ranges(results[table_id]):
-            ranges.append((table_id, rng))
-
-    # download the record from the table
-    def read_records(coalesced_range):
-        tid, (offset, length) = coalesced_range
-        table = tables[tid]
-
-        # parse records from the table
-        try:
-            stream = s3_read_object(bucket, table.path, offset=offset, length=length)
-            lines = smart_open.open(io.BytesIO(stream.read()))
-            records = table.reader(lines)
-
-            # parse the table locus into column names
-            locus_cols = parse_locus_columns(table.locus)
-
-            # final record list
-            for r in records:
-                if Locus.from_record(r, *locus_cols).overlaps(chromosome, start, stop):
-                    yield r
-        except botocore.exceptions.ClientError:
-            logging.error('Failed to read table %s; some records missing', table.path)
+    # fetch all the results
+    cursor, query_ms = profile(engine.execute, q, chromosome, start, stop)
+    logging.info('Query %s (%s) took %d ms', table.name, locus, query_ms)
 
     # create a thread pool to load records in parallel
-    ex = concurrent.futures.ThreadPoolExecutor(max_workers=20)
+    # ex = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
-    # each job (downloaded range of records) returns a record iterator
-    for record_list in ex.map(read_records, ranges):
-        for record in record_list:
-            yield record
+    # read all the objects in s3 asynchronously
+    for record in cursor:
+        path, offset, end_offset = record
 
+        try:
+            content = lib.s3.read_object(bucket, path, offset=offset, length=end_offset-offset)
 
-def coalesce_ranges(ranges):
-    """
-    Assuming all the ranges are to the same s3 object, sort the ranges and
-    then coalesce nearby ranges together into larger ranges so that reads
-    are faster.
-    """
-    ranges.sort()
+            for line in content.iter_lines():
+                print(line)
+                yield json.loads(line)
 
-    # handle degenerate case
-    if len(ranges) == 0:
-        return ranges
-
-    # take the first item in the range
-    coalesced = [ranges[0]]
-
-    # attempt to merge next range with the previous
-    for r in ranges[1:]:
-        offset, length = coalesced[-1]
-
-        if r[0] - (offset + length) < 16 * 1024:
-            coalesced[-1] = (offset, r[0] + r[1] - offset)
-        else:
-            coalesced.append(r)
-
-    return coalesced
+        except botocore.exceptions.ClientError:
+            logging.error('Failed to read table %s; some records missing', table.path)

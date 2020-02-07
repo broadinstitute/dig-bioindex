@@ -1,88 +1,77 @@
+import json
 import logging
+import sqlalchemy
+import sys
 
-from .locus import *
-from .record import *
-from .s3 import *
-from .table import *
+import lib.locus
+import lib.s3
 
 
-def index(redis_client, key, dialect, locus, bucket, s3_objs, header=None, update=False, new=False):
+def by_locus(engine, table, locus, bucket, s3_objects):
     """
     Index table records in s3 to redis.
     """
-    locus_cols = parse_locus_columns(locus)
-    locus_class = SNPLocus if locus_cols[2] is None else RegionLocus
+    locus_cols = lib.locus.parse_columns(locus)
+    locus_class = lib.locus.SNPLocus if locus_cols[2] is None else lib.locus.RegionLocus
+
+    # drop and create the table
+    table.drop(engine, checkfirst=True)
+    table.create(engine)
 
     # tally record count
     n = 0
 
     # list all the input tables
-    for obj in s3_objs:
+    for obj in s3_objects:
         path, tag = obj['Key'], obj['ETag']
 
-        # lookup the existing table and id (if already indexed)
-        table_id, existing_table = redis_client.get_table_from_path(path)
-
         # stream the file from s3
-        line_stream = LineStream(s3_uri(bucket, path))
-        fieldnames = None
-
-        # if the dialect isn't json, it's csv, read the header
-        if dialect != 'json':
-            if header is None:
-                fieldnames = next(csv.reader(line_stream, dialect))
-            elif header != '-':
-                fieldnames = header.split(',')
-
-        # create a new table object from the parameters
-        table = Table(path=path, hash=tag, key=key, locus=locus, dialect=dialect, fieldnames=fieldnames)
-
-        # if nothing has changed, don't re-index
-        if table == existing_table:
-            continue
-
-        # register a new table if not already indexed
-        if table_id is None:
-            table_id = redis_client.register_table(table)
-
-        # skip already existing tables or die
-        if existing_table:
-            if update:
-                logging.info('Deleting %s...', path)
-
-                # delete records, but not the table entry; re-use it
-                redis_client.delete_records(table_id)
-            elif not new:
-                raise AssertionError(f'Table {path} already indexed; --new/update not provided')
-            else:
-                continue
-
-        # Show that the table is now being indexed
-        logging.info('Indexing %s...', path)
-
-        # create the record reader
-        reader = table.reader(line_stream)
-        records = list()
+        # reader = smart_open.open(lib.s3.uri(bucket, path))
+        content = lib.s3.read_object(bucket, path)
+        offset = 0
+        records = {}
 
         # accumulate the records
-        for row in reader:
+        for line_num, line in enumerate(content.iter_lines()):
+            sys.stderr.write(f'Processing {path} line {(line_num+1):,}...\r')
+            row = json.loads(line)
+
             try:
                 locus_obj = locus_class(*(row.get(col) for col in locus_cols if col))
-                record = Record(table_id, line_stream.offset, line_stream.length)
 
-                # append to previous record or append to record list
-                if len(records) > 0 and locus_obj.co_located(records[-1][0]):
-                    records[-1][1].length = (record.offset + record.length) - records[-1][1].offset
-                else:
-                    records.append((locus_obj, record))
+                # add new loci and expand existing
+                for locus in locus_obj.loci():
+                    if locus in records:
+                        records[locus]['length'] = offset + len(line) - records[locus]['offset']
+                    else:
+                        records[locus] = {
+                            'path': path,
+                            'offset': offset,
+                            'length': len(line) + 1,
+                        }
+
             except (KeyError, ValueError) as e:
-                logging.warning('Record error (line %d): %s; skipping...', line_stream.n, e)
+                sys.stderr.write('\n')
+                logging.warning('%s; skipping...', e)
 
-        # add them all in a single batch and commit the table
-        redis_client.insert_records(key, records)
-        redis_client.commit_table(table_id, table)
+            # track current file offset
+            offset += len(line) + 1  # newline character
 
-        # tally all the records inserted
-        n += len(records)
+        # transform all the records
+        batch = [{'chromosome': locus[0], 'position': locus[1], **r} for locus, r in records.items()]
+
+        # show the number of records attempting to be inserted
+        sys.stderr.write('\n')
+        logging.info(f'Inserting {len(records):,} records...')
+
+        # perform insert
+        resp = engine.execute(table.insert(values=batch))
+        n += resp.rowcount
+
+    # show the number of records attempting to be inserted
+    logging.info('Building table index...')
+
+    # build the index after all inserts
+    sqlalchemy.Index('locus_idx', table.c.chromosome, table.c.position).create(engine)
 
     return n

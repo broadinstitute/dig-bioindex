@@ -42,6 +42,13 @@ class Locus(abc.ABC):
         self.chromosome = parse_chromosome(self.chromosome)
 
     @abc.abstractmethod
+    def loci(self):
+        """
+        A generator of record loci as tuples ('chromosome', position)
+        """
+        pass
+
+    @abc.abstractmethod
     def overlaps(self, chromosome, start, stop):
         """
         True if this locus overlaps a region.
@@ -83,6 +90,12 @@ class SNPLocus(Locus):
         Hash this locus using the string representation of it.
         """
         return hash(str(self))
+
+    def loci(self):
+        """
+        A generator of record loci.
+        """
+        yield self.chromosome, self.position
 
     def overlaps(self, chromosome, start, stop):
         """
@@ -132,6 +145,17 @@ class RegionLocus(Locus):
         """
         return hash(str(self))
 
+    def loci(self):
+        """
+        A generator of record loci.
+        """
+        step = 20000
+        start = self.start // step
+        stop = self.stop // step
+
+        for position in range(start, stop + 1):
+            yield self.chromosome, position * step
+
     def overlaps(self, chromosome, start, stop):
         """
         True if this locus is overlapped by the region.
@@ -167,7 +191,7 @@ def parse_chromosome(s):
     return match.group(1).upper()
 
 
-def parse_locus_columns(s):
+def parse_columns(s):
     """
     Parse a locus string and return the chromosome, start, and stop columns.
     """
@@ -179,7 +203,7 @@ def parse_locus_columns(s):
     return match.groups()
 
 
-def parse_locus(s, allow_ens_lookup=False):
+def parse(s, allow_ens_lookup=False):
     """
     Parse a locus string and return the chromosome, start, stop.
     """
