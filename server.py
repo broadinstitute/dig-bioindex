@@ -46,7 +46,9 @@ def api_keys(index):
         keys, query_s = profile(lib.query.keys, engine, index, schema)
 
         return {
-            'profile': query_s,
+            'profile': {
+                'query': query_s,
+            },
             'index': index,
             'keys': list(keys),
         }
@@ -76,11 +78,17 @@ def api_query(index):
         if fmt == 'array':
             records = {k: [d[k] for d in records] for k in records[0]}
 
+        # profile collection of all the records from s3
+        fetched_records, fetch_s = profile(list, records)
+
         return {
-            'profile': query_s,
+            'profile': {
+                'query': query_s,
+                'fetch': fetch_s,
+            },
             'index': index,
             'q': q,
-            'data': list(records),
+            'data': fetched_records,
         }
     except KeyError:
         flask.abort(404, f'Unknown index: {index}')
