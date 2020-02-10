@@ -60,7 +60,7 @@ def _index_objects(engine, table, schema, bucket, s3_objects, keys, index_keys):
 
     # progress bar management
     with enlighten.get_manager() as progress_mgr:
-        overall_progress = progress_mgr.counter(total=len(objects), unit='files')
+        overall_progress = progress_mgr.counter(total=len(objects), unit='files', series=' #')
 
         # process each s3 object
         for obj in objects:
@@ -68,7 +68,7 @@ def _index_objects(engine, table, schema, bucket, s3_objects, keys, index_keys):
             logging.info('Processing %s...', path)
 
             # create progress bar for each file
-            file_progress = progress_mgr.counter(total=size // 1024, unit='KB', leave=False)
+            file_progress = progress_mgr.counter(total=size // 1024, unit='KB', series=' #', leave=False)
 
             # stream the file from s3
             content = lib.s3.read_object(bucket, path)
@@ -126,7 +126,7 @@ def _batch_insert(engine, table, records, batch_size=10000, progress_mgr=None):
     """
     Insert all the records in batches.
     """
-    counter = progress_mgr and progress_mgr.counter(total=len(records), unit='records', leave=False)
+    counter = progress_mgr and progress_mgr.counter(total=len(records), unit='records', series=' #', leave=False)
 
     for i in range(0, len(records), batch_size):
         rows = engine.execute(table.insert(values=records[i:i+batch_size])).rowcount
