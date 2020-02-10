@@ -8,9 +8,20 @@ import re
 import urllib.parse
 
 # create an s3 session from ~/.aws credentials
-s3_config = botocore.config.Config(max_pool_connections=200)
-s3_session = boto3.session.Session()
-s3_client = s3_session.client('s3', config=s3_config)
+s3_config = None
+s3_session = None
+s3_client = None
+
+
+def init():
+    """
+    Connect to S3. Do this after loading the environment.
+    """
+    global s3_config, s3_session, s3_client
+
+    s3_config = botocore.config.Config(max_pool_connections=200)
+    s3_session = boto3.session.Session()
+    s3_client = s3_session.client('s3', config=s3_config)
 
 
 def split_bucket(s3_key):
