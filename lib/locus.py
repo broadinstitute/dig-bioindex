@@ -1,5 +1,4 @@
 import abc
-import dataclasses
 import itertools
 import locale
 import re
@@ -10,26 +9,21 @@ import requests
 locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
 
 
-@dataclasses.dataclass
 class Locus(abc.ABC):
     """
     A location in the genome. Abstract. Must be either a SNPLocus or
     a RegionLocus.
     """
-    chromosome: str
+
+    def __init__(self, chromosome):
+        """
+        Ensure a valid chromosome.
+        """
+        self.chromosome = parse_chromosome(chromosome)
 
     @abc.abstractmethod
     def __str__(self):
         pass
-
-    def __post_init__(self):
-        """
-        Validate the chromosome is valid, and normalize it.
-        """
-        if self.chromosome is None:
-            raise KeyError('Missing chromosome column from record')
-
-        self.chromosome = parse_chromosome(self.chromosome)
 
     @abc.abstractmethod
     def loci(self):
@@ -46,33 +40,22 @@ class Locus(abc.ABC):
         pass
 
 
-@dataclasses.dataclass(eq=True)
 class SNPLocus(Locus):
-    position: int
+    """
+    Locus for a single SNP (base pair) at an exact position.
+    """
 
-    def __post_init__(self):
-        """
-        Ensure the proper types for the locus.
-        """
-        super().__post_init__()
-
-        if self.position is None:
-            raise KeyError('Missing position column from record')
+    def __init__(self, chromosome, position):
+        super().__init__(chromosome)
 
         # ensure integer position
-        self.position = int(self.position)
+        self.position = int(position)
 
     def __str__(self):
         """
         Return a string representation of the locus.
         """
         return f'{self.chromosome}:{self.position}'
-
-    def __hash__(self):
-        """
-        Hash this locus using the string representation of it.
-        """
-        return hash(str(self))
 
     def loci(self):
         """
@@ -87,21 +70,13 @@ class SNPLocus(Locus):
         return self.chromosome == chromosome and start <= self.position < stop
 
 
-@dataclasses.dataclass(eq=True)
 class RegionLocus(Locus):
-    start: int
-    stop: int
+    """
+    Locus for a region on a chromosome.
+    """
 
-    def __post_init__(self):
-        """
-        Ensure the proper types for the locus.
-        """
-        super().__post_init__()
-
-        if self.start is None:
-            raise KeyError('Missing start column from record')
-        if self.stop is None:
-            raise KeyError('Missing stop column from record')
+    def __init__(self, chromosome, start, stop):
+        super().__init__(chromosome)
 
         # ensure integer range
         self.start = int(self.start)
@@ -112,12 +87,6 @@ class RegionLocus(Locus):
         Return a string representation of the locus.
         """
         return f'{self.chromosome}:{self.start}-{self.stop}'
-
-    def __hash__(self):
-        """
-        Hash this locus using the string representation of it.
-        """
-        return hash(str(self))
 
     def loci(self):
         """
