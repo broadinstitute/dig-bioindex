@@ -12,46 +12,15 @@ import lib.s3
 import lib.schema
 
 
-def build(engine, table, schema, bucket, s3_objects):
-    """
-    Build an index table for a set of objects in an S3 bucket using a schema.
-    The schema is a string that is either a locus of column names or a single
-    field. Example schemas:
-
-      * chromosome:position
-      * chromosome:start-end
-      * phenotype
-      * varId
-    """
-    locus_class, locus_cols = lib.locus.parse_columns(schema)
-
-    if locus_class:
-        return _index_objects(
-            engine,
-            table,
-            schema,
-            bucket,
-            s3_objects,
-            lambda row: locus_class(*(row.get(col) for col in locus_cols if col)).loci(),
-            lambda k: {'chromosome': k[0], 'position': k[1]},
-        )
-    else:
-        return _index_objects(
-            engine,
-            table,
-            schema,
-            bucket,
-            s3_objects,
-            lambda row: [row[schema]],
-            lambda k: {'value': k},
-        )
-
-
-def _index_objects(engine, table, schema, bucket, s3_objects, keys, index_keys):
+def build(engine, table_name, schema, bucket, s3_objects):
     """
     Builds the index table for objects in S3.
     """
-    lib.metadata.update(engine, table.name, schema)
+    meta = sqlalchemy.MetaData()
+    table = schema.build_table(table_name, meta)
+
+    # update the metadata for the table and schema
+    lib.metadata.update(engine, table.name, str(schema))
 
     # create the index table (drop any existing table already there)
     logging.info('Creating %s table...', table.name)
@@ -84,7 +53,7 @@ def _index_objects(engine, table, schema, bucket, s3_objects, keys, index_keys):
                 end_offset = start_offset + len(line) + 1  # newline
 
                 try:
-                    for k in keys(row):
+                    for k in schema.index_keys(row):
                         if k in records:
                             records[k]['end_offset'] = end_offset
                         else:
@@ -104,26 +73,26 @@ def _index_objects(engine, table, schema, bucket, s3_objects, keys, index_keys):
                 start_offset = end_offset
 
             # transform all the records and collect them all into an insert batch
-            batch = [{**index_keys(k), **r} for k, r in records.items()]
+            batch = [{**schema.column_values(k), **r} for k, r in records.items()]
 
             # perform the insert in batches
-            _batch_insert(engine, table, batch)
+            _bulk_insert(engine, table, batch)
 
             # update progress
             file_progress.close()
             overall_progress.update()
 
-        # show the number of records attempting to be inserted
-        logging.info('Building table index...')
-
-        # finally, build the index after all inserts are done (if locus)
-        sqlalchemy.Index('locus_idx', table.c.chromosome, table.c.position).create(engine)
-
         # done
         overall_progress.close()
 
+        # finally, build the index after all inserts are done
+        logging.info('Building table index...')
 
-def _batch_insert(engine, table, records):
+        # each table knows how to build its own index
+        schema.build_index(engine, table)
+
+
+def _bulk_insert(engine, table, records):
     """
     Insert all the records in batches.
     """

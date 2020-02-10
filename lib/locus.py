@@ -75,8 +75,8 @@ class RegionLocus(Locus):
         super().__init__(chromosome)
 
         # ensure integer range
-        self.start = int(self.start)
-        self.stop = int(self.stop)
+        self.start = int(start)
+        self.stop = int(stop)
 
     def __str__(self):
         """

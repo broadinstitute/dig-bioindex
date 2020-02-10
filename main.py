@@ -3,11 +3,10 @@ import dotenv
 import logging
 import os
 
+import lib.config
 import lib.index
 import lib.metadata
-import lib.mixins
 import lib.query
-import lib.schema
 import lib.secrets
 import lib.s3
 
@@ -18,46 +17,39 @@ def cli():
 
 
 @click.command(name='index')
-@click.argument('table')
-@click.argument('bucket_prefix')
-@click.argument('schema')
-def cli_index(table, bucket_prefix, schema):
-    cls = getattr(lib.schema, table)
-    if not cls:
-        logging.error('%s is not a valid index table!', table)
-        return
+@click.argument('index')
+@click.confirmation_option(prompt='This will rebuild the index; continue? [y/N] ')
+def cli_index(index):
+    config = lib.config.Config()
+    table = config.table(index)
 
-    # get the bucket name and prefix
-    bucket, prefix = lib.s3.split_bucket(bucket_prefix)
-    if not bucket:
-        logging.error('Invalid S3 location to index: %s', bucket_prefix)
-        return
+    if not table:
+        raise KeyError(f'Unknown index: {index}')
 
-    # connect to the database and search s3 for all objects in the desired path
-    engine = lib.secrets.connect_to_mysql(os.getenv('RDS_INSTANCE'))
-    s3_objects = lib.s3.list_objects(bucket, prefix, exclude='_SUCCESS')
+    # connect to mysql and get an s3 object listing
+    engine = lib.secrets.connect_to_mysql(config.rds_instance)
+    s3_objects = lib.s3.list_objects(config.s3_bucket, table.prefix, exclude='_SUCCESS')
 
-    # perform the index
-    lib.index.build(engine, cls.__table__, schema, bucket, s3_objects)
-    logging.info('Successfully built %s index.', table)
+    # build the index
+    lib.index.build(engine, index, table.schema, config.s3_bucket, s3_objects)
+    logging.info('Successfully built index.')
 
 
 @click.command(name='query')
-@click.argument('table')
-@click.argument('bucket')
+@click.argument('index')
 @click.argument('q')
-def cli_query(table, bucket, q):
-    cls = getattr(lib.schema, table)
-    if not cls:
-        logging.error('%s is not a valid index table!', table)
-        return
+def cli_query(index, q):
+    config = lib.config.Config()
+    table = config.table(index)
 
-    # connect to the database and read metadata
-    engine = lib.secrets.connect_to_mysql(os.getenv('RDS_INSTANCE'))
-    metadata = lib.metadata.load_all(engine)
+    if not table:
+        raise KeyError(f'Unknown index: {index}')
+
+    # connect to mysql
+    engine = lib.secrets.connect_to_mysql(config.rds_instance)
 
     # lookup the table class from the schema
-    for obj in lib.query.fetch(engine, metadata, bucket, cls.__table__, q):
+    for obj in lib.query.fetch(engine, config.s3_bucket, index, table.schema, q):
         print(obj)
 
 
@@ -75,12 +67,6 @@ if __name__ == '__main__':
 
     # load dot files
     dotenv.load_dotenv()
-
-    # verify environment
-    assert os.getenv('RDS_INSTANCE'), 'RDS_INSTANCE not set in environment or .env'
-
-    # connect to the MySQL database
-    # engine = lib.secrets.connect_to_mysql(os.getenv('RDS_INSTANCE'))
 
     # run command
     cli()

@@ -5,28 +5,22 @@ import logging
 import lib.locus
 import lib.metadata
 import lib.s3
+import lib.schema
 
 from lib.profile import profile
 
 
-def fetch(engine, metadata, bucket, table, q):
+def fetch(engine, bucket, table_name, schema, q):
     """
     Use the table schema to determine the type of query to execute.
     """
-    schema = metadata.get(table.name)
-    if schema is None:
-        yield None
-
-    # check if the schema is a valid locus
-    locus_class, cols = lib.locus.parse_columns(schema)
-
-    if locus_class:
-        yield from _by_locus(engine, bucket, table, q, cols)
+    if isinstance(schema, lib.schema.LocusSchema):
+        yield from _by_locus(engine, bucket, table_name, schema, q)
     else:
-        yield from _by_value(engine, bucket, table, q, schema)
+        yield from _by_value(engine, bucket, table_name, q)
 
 
-def _by_locus(engine, bucket, table, q, cols):
+def _by_locus(engine, bucket, table_name, schema, q):
     """
     Query the database for all records that a region overlaps.
     """
@@ -34,34 +28,34 @@ def _by_locus(engine, bucket, table, q, cols):
 
     sql = (
         f'SELECT `path`, MIN(`start_offset`), MAX(`end_offset`) '
-        f'FROM `{table.name}` '
+        f'FROM `{table_name}` '
         f'WHERE `chromosome` = %s AND `position` BETWEEN %s AND (%s - 1) '
         f'GROUP BY `path` '
+        f'ORDER BY `path` ASC '
     )
 
     # fetch all the results
     cursor, query_ms = profile(engine.execute, sql, chromosome, start, stop)
-    logging.info('Query %s (%s) took %d ms', table.name, q, query_ms)
+    logging.info('Query %s (%s) took %d ms', table_name, q, query_ms)
 
-    # read all the objects in s3
+    # read all the objects in s3, return those that overlap
     for r in _read_records(bucket, cursor):
-        if r[cols[0]] != chromosome or r[cols[1]] >= stop or (cols[2] and r[cols[2]] < start):
-            continue
-
-        yield r
+        if schema.locus_of_row(r).overlaps(chromosome, start, stop):
+            yield r
 
 
-def _by_value(engine, bucket, table, q, schema):
+def _by_value(engine, bucket, table_name, q):
     sql = (
         f'SELECT `path`, MIN(`start_offset`), MAX(`end_offset`) '
-        f'FROM `{table.name}` '
+        f'FROM `{table_name}` '
         f'WHERE `value` = %s '
         f'GROUP BY `path` '
+        f'ORDER BY `path` ASC '
     )
 
     # fetch all the results
     cursor, query_ms = profile(engine.execute, sql, q)
-    logging.info('Query %s (%s) took %d ms', table.name, q, query_ms)
+    logging.info('Query %s (%s) took %d ms', table_name, q, query_ms)
 
     # read all the objects from s3
     yield from _read_records(bucket, cursor)

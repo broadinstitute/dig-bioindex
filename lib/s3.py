@@ -82,7 +82,7 @@ def list_objects(bucket, prefix, only=None, exclude=None):
         # recursively search the common prefixes for folder prefixes
         if prefix[-1] == '/':
             for common_prefix in resp.get('CommonPrefixes', []):
-                yield from s3_list_objects(bucket, common_prefix['Prefix'], only=only, exclude=exclude)
+                yield from list_objects(bucket, common_prefix['Prefix'], only=only, exclude=exclude)
 
         # no more paths?
         if not resp['IsTruncated']:
