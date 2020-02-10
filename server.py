@@ -35,7 +35,7 @@ def api_indexes():
     return {'indexes': list(config.tables.keys())}
 
 
-@app.route('/api/keys/<index>')
+@app.route('/api/keys/<idx>')
 def api_keys(idx):
     """
     Return all the unique keys for a value-indexed table.
@@ -61,7 +61,7 @@ def api_keys(idx):
         flask.abort(400, str(e))
 
 
-@app.route('/api/query/<index>')
+@app.route('/api/query/<idx>')
 def api_query(idx):
     """
     Query the database for records matching the query parameter and
