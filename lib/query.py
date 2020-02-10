@@ -68,7 +68,7 @@ def _by_locus(engine, bucket, table_name, schema, q, limit):
 
     # arbitrarily limit the number of results
     if not limit:
-        return overlapping
+        yield from overlapping
     else:
         for _, r in zip(range(limit), overlapping):
             yield r

@@ -53,7 +53,7 @@ def cli_query(index, q):
 
 @click.command(name='keys')
 @click.argument('index')
-def cli_query(index):
+def cli_keys(index):
     config = lib.config.Config()
     table = config.table(index)
 
@@ -74,6 +74,7 @@ def cli_query(index):
 # initialize the cli
 cli.add_command(cli_index)
 cli.add_command(cli_query)
+cli.add_command(cli_keys)
 
 
 if __name__ == '__main__':
