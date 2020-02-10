@@ -38,7 +38,7 @@ def connect_to_mysql(secret_id):
 
     # create the connection pool
     return sqlalchemy.create_engine(
-        'mysql://{login}:{password}@{host}/{db}'.format(
+        'mysql://{login}:{password}@{host}/{db}?local_infile=1'.format(
             login=user,
             password=password,
             host=host,
