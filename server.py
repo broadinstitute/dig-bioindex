@@ -1,7 +1,7 @@
 import dotenv
 import flask
-import os
 
+import lib.config
 import lib.metadata
 import lib.query
 import lib.secrets
@@ -9,19 +9,15 @@ import lib.secrets
 from lib.profile import profile
 
 
-# load dot files
+# load dot files and configuration
 dotenv.load_dotenv()
+config = lib.config.Config()
 
 # create flask app; this will load .env
 app = flask.Flask(__name__, static_folder='web/static')
-bucket = os.getenv('S3_BUCKET')
 
-# verify environment
-assert bucket, 'S3_BUCKET not set in environment or .env'
-
-# connect to database and load metadata
-engine = lib.secrets.connect_to_mysql(os.getenv('RDS_INSTANCE'))
-metadata = lib.metadata.load_all(engine)
+# connect to database
+engine = lib.secrets.connect_to_mysql(config.rds_instance)
 
 
 @app.route('/')
@@ -32,16 +28,38 @@ def index():
     return flask.send_file('web/index.html', mimetype='text/html')
 
 
-@app.route('/api/tables')
+@app.route('/api/indexes')
 def api_keys():
     """
     Return all queryable tables.
     """
-    return {'tables': list(metadata.keys())}
+    return {'indexes': list(config.tables.keys())}
 
 
-@app.route('/api/query/<table>')
-def api_query(table):
+@app.route('/api/keys/<index>')
+def api_keys(index):
+    """
+    Return all the unique keys for a value-indexed table.
+    """
+    try:
+        schema = config.table(index).schema
+        records, query_s = profile(lib.query.keys, engine, index, schema)
+
+        return {
+            'profile': query_s,
+            'index': index,
+            'keys': records,
+        }
+    except AssertionError:
+        flask.abort(400, f'Index {index} is not indexed by value')
+    except KeyError:
+        flask.abort(404, f'Unknown index: {index}')
+    except ValueError as e:
+        flask.abort(400, str(e))
+
+
+@app.route('/api/query/<index>')
+def api_query(index):
     """
     Query the database for records matching the query parameter and
     read the records from s3.
@@ -50,8 +68,9 @@ def api_query(table):
         q = flask.request.args.get('q')
         fmt = flask.request.args.get('format', 'object')
 
-        # perform the query and time it
-        records, query_s = profile(lib.query.fetch, engine, metadata, bucket, table, q)
+        # lookup the schema for this index and perform the query
+        schema = config.table(index).schema
+        records, query_s = profile(lib.query.fetch, engine, config.s3_bucket, index, schema, q)
 
         # convert from list of dicts to dict of lists
         if fmt == 'array':
@@ -59,9 +78,11 @@ def api_query(table):
 
         return {
             'profile': query_s,
-            'table': table,
+            'index': index,
             'q': q,
             'data': records,
         }
+    except KeyError:
+        flask.abort(404, f'Unknown index: {index}')
     except ValueError as e:
         flask.abort(400, str(e))

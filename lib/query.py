@@ -20,6 +20,29 @@ def fetch(engine, bucket, table_name, schema, q):
         yield from _by_value(engine, bucket, table_name, q)
 
 
+def keys(engine, table_name, schema):
+    """
+    Assumes schema is a ValueSchema and asserts if not. If so, it
+    fetches all the distinct values available that can be queried
+    from the table.
+    """
+    assert isinstance(schema, lib.schema.ValueSchema)
+
+    sql = (
+        f'SELECT DISTINCT `value` '
+        f'FROM `{table_name}` '
+        f'ORDER BY `value` ASC '
+    )
+
+    # fetch all the results
+    cursor, query_ms = profile(engine.execute, sql)
+    logging.info('Query %s (distinct values) took %d ms', table_name, query_ms)
+
+    # yield all the results
+    for r in cursor:
+        yield r[0]
+
+
 def _by_locus(engine, bucket, table_name, schema, q):
     """
     Query the database for all records that a region overlaps.

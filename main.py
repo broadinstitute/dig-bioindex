@@ -52,6 +52,26 @@ def cli_query(index, q):
         print(obj)
 
 
+@click.command(name='keys')
+@click.argument('index')
+def cli_query(index):
+    config = lib.config.Config()
+    table = config.table(index)
+
+    if not table:
+        raise KeyError(f'Unknown index: {index}')
+
+    # connect to mysql
+    engine = lib.secrets.connect_to_mysql(config.rds_instance)
+
+    # lookup the table class from the schema
+    try:
+        for obj in lib.query.keys(engine, index, table.schema):
+            print(obj)
+    except AssertionError:
+        logging.error('Index %s is not indexed by value!', index)
+
+
 # initialize the cli
 cli.add_command(cli_index)
 cli.add_command(cli_query)
