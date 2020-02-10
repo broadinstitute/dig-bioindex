@@ -5,10 +5,6 @@ import re
 import requests
 
 
-# used for parsing integers with commas
-locale.setlocale(locale.LC_ALL, 'en_US.utf8')
-
-
 class Locus(abc.ABC):
     """
     A location in the genome. Abstract. Must be either a SNPLocus or
