@@ -3,7 +3,7 @@
   "rds_instance": "dig-bio-index",
   "tables": {
     "Genes": {
-      "s3_prefix": "genes/",
+      "s3_prefix": "genes/region",
       "schema": "chromosome:start-end"
     },
     "PhenotypeAssociations": {

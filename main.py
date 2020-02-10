@@ -4,7 +4,6 @@ import logging
 
 import lib.config
 import lib.index
-import lib.metadata
 import lib.query
 import lib.secrets
 import lib.s3
