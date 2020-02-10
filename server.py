@@ -44,13 +44,15 @@ def api_keys(index):
     try:
         schema = config.table(index).schema
         keys, query_s = profile(lib.query.keys, engine, index, schema)
+        fetched_keys = list(keys)
 
         return {
             'profile': {
                 'query': query_s,
             },
             'index': index,
-            'keys': list(keys),
+            'count': len(fetched_keys),
+            'keys': list(fetched_keys),
         }
     except AssertionError:
         flask.abort(400, f'Index {index} is not indexed by value')
@@ -88,6 +90,7 @@ def api_query(index):
             },
             'index': index,
             'q': q,
+            'count': len(fetched_records),
             'data': fetched_records,
         }
     except KeyError:
