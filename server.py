@@ -29,7 +29,7 @@ def index():
 
 
 @app.route('/api/indexes')
-def api_keys():
+def api_indexes():
     """
     Return all queryable tables.
     """
