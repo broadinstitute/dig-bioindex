@@ -64,9 +64,8 @@ if __name__ == '__main__':
     logging.getLogger('botocore').setLevel(logging.CRITICAL)
     logging.getLogger('boto3').setLevel(logging.CRITICAL)
 
-    # load dot files, initialize s3 client
+    # load dot files
     dotenv.load_dotenv()
-    lib.s3.init()
 
     # run command
     cli()
