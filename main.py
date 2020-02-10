@@ -1,7 +1,6 @@
 import click
 import dotenv
 import logging
-import os
 
 import lib.config
 import lib.index
