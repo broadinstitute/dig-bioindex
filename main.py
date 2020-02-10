@@ -36,7 +36,8 @@ def cli_index(index):
 @click.command(name='query')
 @click.argument('index')
 @click.argument('q')
-def cli_query(index, q):
+@click.option('--limit', type=int)
+def cli_query(index, q, limit):
     config = lib.config.Config()
     table = config.table(index)
 
@@ -47,7 +48,7 @@ def cli_query(index, q):
     engine = lib.secrets.connect_to_mysql(config.rds_instance)
 
     # lookup the table class from the schema
-    for obj in lib.query.fetch(engine, config.s3_bucket, index, table.schema, q):
+    for obj in lib.query.fetch(engine, config.s3_bucket, index, table.schema, q, limit=limit):
         print(obj)
 
 

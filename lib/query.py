@@ -70,8 +70,7 @@ def _by_locus(engine, bucket, table_name, schema, q, limit):
     if not limit:
         yield from overlapping
     else:
-        for _, r in zip(range(limit), overlapping):
-            yield r
+        yield from map(lambda t: t[1], zip(range(limit), overlapping))
 
 
 def _by_value(engine, bucket, table_name, q, limit):
@@ -87,12 +86,14 @@ def _by_value(engine, bucket, table_name, q, limit):
     cursor, query_ms = profile(engine.execute, sql, q)
     logging.info('Query %s (%s) took %d ms', table_name, q, query_ms)
 
+    # fetch all the records from s3
+    records = _read_records(bucket, cursor)
+
     # read all the objects from s3
     if not limit:
-        yield from _read_records(bucket, cursor)
+        yield from records
     else:
-        for _, r in zip(range(limit), _read_records(bucket, cursor)):
-            yield r
+        yield from map(lambda t: t[1], zip(range(limit), records))
 
 
 def _read_records(bucket, cursor):
