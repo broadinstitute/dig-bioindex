@@ -70,10 +70,11 @@ def api_query(idx):
     try:
         q = flask.request.args.get('q')
         fmt = flask.request.args.get('format', 'object')
+        limit = flask.request.args.get('limit')
 
         # lookup the schema for this index and perform the query
         schema = config.table(idx).schema
-        records, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, schema, q)
+        records, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, schema, q, limit=limit)
 
         # convert from list of dicts to dict of lists
         if fmt == 'array':

@@ -9,14 +9,14 @@ import lib.schema
 from lib.profile import profile
 
 
-def fetch(engine, bucket, table_name, schema, q):
+def fetch(engine, bucket, table_name, schema, q, limit=None):
     """
     Use the table schema to determine the type of query to execute.
     """
     if isinstance(schema, lib.schema.LocusSchema):
-        yield from _by_locus(engine, bucket, table_name, schema, q)
+        yield from _by_locus(engine, bucket, table_name, schema, q, limit)
     else:
-        yield from _by_value(engine, bucket, table_name, q)
+        yield from _by_value(engine, bucket, table_name, q, limit)
 
 
 def keys(engine, table_name, schema):
@@ -42,7 +42,7 @@ def keys(engine, table_name, schema):
         yield r[0]
 
 
-def _by_locus(engine, bucket, table_name, schema, q):
+def _by_locus(engine, bucket, table_name, schema, q, limit):
     """
     Query the database for all records that a region overlaps.
     """
@@ -60,13 +60,21 @@ def _by_locus(engine, bucket, table_name, schema, q):
     cursor, query_ms = profile(engine.execute, sql, chromosome, start, stop)
     logging.info('Query %s (%s) took %d ms', table_name, q, query_ms)
 
-    # read all the objects in s3, return those that overlap
-    for r in _read_records(bucket, cursor):
-        if schema.locus_of_row(r).overlaps(chromosome, start, stop):
+    def overlaps(row):
+        return schema.locus_of_row(row).overlaps(chromosome, start, stop)
+
+    # only keep records that overlap the queried region
+    overlapping = filter(overlaps, _read_records(bucket, cursor))
+
+    # arbitrarily limit the number of results
+    if not limit:
+        return overlapping
+    else:
+        for _, r in zip(range(limit), overlapping):
             yield r
 
 
-def _by_value(engine, bucket, table_name, q):
+def _by_value(engine, bucket, table_name, q, limit):
     sql = (
         f'SELECT `path`, MIN(`start_offset`), MAX(`end_offset`) '
         f'FROM `{table_name}` '
@@ -80,7 +88,11 @@ def _by_value(engine, bucket, table_name, q):
     logging.info('Query %s (%s) took %d ms', table_name, q, query_ms)
 
     # read all the objects from s3
-    yield from _read_records(bucket, cursor)
+    if not limit:
+        yield from _read_records(bucket, cursor)
+    else:
+        for _, r in zip(range(limit), _read_records(bucket, cursor)):
+            yield r
 
 
 def _read_records(bucket, cursor):
