@@ -7,7 +7,6 @@ import sqlalchemy
 import tempfile
 
 import lib.locus
-import lib.metadata
 import lib.s3
 import lib.schema
 
@@ -18,9 +17,6 @@ def build(engine, table_name, schema, bucket, s3_objects):
     """
     meta = sqlalchemy.MetaData()
     table = schema.build_table(table_name, meta)
-
-    # update the metadata for the table and schema
-    lib.metadata.update(engine, table.name, str(schema))
 
     # create the index table (drop any existing table already there)
     logging.info('Creating %s table...', table.name)

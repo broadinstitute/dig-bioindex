@@ -2,7 +2,6 @@ import dotenv
 import flask
 
 import lib.config
-import lib.metadata
 import lib.query
 import lib.secrets
 
@@ -37,33 +36,33 @@ def api_indexes():
 
 
 @app.route('/api/keys/<index>')
-def api_keys(index):
+def api_keys(idx):
     """
     Return all the unique keys for a value-indexed table.
     """
     try:
-        schema = config.table(index).schema
-        keys, query_s = profile(lib.query.keys, engine, index, schema)
+        schema = config.table(idx).schema
+        keys, query_s = profile(lib.query.keys, engine, idx, schema)
         fetched_keys = list(keys)
 
         return {
             'profile': {
                 'query': query_s,
             },
-            'index': index,
+            'index': idx,
             'count': len(fetched_keys),
             'keys': list(fetched_keys),
         }
     except AssertionError:
-        flask.abort(400, f'Index {index} is not indexed by value')
+        flask.abort(400, f'Index {idx} is not indexed by value')
     except KeyError:
-        flask.abort(404, f'Unknown index: {index}')
+        flask.abort(404, f'Unknown index: {idx}')
     except ValueError as e:
         flask.abort(400, str(e))
 
 
 @app.route('/api/query/<index>')
-def api_query(index):
+def api_query(idx):
     """
     Query the database for records matching the query parameter and
     read the records from s3.
@@ -73,8 +72,8 @@ def api_query(index):
         fmt = flask.request.args.get('format', 'object')
 
         # lookup the schema for this index and perform the query
-        schema = config.table(index).schema
-        records, query_s = profile(lib.query.fetch, engine, config.s3_bucket, index, schema, q)
+        schema = config.table(idx).schema
+        records, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, schema, q)
 
         # convert from list of dicts to dict of lists
         if fmt == 'array':
@@ -88,12 +87,12 @@ def api_query(index):
                 'query': query_s,
                 'fetch': fetch_s,
             },
-            'index': index,
+            'index': idx,
             'q': q,
             'count': len(fetched_records),
             'data': fetched_records,
         }
     except KeyError:
-        flask.abort(404, f'Unknown index: {index}')
+        flask.abort(404, f'Unknown index: {idx}')
     except ValueError as e:
         flask.abort(400, str(e))

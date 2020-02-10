@@ -3,7 +3,6 @@ import json
 import logging
 
 import lib.locus
-import lib.metadata
 import lib.s3
 import lib.schema
 

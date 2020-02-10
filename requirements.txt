@@ -1,5 +1,6 @@
 boto3
 click
+python-dotenv
 enlighten
 flask
 gunicorn
