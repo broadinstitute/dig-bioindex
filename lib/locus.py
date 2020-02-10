@@ -6,7 +6,7 @@ import requests
 
 
 # used for parsing integers with commas
-locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+locale.setlocale(locale.LC_ALL, 'en_US.utf8')
 
 
 class Locus(abc.ABC):
