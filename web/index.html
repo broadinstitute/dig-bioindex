@@ -210,19 +210,19 @@
                 async queryVariants({ commit }, { locus }) {
                     commit('setLoading', true);
                     commit('setVariants', []);
-                    commit('setProfile', {});
+                    commit('setProfile', 0);
 
-                    return fetch(`/api/query/variants?q=${encodeURIComponent(locus)}&sort=pValue`)
+                    return fetch(`/api/query/associations?q=${encodeURIComponent(locus)}`)
                         .then(resp => resp.json())
                         .then(json => {
                             commit('setLoading', false);
-                            commit('setRegion', json.locus);
-                            commit('setVariants', json.data);
+                            commit('setQuery', json.q);
+                            commit('setVariants', json.records);
                             commit('setProfile', json.profile);
                             commit('setOutOfSync', false);
 
                             if (json.data.length > 0) {
-                                commit('setPhenotype', json.data[0].phenotype);
+                                commit('setPhenotype', json.records[0].phenotype);
                             } else {
                                 commit('setPhenotype', null);
                             }
@@ -290,8 +290,7 @@
                 },
 
                 // profile strings
-                msQuery() { return (this.$store.state.profile.query * 1000).toFixed() + 'ms'; },
-                msFetch() { return (this.$store.state.profile.fetch * 1000).toFixed() + 'ms'; },
+                msQuery() { return this.$store.state.profile.toFixed() + 'ms'; },
             },
             watch: {
                 locus: debounce(function (locus) {

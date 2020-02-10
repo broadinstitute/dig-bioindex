@@ -1,12 +1,11 @@
 from sqlalchemy import *
-from sqlalchemy.ext.declarative import declared_attr
 
 
 class S3LocationMixin(object):
     id = Column('id', Integer, primary_key=True)
     path = Column('path', String(400))
-    offset = Column('offset', Integer)
-    length = Column('length', Integer)
+    start_offset = Column('start_offset', Integer)
+    end_offset = Column('end_offset', Integer)
 
 
 class LocusMixin(object):
@@ -15,12 +14,12 @@ class LocusMixin(object):
 
 
 class StringIndexMixin(object):
-    field = Column('field', String(200), index=True)
+    field = Column('value', String(200), index=True)
 
 
 class IntegerIndexMixin(object):
-    field = Column('field', Integer, index=True)
+    field = Column('value', Integer, index=True)
 
 
 class FloatIndexMixin(object):
-    field = Column('field', Float, index=True)
+    field = Column('value', Float, index=True)

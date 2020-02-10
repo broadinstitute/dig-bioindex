@@ -4,12 +4,25 @@ import botocore.errorfactory
 import fnmatch
 import os
 import os.path
+import re
 import urllib.parse
 
 # create an s3 session from ~/.aws credentials
 s3_config = botocore.config.Config(max_pool_connections=200)
 s3_session = boto3.session.Session()
 s3_client = s3_session.client('s3', config=s3_config)
+
+
+def split_bucket(s3_key):
+    """
+    Returns the bucket name and the key from an s3 location string.
+    """
+    match = re.match(r'(?:s3://)?([^/]+)/(.*)', s3_key, re.IGNORECASE)
+
+    if not match:
+        return None, s3_key
+
+    return match.group(1), match.group(2)
 
 
 def uri(bucket, path):

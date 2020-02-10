@@ -4,6 +4,8 @@ import logging
 import os
 
 import lib.index
+import lib.metadata
+import lib.mixins
 import lib.query
 import lib.schema
 import lib.secrets
@@ -16,34 +18,47 @@ def cli():
 
 
 @click.command(name='index')
-@click.argument('bucket')
-@click.argument('module')
-def cli_index(bucket, module):
+@click.argument('table')
+@click.argument('bucket_prefix')
+@click.argument('schema')
+def cli_index(table, bucket_prefix, schema):
+    cls = getattr(lib.schema, table)
+    if not cls:
+        logging.error('%s is not a valid index table!', table)
+        return
+
+    # get the bucket name and prefix
+    bucket, prefix = lib.s3.split_bucket(bucket_prefix)
+    if not bucket:
+        logging.error('Invalid S3 location to index: %s', bucket_prefix)
+        return
+
+    # connect to the database and search s3 for all objects in the desired path
     engine = lib.secrets.connect_to_mysql(os.getenv('RDS_INSTANCE'))
-    s3_objects = lib.s3.list_objects(bucket, module, exclude='_SUCCESS')
+    s3_objects = lib.s3.list_objects(bucket, prefix, exclude='_SUCCESS')
 
-    if module == 'genes':
-        lib.index.by_locus(engine, lib.schema.Genes.__table__, 'chromosome:start-end', bucket, s3_objects)
-    else:
-        pass  # TODO: error
-
-    logging.info('Successfully built %s index.', module)
+    # perform the index
+    lib.index.build(engine, cls.__table__, schema, bucket, s3_objects)
+    logging.info('Successfully built %s index.', table)
 
 
 @click.command(name='query')
+@click.argument('table')
 @click.argument('bucket')
-@click.argument('module')
-@click.argument('locus')
-def cli_query(bucket, module, locus):
+@click.argument('q')
+def cli_query(table, bucket, q):
+    cls = getattr(lib.schema, table)
+    if not cls:
+        logging.error('%s is not a valid index table!', table)
+        return
+
+    # connect to the database and read metadata
     engine = lib.secrets.connect_to_mysql(os.getenv('RDS_INSTANCE'))
+    metadata = lib.metadata.load_metadata(engine)
 
-    if module == 'genes':
-        for obj in lib.query.by_locus(engine, bucket, lib.schema.Genes.__table__, locus):
-            print(obj)
-    else:
-        pass  # TODO: error
-
-    logging.info('Successfully built %s index.', module)
+    # lookup the table class from the schema
+    for obj in lib.query.fetch(engine, metadata, bucket, cls.__table__, q):
+        print(obj)
 
 
 # initialize the cli

@@ -18,16 +18,6 @@ class Locus(abc.ABC):
     """
     chromosome: str
 
-    @staticmethod
-    def from_record(record, chromosome_col, start_col, stop_col=None):
-        """
-        Create either a SNPLocus or a RegionLocus for the record.
-        """
-        if not stop_col:
-            return SNPLocus(record[chromosome_col], int(record[start_col]))
-
-        return RegionLocus(record[chromosome_col], int(record[start_col]), int(record[stop_col]))
-
     @abc.abstractmethod
     def __str__(self):
         pass
@@ -52,13 +42,6 @@ class Locus(abc.ABC):
     def overlaps(self, chromosome, start, stop):
         """
         True if this locus overlaps a region.
-        """
-        pass
-
-    @abc.abstractmethod
-    def co_located(self, other):
-        """
-        True if the locus will always index with another locus.
         """
         pass
 
@@ -102,15 +85,6 @@ class SNPLocus(Locus):
         True if this locus is overlapped by the region.
         """
         return self.chromosome == chromosome and start <= self.position < stop
-
-    def co_located(self, other):
-        """
-        True if the locus will always index with another locus.
-        """
-        if not isinstance(other, SNPLocus):
-            return False
-
-        return other.chromosome == self.chromosome and other.position == self.position
 
 
 @dataclasses.dataclass(eq=True)
@@ -162,15 +136,6 @@ class RegionLocus(Locus):
         """
         return self.chromosome == chromosome and stop > self.start and start < self.stop
 
-    def co_located(self, other):
-        """
-        True if the locus will always index with another locus.
-        """
-        if not isinstance(other, RegionLocus):
-            return False
-
-        return other.chromosome == self.chromosome and other.start == self.start
-
 
 def chromosomes():
     """
@@ -193,14 +158,19 @@ def parse_chromosome(s):
 
 def parse_columns(s):
     """
-    Parse a locus string and return the chromosome, start, and stop columns.
+    Parse a locus string and return the locus class, and column names
+    as a tuple. If not a valid locus string, returns None and a tuple
+    of all None.
     """
     match = re.fullmatch(r'([^:]+):([^-]+)(?:-(.+))?', s)
 
     if not match:
-        raise ValueError(f'Failed to parse locus column names against {s}')
+        return None, (None, None, None)
 
-    return match.groups()
+    cols = match.groups()
+
+    # return the class and columns parsed
+    return (RegionLocus if cols[2] else SNPLocus), cols
 
 
 def parse(s, allow_ens_lookup=False):
@@ -237,7 +207,7 @@ def parse(s, allow_ens_lookup=False):
 
 def request_ens_locus(q):
     """
-    Use the Ensembl REST API to try and find a given locus that may be
+    Use the ENS REST API to try and find a given locus that may be
     identified by name.
     """
     req = 'https://grch37.rest.ensembl.org/lookup'
