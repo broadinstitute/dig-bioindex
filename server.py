@@ -80,7 +80,7 @@ def api_query(index):
             'profile': query_s,
             'index': index,
             'q': q,
-            'data': records,
+            'data': list(records),
         }
     except KeyError:
         flask.abort(404, f'Unknown index: {index}')
