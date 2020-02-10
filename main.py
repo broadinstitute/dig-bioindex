@@ -54,7 +54,7 @@ def cli_query(table, bucket, q):
 
     # connect to the database and read metadata
     engine = lib.secrets.connect_to_mysql(os.getenv('RDS_INSTANCE'))
-    metadata = lib.metadata.load_metadata(engine)
+    metadata = lib.metadata.load_all(engine)
 
     # lookup the table class from the schema
     for obj in lib.query.fetch(engine, metadata, bucket, cls.__table__, q):

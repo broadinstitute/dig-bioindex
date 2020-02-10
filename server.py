@@ -21,7 +21,7 @@ assert bucket, 'S3_BUCKET not set in environment or .env'
 
 # connect to database and load metadata
 engine = lib.secrets.connect_to_mysql(os.getenv('RDS_INSTANCE'))
-metadata = lib.metadata.load_metadata(engine)
+metadata = lib.metadata.load_all(engine)
 
 
 @app.route('/')

@@ -116,7 +116,7 @@ def _index_objects(engine, table, schema, bucket, s3_objects, keys, index_keys):
         # show the number of records attempting to be inserted
         logging.info('Building table index...')
 
-        # finally, build the index after all inserts are done
+        # finally, build the index after all inserts are done (if locus)
         sqlalchemy.Index('locus_idx', table.c.chromosome, table.c.position).create(engine)
 
         # done
