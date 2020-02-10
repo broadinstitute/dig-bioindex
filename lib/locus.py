@@ -1,45 +1,32 @@
 import abc
-import dataclasses
 import itertools
 import locale
 import re
 import requests
 
 
-# used for parsing integers with commas
-locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
-
-
-@dataclasses.dataclass
 class Locus(abc.ABC):
     """
     A location in the genome. Abstract. Must be either a SNPLocus or
     a RegionLocus.
     """
-    chromosome: str
 
-    @staticmethod
-    def from_record(record, chromosome_col, start_col, stop_col=None):
+    def __init__(self, chromosome):
         """
-        Create either a SNPLocus or a RegionLocus for the record.
+        Ensure a valid chromosome.
         """
-        if not stop_col:
-            return SNPLocus(record[chromosome_col], int(record[start_col]))
-
-        return RegionLocus(record[chromosome_col], int(record[start_col]), int(record[stop_col]))
+        self.chromosome = parse_chromosome(chromosome)
 
     @abc.abstractmethod
     def __str__(self):
         pass
 
-    def __post_init__(self):
+    @abc.abstractmethod
+    def loci(self):
         """
-        Validate the chromosome is valid, and normalize it.
+        A generator of record loci as tuples ('chromosome', position)
         """
-        if self.chromosome is None:
-            raise KeyError('Missing chromosome column from record')
-
-        self.chromosome = parse_chromosome(self.chromosome)
+        pass
 
     @abc.abstractmethod
     def overlaps(self, chromosome, start, stop):
@@ -48,29 +35,17 @@ class Locus(abc.ABC):
         """
         pass
 
-    @abc.abstractmethod
-    def co_located(self, other):
-        """
-        True if the locus will always index with another locus.
-        """
-        pass
 
-
-@dataclasses.dataclass(eq=True)
 class SNPLocus(Locus):
-    position: int
+    """
+    Locus for a single SNP (base pair) at an exact position.
+    """
 
-    def __post_init__(self):
-        """
-        Ensure the proper types for the locus.
-        """
-        super().__post_init__()
-
-        if self.position is None:
-            raise KeyError('Missing position column from record')
+    def __init__(self, chromosome, position):
+        super().__init__(chromosome)
 
         # ensure integer position
-        self.position = int(self.position)
+        self.position = int(position)
 
     def __str__(self):
         """
@@ -78,11 +53,11 @@ class SNPLocus(Locus):
         """
         return f'{self.chromosome}:{self.position}'
 
-    def __hash__(self):
+    def loci(self):
         """
-        Hash this locus using the string representation of it.
+        A generator of record loci.
         """
-        return hash(str(self))
+        yield self.chromosome, self.position
 
     def overlaps(self, chromosome, start, stop):
         """
@@ -90,35 +65,18 @@ class SNPLocus(Locus):
         """
         return self.chromosome == chromosome and start <= self.position < stop
 
-    def co_located(self, other):
-        """
-        True if the locus will always index with another locus.
-        """
-        if not isinstance(other, SNPLocus):
-            return False
 
-        return other.chromosome == self.chromosome and other.position == self.position
-
-
-@dataclasses.dataclass(eq=True)
 class RegionLocus(Locus):
-    start: int
-    stop: int
+    """
+    Locus for a region on a chromosome.
+    """
 
-    def __post_init__(self):
-        """
-        Ensure the proper types for the locus.
-        """
-        super().__post_init__()
-
-        if self.start is None:
-            raise KeyError('Missing start column from record')
-        if self.stop is None:
-            raise KeyError('Missing stop column from record')
+    def __init__(self, chromosome, start, stop):
+        super().__init__(chromosome)
 
         # ensure integer range
-        self.start = int(self.start)
-        self.stop = int(self.stop)
+        self.start = int(start)
+        self.stop = int(stop)
 
     def __str__(self):
         """
@@ -126,26 +84,22 @@ class RegionLocus(Locus):
         """
         return f'{self.chromosome}:{self.start}-{self.stop}'
 
-    def __hash__(self):
+    def loci(self):
         """
-        Hash this locus using the string representation of it.
+        A generator of record loci.
         """
-        return hash(str(self))
+        step = 20000
+        start = self.start // step
+        stop = self.stop // step
+
+        for position in range(start, stop + 1):
+            yield self.chromosome, position * step
 
     def overlaps(self, chromosome, start, stop):
         """
         True if this locus is overlapped by the region.
         """
         return self.chromosome == chromosome and stop > self.start and start < self.stop
-
-    def co_located(self, other):
-        """
-        True if the locus will always index with another locus.
-        """
-        if not isinstance(other, RegionLocus):
-            return False
-
-        return other.chromosome == self.chromosome and other.start == self.start
 
 
 def chromosomes():
@@ -167,19 +121,24 @@ def parse_chromosome(s):
     return match.group(1).upper()
 
 
-def parse_locus_columns(s):
+def parse_columns(s):
     """
-    Parse a locus string and return the chromosome, start, and stop columns.
+    Parse a locus string and return the locus class, and column names
+    as a tuple. If not a valid locus string, returns None and a tuple
+    of all None.
     """
     match = re.fullmatch(r'([^:]+):([^-]+)(?:-(.+))?', s)
 
     if not match:
-        raise ValueError(f'Failed to parse locus column names against {s}')
+        return None, (None, None, None)
 
-    return match.groups()
+    cols = match.groups()
+
+    # return the class and columns parsed
+    return (RegionLocus if cols[2] else SNPLocus), cols
 
 
-def parse_locus(s, allow_ens_lookup=False):
+def parse(s, allow_ens_lookup=False):
     """
     Parse a locus string and return the chromosome, start, stop.
     """
@@ -213,7 +172,7 @@ def parse_locus(s, allow_ens_lookup=False):
 
 def request_ens_locus(q):
     """
-    Use the Ensembl REST API to try and find a given locus that may be
+    Use the ENS REST API to try and find a given locus that may be
     identified by name.
     """
     req = 'https://grch37.rest.ensembl.org/lookup'

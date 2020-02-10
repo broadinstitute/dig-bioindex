@@ -1,13 +1,14 @@
 import click
-import datetime
 import dotenv
-import time
+import logging
+import os
 
-from lib.client import *
-from lib.index import *
-from lib.query import *
-from lib.refresh import *
-from lib.s3 import *
+import lib.config
+import lib.index
+import lib.metadata
+import lib.query
+import lib.secrets
+import lib.s3
 
 
 @click.group()
@@ -15,123 +16,46 @@ def cli():
     pass
 
 
-@click.command(name='test')
-def cli_test():
-    """
-    Test connections to redis and the aws s3 bucket.
-    """
-    logging.info('Testing redis connection...')
-    with Client(readonly=True) as client:
-        pass
-
-    logging.info('Testing aws s3 credentials and bucket...')
-    bucket = os.getenv('S3_BUCKET')
-
-    # only get the first object in the bucket and ensure access
-    first = next(s3_list_objects(bucket, '/'))
-    assert s3_test_object(bucket, first), f'Failed to access s3 bucket {bucket}'
-
-
 @click.command(name='index')
-@click.option('--only', help='only process s3 keys matching the pattern')
-@click.option('--exclude', help='exclude s3 keys matching the pattern')
-@click.option('--new', is_flag=True, help='skip tables already indexed')
-@click.option('--update', is_flag=True, help='update tables already indexed')
-@click.option('--dialect', default='json', help='record dialect to use (default=json)')
-@click.option('--header', help='header row column names')
-@click.argument('key')
-@click.argument('prefix')
-@click.argument('locus')
-def cli_index(only, exclude, new, update, dialect, header, key, prefix, locus):
-    """
-    Index s3 table records in to a redis key.
-    """
-    bucket = os.getenv('S3_BUCKET')
-    t0 = time.time()
+@click.argument('index')
+@click.confirmation_option(prompt='This will rebuild the index; continue? [y/N] ')
+def cli_index(index):
+    config = lib.config.Config()
+    table = config.table(index)
 
-    if dialect == 'json' and header is not None:
-        raise AssertionError('--header provided for json dialect; did you want a CSV dialect?')
+    if not table:
+        raise KeyError(f'Unknown index: {index}')
 
-    # fetch the list of all paths to index
-    s3_objs = s3_list_objects(bucket, prefix, only=only, exclude=exclude)
+    # connect to mysql and get an s3 object listing
+    engine = lib.secrets.connect_to_mysql(config.rds_instance)
+    s3_objects = lib.s3.list_objects(config.s3_bucket, table.prefix, exclude='_SUCCESS')
 
-    # connect to redis
-    with Client() as client:
-        n = index(client, key, dialect, locus, bucket, s3_objs, header=header, update=update, new=new)
-        dt = datetime.timedelta(seconds=time.time() - t0)
-
-        # done output report
-        logging.info('%d records indexed in %s', n, str(dt))
-
-
-@click.command(name='keys')
-def cli_keys():
-    """
-    Output the indexed key spaces.
-    """
-    with Client(readonly=True) as client:
-        for key in client.get_table_keys():
-            print(key)
-
-
-@click.command(name='count')
-@click.argument('key')
-@click.argument('locus')
-def cli_count(key, locus):
-    """
-    Count and output the number of key records that overlap a locus.
-    """
-    chromosome, start, stop = parse_locus(locus)
-
-    # open the db in read-only mode
-    with Client(readonly=True) as client:
-        print(client.count_records(key, chromosome, start, stop))
+    # build the index
+    lib.index.build(engine, index, table.schema, config.s3_bucket, s3_objects)
+    logging.info('Successfully built index.')
 
 
 @click.command(name='query')
-@click.argument('key')
-@click.argument('locus')
-def cli_query(key, locus):
-    """
-    Query redis db and print key records that overlaps a locus.
-    """
-    bucket = os.getenv('S3_BUCKET')
-    chromosome, start, stop = parse_locus(locus)
+@click.argument('index')
+@click.argument('q')
+def cli_query(index, q):
+    config = lib.config.Config()
+    table = config.table(index)
 
-    # open the db in read-only mode
-    with Client(readonly=True) as client:
-        for record in query(client, key, chromosome, start, stop, bucket):
-            print(json.dumps(record))
+    if not table:
+        raise KeyError(f'Unknown index: {index}')
 
+    # connect to mysql
+    engine = lib.secrets.connect_to_mysql(config.rds_instance)
 
-@click.command(name='check')
-@click.option('--delete', is_flag=True, help='delete bad keys')
-def cli_check(delete):
-    """
-    Check integrity, ensuring s3 tables exist and delete orphaned records.
-    """
-    bucket = os.getenv('S3_BUCKET')
-
-    if delete:
-        logging.warning('This will delete orphaned records; are you sure? [y/N] ')
-        if input().lower() != 'y':
-            return
-
-    logging.info('Running table check...')
-
-    with Client(readonly=not delete) as client:
-        check_tables(client, bucket, delete=delete)
-
-    logging.info('Check complete')
+    # lookup the table class from the schema
+    for obj in lib.query.fetch(engine, config.s3_bucket, index, table.schema, q):
+        print(obj)
 
 
 # initialize the cli
-cli.add_command(cli_test)
 cli.add_command(cli_index)
-cli.add_command(cli_keys)
-cli.add_command(cli_count)
 cli.add_command(cli_query)
-cli.add_command(cli_check)
 
 
 if __name__ == '__main__':
@@ -143,9 +67,6 @@ if __name__ == '__main__':
 
     # load dot files
     dotenv.load_dotenv()
-
-    # verify environment
-    assert os.getenv('S3_BUCKET'), 'S3_BUCKET not set in environment or .env'
 
     # run command
     cli()

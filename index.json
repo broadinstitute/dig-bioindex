@@ -1,0 +1,26 @@
+{
+  "s3_bucket": "dig-bio-index",
+  "rds_instance": "dig-bio-index",
+  "tables": {
+    "Genes": {
+      "s3_prefix": "genes/",
+      "schema": "chromosome:start-end"
+    },
+    "PhenotypeAssociations": {
+      "s3_prefix": "associations/phenotype",
+      "schema": "phenotype"
+    },
+    "GlobalEnrichment": {
+      "s3_prefix": "global_enrichment/phenotype",
+      "schema": "phenotype"
+    },
+    "AnnotatedRegions": {
+      "s3_prefix": "regions",
+      "schema": "chromosome:start-end"
+    },
+    "Associations": {
+      "s3_prefix": "associations/locus",
+      "schema": "chromosome:position"
+    }
+  }
+}

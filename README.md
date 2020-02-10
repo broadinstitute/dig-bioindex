@@ -35,7 +35,7 @@ _A: Because you may want to sync buckets and use the same index. For example, yo
 Once you think you have everything setup, you can test it with the CLI:
 
 ```bash
-$ python3 main.py test
+$ python3 -m main test
 ```
 
 ### Preparing Tables
@@ -69,7 +69,7 @@ For example, let's say you have a file stored in [S3][s3] of SNPs, where each re
 You could index it like so:
 
 ```bash
-$ python3 main.py index snps path/to/snp/file.json chr:pos
+$ python3 -m main index snps path/to/snp/file.json chr:pos
 ```
 
 The above will index every record in `path/to/snp/file.json` into the [Redis][redis] key space `snps` using the locus defined by `chr:pos`.
@@ -85,7 +85,7 @@ If you had a table of region data where each record looks like this:
 That table might be indexed like so:
 
 ```bash
-$ python3 main.py index annotations path/to/region/file.json chromosome:start-end
+$ python3 -m main index annotations path/to/region/file.json chromosome:start-end
 ```
 
 _Notice how the locus parameter on the CLI identified 3 fields in the JSON instead of just 2._
@@ -93,13 +93,13 @@ _Notice how the locus parameter on the CLI identified 3 fields in the JSON inste
 It is also possible to recursively index all files in an entire folder of [S3][s3] by adding `/` to the end of the path.
 
 ```bash
-$ python3 main.py index genes path/to/genes/ chrom:start-stop
+$ python3 -m main index genes path/to/genes/ chrom:start-stop
 ```
 
 By default, tables are assumed to be in [JSON-lines][json-lines] format. To use a CSV-like format instead, use the `--dialect` flag on the command line and provide the one to use. For example:
 
 ```bash
-$ python3 main.py index snps path/to/snps.tsv chrom:pos --dialect tsv
+$ python3 -m main index snps path/to/snps.tsv chrom:pos --dialect tsv
 ```
 
 It is assumed for all CSV-like tables that any line beginning with `#` is a comment (and is ignored), and that the first non-comment line is the header row. If there is no header row then you can pass `--header` and either give a comma-separated list of column names or `"-"`, in which case column names will be generated named `"_0"`, `"_1"`, `"_2"`, ... and it will be up to you to use those column names for the locus parameter (e.g. `"_2:_4-_5"`).
@@ -109,11 +109,22 @@ It is assumed for all CSV-like tables that any line beginning with `#` is a comm
 Once you've built an index, you can then query the key space and retrieve all the records that overlap a given locus. For example, to query all records in the `genes` key space that overlap a given region:
 
 ```bash
-$ python3 main.py query genes chr8:100000-101000
+$ # find all genes in the range [100000,101000) on chromosome 8
+$ python3 -m main query genes chr8:100000-101000
 {"name": "AC131281.2", "chromosome": "8", "start": 100584, "end": 100728, "ensemblId": "ENSG00000254193", "type": "processed_pseudogene"}
 ```
 
-The input region is always in the format `chromosome:start[-stop]`. The `chromosome` may optionally be prefixed with "chr", but doesn't need to be. If the `stop` is not provided, it defaults to `start+1`.
+The input region is always in the format `chromosome:start[-stop]`. The `chromosome` may optionally be prefixed with "chr", but doesn't need to be. If the `stop` is not provided, it defaults to `start+1`. It is also allowed to provide a region using `+length` or `/length` like so:
+
+```bash
+$ # find all genes in the range [100000,101000) on chromosome 8
+$ python3 -m main query genes chr8:100000+1000
+{"name": "AC131281.2", "chromosome": "8", "start": 100584, "end": 100728, "ensemblId": "ENSG00000254193", "type": "processed_pseudogene"}
+
+$ # find all genes in the range [99000,101000) on chromosome 8
+$ python3 -m main query genes chr8:100000/2000
+{"name": "AC131281.2", "chromosome": "8", "start": 100584, "end": 100728, "ensemblId": "ENSG00000254193", "type": "processed_pseudogene"}
+```
 
 _Note: the input locus is in the range `[start,stop)`._
 
@@ -126,7 +137,7 @@ Data changes. That's life. And, if you use a process like [Spark][spark] to gene
 To check the tables in the database, you can use the `check` command. This will verify that every table indexed still exists in [S3][s3].
 
 ```bash
-$ python3 main.py check
+$ python3 -m main check
 INFO  - Running table check...
 INFO  - Check complete
 ```

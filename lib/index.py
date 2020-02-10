@@ -1,88 +1,134 @@
+import csv
+import enlighten
+import json
 import logging
+import os
+import sqlalchemy
+import tempfile
 
-from .locus import *
-from .record import *
-from .s3 import *
-from .table import *
+import lib.locus
+import lib.metadata
+import lib.s3
+import lib.schema
 
 
-def index(redis_client, key, dialect, locus, bucket, s3_objs, header=None, update=False, new=False):
+def build(engine, table_name, schema, bucket, s3_objects):
     """
-    Index table records in s3 to redis.
+    Builds the index table for objects in S3.
     """
-    locus_cols = parse_locus_columns(locus)
-    locus_class = SNPLocus if locus_cols[2] is None else RegionLocus
+    meta = sqlalchemy.MetaData()
+    table = schema.build_table(table_name, meta)
 
-    # tally record count
-    n = 0
+    # update the metadata for the table and schema
+    lib.metadata.update(engine, table.name, str(schema))
 
-    # list all the input tables
-    for obj in s3_objs:
-        path, tag = obj['Key'], obj['ETag']
+    # create the index table (drop any existing table already there)
+    logging.info('Creating %s table...', table.name)
+    table.drop(engine, checkfirst=True)
+    table.create(engine)
 
-        # lookup the existing table and id (if already indexed)
-        table_id, existing_table = redis_client.get_table_from_path(path)
+    # collect all the s3 objects into a list so the size is known
+    objects = list(s3_objects)
 
-        # stream the file from s3
-        line_stream = LineStream(s3_uri(bucket, path))
-        fieldnames = None
+    # progress bar management
+    with enlighten.get_manager() as progress_mgr:
+        overall_progress = progress_mgr.counter(total=len(objects), unit='files', series=' #')
 
-        # if the dialect isn't json, it's csv, read the header
-        if dialect != 'json':
-            if header is None:
-                fieldnames = next(csv.reader(line_stream, dialect))
-            elif header != '-':
-                fieldnames = header.split(',')
+        # process each s3 object
+        for obj in objects:
+            path, size = obj['Key'], obj['Size']
+            logging.info('Processing %s...', path)
 
-        # create a new table object from the parameters
-        table = Table(path=path, hash=tag, key=key, locus=locus, dialect=dialect, fieldnames=fieldnames)
+            # create progress bar for each file
+            file_progress = progress_mgr.counter(total=size // 1024, unit='KB', series=' #', leave=False)
 
-        # if nothing has changed, don't re-index
-        if table == existing_table:
-            continue
+            # stream the file from s3
+            content = lib.s3.read_object(bucket, path)
+            start_offset = 0
+            records = {}
 
-        # register a new table if not already indexed
-        if table_id is None:
-            table_id = redis_client.register_table(table)
+            # process each line (record)
+            for line_num, line in enumerate(content.iter_lines()):
+                row = json.loads(line)
+                end_offset = start_offset + len(line) + 1  # newline
 
-        # skip already existing tables or die
-        if existing_table:
-            if update:
-                logging.info('Deleting %s...', path)
+                try:
+                    for k in schema.index_keys(row):
+                        if k in records:
+                            records[k]['end_offset'] = end_offset
+                        else:
+                            records[k] = {
+                                'path': path,
+                                'start_offset': start_offset,
+                                'end_offset': end_offset,
+                            }
 
-                # delete records, but not the table entry; re-use it
-                redis_client.delete_records(table_id)
-            elif not new:
-                raise AssertionError(f'Table {path} already indexed; --new/update not provided')
-            else:
-                continue
+                except (KeyError, ValueError) as e:
+                    logging.warning('%s; skipping...', e)
 
-        # Show that the table is now being indexed
-        logging.info('Indexing %s...', path)
+                # update the progress bar
+                file_progress.update(incr=(end_offset // 1024) - file_progress.count)
 
-        # create the record reader
-        reader = table.reader(line_stream)
-        records = list()
+                # track current file offset
+                start_offset = end_offset
 
-        # accumulate the records
-        for row in reader:
-            try:
-                locus_obj = locus_class(*(row.get(col) for col in locus_cols if col))
-                record = Record(table_id, line_stream.offset, line_stream.length)
+            # transform all the records and collect them all into an insert batch
+            batch = [{**schema.column_values(k), **r} for k, r in records.items()]
 
-                # append to previous record or append to record list
-                if len(records) > 0 and locus_obj.co_located(records[-1][0]):
-                    records[-1][1].length = (record.offset + record.length) - records[-1][1].offset
-                else:
-                    records.append((locus_obj, record))
-            except (KeyError, ValueError) as e:
-                logging.warning('Record error (line %d): %s; skipping...', line_stream.n, e)
+            # perform the insert in batches
+            _bulk_insert(engine, table, batch)
 
-        # add them all in a single batch and commit the table
-        redis_client.insert_records(key, records)
-        redis_client.commit_table(table_id, table)
+            # update progress
+            file_progress.close()
+            overall_progress.update()
 
-        # tally all the records inserted
-        n += len(records)
+        # done
+        overall_progress.close()
 
-    return n
+        # finally, build the index after all inserts are done
+        logging.info('Building table index...')
+
+        # each table knows how to build its own index
+        schema.build_index(engine, table)
+
+
+def _bulk_insert(engine, table, records):
+    """
+    Insert all the records in batches.
+    """
+    logging.info(f'Writing {len(records):,} records...')
+
+    if len(records) == 0:
+        return
+
+    # get the field names from the first record
+    fieldnames = list(records[0].keys())
+
+    # create a temporary file to write the CSV to
+    tmp = tempfile.NamedTemporaryFile(mode='w+t', delete=False)
+
+    try:
+        w = csv.DictWriter(tmp, fieldnames)
+
+        # write the header and the rows
+        w.writeheader()
+        w.writerows(records)
+    finally:
+        tmp.close()
+
+    try:
+        infile = tmp.name.replace('\\', '/')
+
+        sql = (
+            f"LOAD DATA LOCAL INFILE '{infile}' "
+            f"INTO TABLE `{table.name}` "
+            f"FIELDS TERMINATED BY ',' "
+            f"LINES TERMINATED BY '\\n' "
+            f"IGNORE 1 ROWS "
+            f"({','.join(fieldnames)}) "
+        )
+
+        # bulk load into the database
+        engine.execute(sql)
+    finally:
+        os.remove(tmp.name)

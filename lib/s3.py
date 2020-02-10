@@ -4,6 +4,7 @@ import botocore.errorfactory
 import fnmatch
 import os
 import os.path
+import re
 import urllib.parse
 
 # create an s3 session from ~/.aws credentials
@@ -12,34 +13,46 @@ s3_session = boto3.session.Session()
 s3_client = s3_session.client('s3', config=s3_config)
 
 
-def s3_uri(bucket, path):
+def split_bucket(s3_key):
+    """
+    Returns the bucket name and the key from an s3 location string.
+    """
+    match = re.match(r'(?:s3://)?([^/]+)/(.*)', s3_key, re.IGNORECASE)
+
+    if not match:
+        return None, s3_key
+
+    return match.group(1), match.group(2)
+
+
+def uri(bucket, path):
     """
     Returns an s3 URI for a given path in a bucket.
     """
     return f's3://{bucket}/{path}'
 
 
-def s3_parse_url(uri):
+def parse_url(url):
     """
     Extract the bucket and prefix from the URL
     """
-    url = urllib.parse.urlparse(uri)
+    url = urllib.parse.urlparse(url)
 
     if url.scheme != 's3':
-        raise ValueError(f'Invalid S3 URI: {uri}')
+        raise ValueError(f'Invalid S3 URI: {url}')
 
     # separate the bucket name from the path
     return url.netloc, url.path
 
 
-def s3_list_objects(bucket, prefix, only=None, exclude=None):
+def list_objects(bucket, prefix, only=None, exclude=None):
     """
     Generator function that returns all the objects in S3 with a given prefix.
     """
     kwargs = {
         'Bucket': bucket,
         'Delimiter': '/',
-        'Prefix': prefix.lstrip('/'),
+        'Prefix': prefix.strip('/') + '/',
     }
 
     # initial call
@@ -69,7 +82,7 @@ def s3_list_objects(bucket, prefix, only=None, exclude=None):
         # recursively search the common prefixes for folder prefixes
         if prefix[-1] == '/':
             for common_prefix in resp.get('CommonPrefixes', []):
-                yield from s3_list_objects(bucket, common_prefix['Prefix'], only=only, exclude=exclude)
+                yield from list_objects(bucket, common_prefix['Prefix'], only=only, exclude=exclude)
 
         # no more paths?
         if not resp['IsTruncated']:
@@ -79,7 +92,7 @@ def s3_list_objects(bucket, prefix, only=None, exclude=None):
         resp = s3_client.list_objects_v2(ContinuationToken=resp['NextContinuationToken'], **kwargs)
 
 
-def s3_read_object(bucket, path, offset=None, length=None):
+def read_object(bucket, path, offset=None, length=None):
     """
     Open an s3 object and return a streaming portion of it.
     """
@@ -100,7 +113,7 @@ def s3_read_object(bucket, path, offset=None, length=None):
     return s3_client.get_object(**kwargs).get('Body')
 
 
-def s3_test_object(bucket, s3_obj):
+def test_object(bucket, s3_obj):
     """
     Checks to see if the path exists in the bucket.
     """
