@@ -1,7 +1,10 @@
+import csv
 import enlighten
 import json
 import logging
+import os
 import sqlalchemy
+import tempfile
 
 import lib.locus
 import lib.metadata
@@ -100,16 +103,14 @@ def _index_objects(engine, table, schema, bucket, s3_objects, keys, index_keys):
                 # track current file offset
                 start_offset = end_offset
 
-            # done processing the file
-            file_progress.close()
-
             # transform all the records and collect them all into an insert batch
             batch = [{**index_keys(k), **r} for k, r in records.items()]
 
             # perform the insert in batches
-            _batch_insert(engine, table, batch, progress_mgr=progress_mgr)
+            _batch_insert(engine, table, batch)
 
             # update progress
+            file_progress.close()
             overall_progress.update()
 
         # show the number of records attempting to be inserted
@@ -122,18 +123,43 @@ def _index_objects(engine, table, schema, bucket, s3_objects, keys, index_keys):
         overall_progress.close()
 
 
-def _batch_insert(engine, table, records, batch_size=10000, progress_mgr=None):
+def _batch_insert(engine, table, records):
     """
     Insert all the records in batches.
     """
-    counter = progress_mgr and progress_mgr.counter(total=len(records), unit='records', series=' #', leave=False)
+    logging.info(f'Writing {len(records):,} records...')
 
-    for i in range(0, len(records), batch_size):
-        rows = engine.execute(table.insert(values=records[i:i+batch_size])).rowcount
+    if len(records) == 0:
+        return
 
-        # keep a running log of inserts to show progress
-        if counter:
-            counter.update(incr=rows)
+    # get the field names from the first record
+    fieldnames = list(records[0].keys())
 
-    if counter:
-        counter.close()
+    # create a temporary file to write the CSV to
+    tmp = tempfile.NamedTemporaryFile(mode='w+t', delete=False)
+
+    try:
+        w = csv.DictWriter(tmp, fieldnames)
+
+        # write the header and the rows
+        w.writeheader()
+        w.writerows(records)
+    finally:
+        tmp.close()
+
+    try:
+        infile = tmp.name.replace('\\', '/')
+
+        sql = (
+            f"LOAD DATA LOCAL INFILE '{infile}' "
+            f"INTO TABLE `{table.name}` "
+            f"FIELDS TERMINATED BY ',' "
+            f"LINES TERMINATED BY '\\n' "
+            f"IGNORE 1 ROWS "
+            f"({','.join(fieldnames)}) "
+        )
+
+        # bulk load into the database
+        engine.execute(sql)
+    finally:
+        os.remove(tmp.name)
