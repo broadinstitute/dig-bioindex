@@ -1,0 +1,8 @@
+boto3
+click
+enlighten
+flask
+gunicorn
+mysqlclient
+requests
+sqlalchemy
