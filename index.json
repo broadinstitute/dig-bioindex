@@ -21,6 +21,10 @@
     "Associations": {
       "s3_prefix": "associations/locus",
       "schema": "chromosome:position"
+    },
+    "Variants": {
+      "s3_prefix": "variants",
+      "schema": "varId"
     }
   }
 }
