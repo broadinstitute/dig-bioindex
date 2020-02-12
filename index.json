@@ -29,6 +29,10 @@
     "Datasets": {
       "s3_prefix": "datasets/phenotype",
       "schema": "phenotype"
+    },
+    "DatasetAssociations": {
+      "s3_prefix": "associations/dataset",
+      "schema": "chromosome:position"
     }
   }
 }
