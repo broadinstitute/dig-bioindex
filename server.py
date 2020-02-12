@@ -99,7 +99,7 @@ def api_query(idx):
         cont_token = None
         if count == RECORD_LIMIT:
             cont_token = lib.continuation.make_continuation(
-                records=zipped_records,
+                records=records,
                 count=count,
                 idx=idx,
                 q=q,
