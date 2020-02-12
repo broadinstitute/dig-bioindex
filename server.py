@@ -78,7 +78,7 @@ def api_query(idx):
 
         # lookup the schema for this index and perform the query
         schema = config.table(idx).schema
-        records, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, schema, q, limit=limit)
+        records, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, schema, q)
 
         # use a zip to limit the total number of records that will be read
         if limit is not None:

@@ -44,7 +44,7 @@ def cli_index(index):
 @click.command(name='query')
 @click.argument('index')
 @click.argument('q')
-def cli_query(index, q, limit):
+def cli_query(index, q):
     config = lib.config.Config()
     table = config.table(index)
 
