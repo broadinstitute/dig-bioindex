@@ -23,7 +23,7 @@
       "schema": "chromosome:position"
     },
     "Variants": {
-      "s3_prefix": "variants",
+      "s3_prefix": "variants/id",
       "schema": "varId"
     }
   }

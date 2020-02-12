@@ -121,10 +121,10 @@ class LocusSchema(Schema):
 class ValueSchema(Schema):
     """
     A ValueSchema is a table indexed by a single columns value. It can be
-    a string, integer, or float.
+    any scalar type (e.g. string, integer, or float).
     """
 
-    def __init__(self, column, column_type=String):
+    def __init__(self, column, column_type=String(200)):
         """
         Initialize the schema with a chromosome column name, start position
         column name, and an optional stop position column name.

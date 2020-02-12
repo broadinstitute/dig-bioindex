@@ -76,12 +76,12 @@ def api_query(idx):
         schema = config.table(idx).schema
         records, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, schema, q, limit=limit)
 
-        # convert from list of dicts to dict of lists
-        if fmt == 'array':
-            records = {k: [d[k] for d in records] for k in records[0]}
-
         # profile collection of all the records from s3
         fetched_records, fetch_s = profile(list, records)
+
+        # convert from list of dicts to dict of lists
+        if fmt == 'column':
+            fetched_records = {k: [d[k] for d in records] for k in fetched_records[0]}
 
         return {
             'profile': {

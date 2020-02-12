@@ -19,18 +19,26 @@ def cli():
 @click.confirmation_option(prompt='This will rebuild the index; continue? [y/N] ')
 def cli_index(index):
     config = lib.config.Config()
-    table = config.table(index)
-
-    if not table:
-        raise KeyError(f'Unknown index: {index}')
-
-    # connect to mysql and get an s3 object listing
     engine = lib.secrets.connect_to_mysql(config.rds_instance)
-    s3_objects = lib.s3.list_objects(config.s3_bucket, table.prefix, exclude='_SUCCESS')
 
-    # build the index
-    lib.index.build(engine, index, table.schema, config.s3_bucket, s3_objects)
-    logging.info('Successfully built index.')
+    # which tables will be indexed? allow "all" with "*"
+    idx = list(config.tables.keys()) if index == '*' else [index]
+
+    for i in idx:
+        table = config.table(i)
+
+        if not table:
+            raise KeyError(f'Unknown index: {i}')
+
+        # connect to mysql and get an s3 object listing
+        s3_objects = lib.s3.list_objects(config.s3_bucket, table.prefix, exclude='_SUCCESS')
+
+        # build the index
+        lib.index.build(engine, i, table.schema, config.s3_bucket, s3_objects)
+        logging.info('Successfully built index.')
+
+    # finished building all indexes
+    logging.info('Done')
 
 
 @click.command(name='query')
