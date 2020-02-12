@@ -25,6 +25,10 @@
     "Variants": {
       "s3_prefix": "variants",
       "schema": "varId"
+    },
+    "Datasets": {
+      "s3_prefix": "datasets/phenotype",
+      "schema": "phenotype"
     }
   }
 }
