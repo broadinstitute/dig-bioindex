@@ -1,5 +1,6 @@
 import dotenv
 import flask
+import os
 
 import lib.config
 import lib.continuation
@@ -18,6 +19,9 @@ app = flask.Flask(__name__, static_folder='web/static')
 
 # connect to database
 engine = lib.secrets.connect_to_mysql(config.rds_instance)
+
+# max number of records to return per request
+RECORD_LIMIT = os.getenv('BIOINDEX_RECORD_LIMIT', 5000)
 
 
 @app.route('/')
@@ -85,7 +89,7 @@ def api_query(idx):
             records = map(lambda x: x[1], zip(range(limit), records))
 
         # use a zip to limit the maximum number of records returned by this request
-        zipped_records = map(lambda x: x[1], zip(range(5000), records))
+        zipped_records = map(lambda x: x[1], zip(range(RECORD_LIMIT), records))
 
         # profile how long it takes to fetch the records from s3
         fetched_records, fetch_s = profile(list, zipped_records)
@@ -93,7 +97,7 @@ def api_query(idx):
 
         # make a continuation token if there are more records left to read
         cont_token = None
-        if count > 0 and (limit is None or count < limit):
+        if 0 < count < (min(limit, RECORD_LIMIT) if limit else RECORD_LIMIT):
             cont_token = lib.continuation.make_continuation(
                 records=zipped_records,
                 count=count,
@@ -133,14 +137,14 @@ def api_cont():
         cont = lib.continuation.lookup_continuation(token)
 
         # use a zip to limit the maximum number of records returned by this request
-        zipped_records = map(lambda x: x[1], zip(range(5000), cont.records))
+        zipped_records = map(lambda x: x[1], zip(range(RECORD_LIMIT), cont.records))
 
         # profile how long it takes to fetch the records from s3
         fetched_records, fetch_s = profile(list, zipped_records)
         count = len(fetched_records)
 
         # check for no more records
-        if count == 0:
+        if count < RECORD_LIMIT:
             token = None
 
         # convert from list of dicts to dict of lists
