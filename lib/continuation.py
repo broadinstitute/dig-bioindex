@@ -54,6 +54,14 @@ def lookup_continuation(token):
         return _cont_map[token]
 
 
+def remove_continuation(token):
+    """
+    Remove a continuation token from the map.
+    """
+    with _cont_lock:
+        del _cont_map[token]
+
+
 def cleanup_continuations():
     """
     Runs forever in the background, every minute it will remove any expired

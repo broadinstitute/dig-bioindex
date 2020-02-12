@@ -151,7 +151,7 @@ def api_cont():
 
         # check for no more records
         if count < RECORD_LIMIT:
-            token = None
+            token = lib.continuation.remove_continuation(token)
 
         # convert from list of dicts to dict of lists
         if cont.fmt.lower() in ['c', 'col', 'column']:
