@@ -15,6 +15,7 @@ class Cont:
     idx: str
     q: str
     fmt: str = 'row'
+    limit: int = None
     expiration: float = None
 
     def __post_init__(self):

@@ -104,6 +104,7 @@ def api_query(idx):
                 idx=idx,
                 q=q,
                 fmt=fmt,
+                limit=limit,
             )
 
         # convert from list of dicts to dict of lists
@@ -118,6 +119,7 @@ def api_query(idx):
             'index': idx,
             'q': q,
             'count': count,
+            'limit': limit,
             'data': fetched_records,
             'continuation': cont_token,
         }
@@ -158,6 +160,7 @@ def api_cont():
             'index': cont.idx,
             'q': cont.q,
             'count': count,
+            'limit': cont.limit,
             'data': fetched_records,
             'continuation': token,
         }
