@@ -124,7 +124,7 @@ def api_query(idx):
 
 
 @app.route('/api/cont')
-def api_query():
+def api_cont():
     """
     Lookup a continuation token and get the next set of records.
     """
