@@ -59,6 +59,24 @@ def cli_query(index, q):
         print(obj)
 
 
+@click.command(name='count')
+@click.argument('index')
+@click.argument('q')
+def cli_count(index, q):
+    config = lib.config.Config()
+    table = config.table(index)
+
+    if not table:
+        raise KeyError(f'Unknown index: {index}')
+
+    # connect to mysql
+    engine = lib.secrets.connect_to_mysql(config.rds_instance)
+
+    # lookup the table class from the schema
+    count = lib.query.count(engine, config.s3_bucket, index, table.schema, q)
+    print(count)
+
+
 @click.command(name='keys')
 @click.argument('index')
 def cli_keys(index):
@@ -82,6 +100,7 @@ def cli_keys(index):
 # initialize the cli
 cli.add_command(cli_index)
 cli.add_command(cli_query)
+cli.add_command(cli_count)
 cli.add_command(cli_keys)
 
 

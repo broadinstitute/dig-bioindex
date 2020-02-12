@@ -66,6 +66,34 @@ def api_keys(idx):
         flask.abort(400, str(e))
 
 
+@app.route('/api/count/<idx>')
+def api_count(idx):
+    """
+    Query the database and estimate how many records will be returned.
+    """
+    try:
+        q = flask.request.args.get('q')
+        if q is None:
+            raise ValueError('Missing query parameter')
+
+        # lookup the schema for this index and perform the query
+        schema = config.table(idx).schema
+        count, query_s = profile(lib.query.count, engine, config.s3_bucket, idx, schema, q)
+
+        return {
+            'profile': {
+                'query': query_s,
+            },
+            'index': idx,
+            'q': q,
+            'count': count,
+        }
+    except KeyError:
+        flask.abort(400, f'Invalid index: {idx}')
+    except ValueError as e:
+        flask.abort(400, str(e))
+
+
 @app.route('/api/query/<idx>')
 def api_query(idx):
     """

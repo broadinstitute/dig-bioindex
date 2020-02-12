@@ -14,9 +14,33 @@ def fetch(engine, bucket, table_name, schema, q):
     Use the table schema to determine the type of query to execute.
     """
     if isinstance(schema, lib.schema.LocusSchema):
-        yield from _by_locus(engine, bucket, table_name, schema, q)
+        chromosome, start, stop = lib.locus.parse(q, allow_ens_lookup=True)
+        cursor = _run_locus_query(engine, table_name, chromosome, start, stop)
+
+        def overlaps(row):
+            return schema.locus_of_row(row).overlaps(chromosome, start, stop)
+
+        # only keep records that overlap the queried region
+        yield from filter(overlaps, _read_records(bucket, cursor))
     else:
-        yield from _by_value(engine, bucket, table_name, q)
+        cursor = _run_value_query(engine, table_name, q)
+
+        # read the records from the query results
+        yield from _read_records(bucket, cursor)
+
+
+def count(engine, bucket, table_name, schema, q):
+    """
+    Estimate the number of records that will be returned by a query.
+    """
+    if isinstance(schema, lib.schema.LocusSchema):
+        chromosome, start, stop = lib.locus.parse(q, allow_ens_lookup=True)
+        cursor = _run_locus_query(engine, table_name, chromosome, start, stop)
+
+        return _count_records(bucket, cursor)
+    else:
+        cursor = _run_value_query(engine, table_name, q)
+        return _count_records(bucket, cursor)
 
 
 def keys(engine, table_name, schema):
@@ -42,12 +66,10 @@ def keys(engine, table_name, schema):
         yield r[0]
 
 
-def _by_locus(engine, bucket, table_name, schema, q):
+def _run_locus_query(engine, table_name, chromosome, start, stop):
     """
-    Query the database for all records that a region overlaps.
+    Run a SQL query and return a results cursor for a region query.
     """
-    chromosome, start, stop = lib.locus.parse(q, allow_ens_lookup=True)
-
     sql = (
         f'SELECT `path`, MIN(`start_offset`), MAX(`end_offset`) '
         f'FROM `{table_name}` '
@@ -57,17 +79,13 @@ def _by_locus(engine, bucket, table_name, schema, q):
     )
 
     # fetch all the results
-    cursor, query_ms = profile(engine.execute, sql, chromosome, start, stop)
-    logging.info('Query %s (%s) took %d ms', table_name, q, query_ms)
-
-    def overlaps(row):
-        return schema.locus_of_row(row).overlaps(chromosome, start, stop)
-
-    # only keep records that overlap the queried region
-    yield from filter(overlaps, _read_records(bucket, cursor))
+    return engine.execute(sql, chromosome, start, stop)
 
 
-def _by_value(engine, bucket, table_name, q):
+def _run_value_query(engine, table_name, q):
+    """
+    Run a SQL query and return a results cursor for a value query.
+    """
     sql = (
         f'SELECT `path`, MIN(`start_offset`), MAX(`end_offset`) '
         f'FROM `{table_name}` '
@@ -77,11 +95,7 @@ def _by_value(engine, bucket, table_name, q):
     )
 
     # fetch all the results
-    cursor, query_ms = profile(engine.execute, sql, q)
-    logging.info('Query %s (%s) took %d ms', table_name, q, query_ms)
-
-    # fetch all the records from s3
-    yield from _read_records(bucket, cursor)
+    return engine.execute(sql, q)
 
 
 def _read_records(bucket, cursor):
@@ -89,13 +103,52 @@ def _read_records(bucket, cursor):
     Read the records from all the S3 objects in the cursor.
     """
     for path, start_offset, end_offset in cursor:
-        length = end_offset - start_offset
+        yield from _read_records_from_s3(bucket, path, start_offset, end_offset)
 
-        try:
-            content = lib.s3.read_object(bucket, path, offset=start_offset, length=length)
 
-            for line in content.iter_lines():
-                yield json.loads(line)
+def _read_records_from_s3(bucket, path, start_offset, end_offset):
+    """
+    Returns a generator that reads  all the records from a given object in
+    S3 from a start to end byte offset.
+    """
+    length = end_offset - start_offset
 
-        except botocore.exceptions.ClientError:
-            logging.error('Failed to read table %s; some records missing', path)
+    try:
+        content = lib.s3.read_object(bucket, path, offset=start_offset, length=length)
+
+        for line in content.iter_lines():
+            yield json.loads(line)
+
+    except botocore.exceptions.ClientError:
+        logging.error('Failed to read table %s; some records missing', path)
+
+
+def _count_records(bucket, cursor):
+    """
+    Read the first 100 records from S3, getting their average length in size.
+    Use that length to extrapolate what the estimated number of records is.
+    """
+    total_bytes = 0
+    lengths = []
+
+    # collect all the files that need read
+    record_sets = cursor.fetchall()
+
+    # loop over all the record sets
+    for path, start, end in record_sets:
+        if len(lengths) < 100:
+            for _, r in zip(range(100), _read_records_from_s3(bucket, path, start, end)):
+                lengths.append(len(json.dumps(r)))
+
+        # calculate the total number of bytes across all record sets
+        total_bytes += end - start
+
+    # it's an exact count if less than 100 records
+    if len(lengths) < 100:
+        return len(lengths)
+
+    # get the average length per record
+    avg_len = sum(lengths) / len(lengths)
+
+    # return the estimated count
+    return int(total_bytes / avg_len)
