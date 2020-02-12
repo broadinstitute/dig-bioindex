@@ -77,8 +77,11 @@ def api_query(idx):
         fmt = flask.request.args.get('format', 'row')
         limit = flask.request.args.get('limit', type=int)
 
+        # validate query parameters
         if q is None:
             raise ValueError('Missing query parameter')
+        if fmt.lower() not in ['r', 'row', 'c', 'col', 'column']:
+            raise ValueError('Invalid output format')
 
         # lookup the schema for this index and perform the query
         schema = config.table(idx).schema
