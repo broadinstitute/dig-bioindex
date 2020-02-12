@@ -97,7 +97,7 @@ def api_query(idx):
 
         # make a continuation token if there are more records left to read
         cont_token = None
-        if count > (min(limit, RECORD_LIMIT) if limit else RECORD_LIMIT):
+        if count >= (min(limit, RECORD_LIMIT) if limit else RECORD_LIMIT):
             cont_token = lib.continuation.make_continuation(
                 records=zipped_records,
                 count=count,
