@@ -150,7 +150,7 @@ class ValueSchema(Schema):
         """
         Build the index for the provided table.
         """
-        Index('value_idx', table.value).create(engine)
+        Index('value_idx', table.c.value).create(engine)
 
     def index_keys(self, row):
         """

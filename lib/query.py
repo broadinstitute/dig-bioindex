@@ -9,14 +9,14 @@ import lib.schema
 from lib.profile import profile
 
 
-def fetch(engine, bucket, table_name, schema, q, limit=None):
+def fetch(engine, bucket, table_name, schema, q):
     """
     Use the table schema to determine the type of query to execute.
     """
     if isinstance(schema, lib.schema.LocusSchema):
-        yield from _by_locus(engine, bucket, table_name, schema, q, limit)
+        yield from _by_locus(engine, bucket, table_name, schema, q)
     else:
-        yield from _by_value(engine, bucket, table_name, q, limit)
+        yield from _by_value(engine, bucket, table_name, q)
 
 
 def keys(engine, table_name, schema):
@@ -42,7 +42,7 @@ def keys(engine, table_name, schema):
         yield r[0]
 
 
-def _by_locus(engine, bucket, table_name, schema, q, limit):
+def _by_locus(engine, bucket, table_name, schema, q):
     """
     Query the database for all records that a region overlaps.
     """
@@ -64,16 +64,10 @@ def _by_locus(engine, bucket, table_name, schema, q, limit):
         return schema.locus_of_row(row).overlaps(chromosome, start, stop)
 
     # only keep records that overlap the queried region
-    overlapping = filter(overlaps, _read_records(bucket, cursor))
-
-    # arbitrarily limit the number of results
-    if not limit:
-        yield from overlapping
-    else:
-        yield from map(lambda t: t[1], zip(range(limit), overlapping))
+    yield from filter(overlaps, _read_records(bucket, cursor))
 
 
-def _by_value(engine, bucket, table_name, q, limit):
+def _by_value(engine, bucket, table_name, q):
     sql = (
         f'SELECT `path`, MIN(`start_offset`), MAX(`end_offset`) '
         f'FROM `{table_name}` '
@@ -87,13 +81,7 @@ def _by_value(engine, bucket, table_name, q, limit):
     logging.info('Query %s (%s) took %d ms', table_name, q, query_ms)
 
     # fetch all the records from s3
-    records = _read_records(bucket, cursor)
-
-    # read all the objects from s3
-    if not limit:
-        yield from records
-    else:
-        yield from map(lambda t: t[1], zip(range(limit), records))
+    yield from _read_records(bucket, cursor)
 
 
 def _read_records(bucket, cursor):
