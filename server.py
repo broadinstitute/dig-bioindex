@@ -119,6 +119,7 @@ def api_query(idx):
             'index': idx,
             'q': q,
             'count': count,
+            'page': 1,
             'limit': limit,
             'data': fetched_records,
             'continuation': cont_token,
@@ -137,6 +138,9 @@ def api_cont():
     try:
         token = flask.request.args['token']
         cont = lib.continuation.lookup_continuation(token)
+
+        # advance the page of the continuation
+        cont.page += 1
 
         # use a zip to limit the maximum number of records returned by this request
         zipped_records = map(lambda x: x[1], zip(range(RECORD_LIMIT), cont.records))
@@ -160,6 +164,7 @@ def api_cont():
             'index': cont.idx,
             'q': cont.q,
             'count': count,
+            'page': cont.page,
             'limit': cont.limit,
             'data': fetched_records,
             'continuation': token,

@@ -15,6 +15,7 @@ class Cont:
     idx: str
     q: str
     fmt: str = 'row'
+    page: int = 1
     limit: int = None
     expiration: float = None
 
