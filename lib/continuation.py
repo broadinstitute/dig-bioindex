@@ -11,9 +11,8 @@ _cont_lock = threading.RLock()
 @dataclasses.dataclass()
 class Cont:
     records: any
-    count: int
     idx: str
-    q: str
+    q: str = None
     fmt: str = 'row'
     page: int = 1
     limit: int = None

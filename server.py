@@ -124,9 +124,7 @@ def api_all(idx):
         # make a continuation token if there are more records left to read
         cont_token = None if not needs_cont else lib.continuation.make_continuation(
             records=records,
-            count=count,
             idx=idx,
-            q='*',
             fmt=fmt,
             limit=limit,
         )
@@ -137,7 +135,6 @@ def api_all(idx):
                 'fetch': fetch_s,
             },
             'index': idx,
-            'q': '*',
             'count': count,
             'page': 1,
             'limit': limit,
@@ -182,7 +179,6 @@ def api_query(idx):
         # make a continuation token if there are more records left to read
         cont_token = None if not needs_cont else lib.continuation.make_continuation(
             records=records,
-            count=count,
             idx=idx,
             q=q,
             fmt=fmt,
