@@ -178,6 +178,7 @@
                 // how many estimated records per key space
                 variantCount: 0,
                 regionCount: 0,
+                geneCount: 0,
 
                 // records per key space
                 variants: [],
@@ -192,6 +193,7 @@
                 // estimated counts
                 setVariantCount: (state, n) => state.variantCount = n,
                 setRegionCount: (state, n) => state.regionCount = n,
+                setGeneCount: (state, n) => state.geneCount = n,
 
                 // fetched records
                 setVariants: (state, records) => state.variants = records,
@@ -204,6 +206,9 @@
                 },
                 async countRegions(context, { locus }) {
                     await count(context, 'setRegionCount', 'AnnotatedRegions', locus);
+                },
+                async countGenes(context, { locus }) {
+                    await count(context, 'setGeneCount', 'Genes', locus);
                 },
 
                 // perform fetch queries to get the actual records
