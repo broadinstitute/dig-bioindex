@@ -94,6 +94,62 @@ def api_count(idx):
         flask.abort(400, str(e))
 
 
+@app.route('/api/all/<idx>')
+def api_all(idx):
+    """
+    Query the database and return ALL records for a given index.
+    """
+    try:
+        s3_prefix = config.table(idx).prefix
+
+        # optional parameters
+        fmt = flask.request.args.get('format', 'row')
+        limit = flask.request.args.get('limit', type=int)
+
+        # validate query parameters
+        if fmt.lower() not in ['r', 'row', 'c', 'col', 'column']:
+            raise ValueError('Invalid output format')
+
+        # lookup the schema for this index and perform the query
+        records, query_s = profile(lib.query.fetch_all, config.s3_bucket, s3_prefix)
+
+        # use a zip to limit the total number of records that will be read
+        if limit is not None:
+            records = map(lambda x: x[1], zip(range(limit), records))
+
+        # fetch the records from S3
+        fetched_records, fetch_s, needs_cont = fetch_records(records, fmt)
+        count = len(fetched_records)
+
+        # make a continuation token if there are more records left to read
+        cont_token = None if not needs_cont else lib.continuation.make_continuation(
+            records=records,
+            count=count,
+            idx=idx,
+            q='*',
+            fmt=fmt,
+            limit=limit,
+        )
+
+        return {
+            'profile': {
+                'query': query_s,
+                'fetch': fetch_s,
+            },
+            'index': idx,
+            'q': '*',
+            'count': count,
+            'page': 1,
+            'limit': limit,
+            'data': fetched_records,
+            'continuation': cont_token,
+        }
+    except KeyError:
+        flask.abort(400, f'Invalid index: {idx}')
+    except ValueError as e:
+        flask.abort(400, str(e))
+
+
 @app.route('/api/query/<idx>')
 def api_query(idx):
     """
@@ -119,28 +175,19 @@ def api_query(idx):
         if limit is not None:
             records = map(lambda x: x[1], zip(range(limit), records))
 
-        # use a zip to limit the maximum number of records returned by this request
-        zipped_records = map(lambda x: x[1], zip(range(RECORD_LIMIT), records))
-
-        # profile how long it takes to fetch the records from s3
-        fetched_records, fetch_s = profile(list, zipped_records)
+        # fetch the records from s3
+        fetched_records, fetch_s, needs_cont = fetch_records(records, fmt)
         count = len(fetched_records)
 
         # make a continuation token if there are more records left to read
-        cont_token = None
-        if count == RECORD_LIMIT:
-            cont_token = lib.continuation.make_continuation(
-                records=records,
-                count=count,
-                idx=idx,
-                q=q,
-                fmt=fmt,
-                limit=limit,
-            )
-
-        # convert from list of dicts to dict of lists
-        if fmt.lower() in ['c', 'col', 'column']:
-            fetched_records = {k: [d[k] for d in fetched_records] for k in fetched_records[0]}
+        cont_token = None if not needs_cont else lib.continuation.make_continuation(
+            records=records,
+            count=count,
+            idx=idx,
+            q=q,
+            fmt=fmt,
+            limit=limit,
+        )
 
         return {
             'profile': {
@@ -173,20 +220,13 @@ def api_cont():
         # advance the page of the continuation
         cont.page += 1
 
-        # use a zip to limit the maximum number of records returned by this request
-        zipped_records = map(lambda x: x[1], zip(range(RECORD_LIMIT), cont.records))
-
-        # profile how long it takes to fetch the records from s3
-        fetched_records, fetch_s = profile(list, zipped_records)
+        # fetch more records from S3
+        fetched_records, fetch_s, needs_cont = fetch_records(cont.records, cont.fmt)
         count = len(fetched_records)
 
         # check for no more records
-        if count < RECORD_LIMIT:
+        if not needs_cont:
             token = lib.continuation.remove_continuation(token)
-
-        # convert from list of dicts to dict of lists
-        if cont.fmt.lower() in ['c', 'col', 'column']:
-            fetched_records = {k: [d[k] for d in fetched_records] for k in fetched_records[0]}
 
         return {
             'profile': {
@@ -204,3 +244,26 @@ def api_cont():
         flask.abort(400, f'Invalid, expired, or missing continuation token')
     except ValueError as e:
         flask.abort(400, str(e))
+
+
+def fetch_records(records, fmt):
+    """
+    Reads the records from S3, transforms if necessary. This will not
+    return more than RECORD_LIMIT records.
+
+    Returns the records fetched, how long it took (in seconds), and a
+    flag indicating whether there are more records still left to be
+    fetched.
+    """
+    zipped_records = map(lambda x: x[1], zip(range(RECORD_LIMIT), records))
+
+    # profile how long it takes to fetch the records from s3
+    fetched_records, fetch_s = profile(list, zipped_records)
+    count = len(fetched_records)
+
+    # transform a list of dictionaries into a dictionary of lists
+    if fmt.lower() in ['c', 'col', 'column']:
+        return {k: [d.get(k) for d in fetched_records] for k in fetched_records[0]}
+
+    # return the fetched records
+    return fetched_records, fetch_s, count == RECORD_LIMIT

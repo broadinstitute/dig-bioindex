@@ -30,9 +30,7 @@ class Config:
         return self.index['tables']
 
     def table(self, name):
-        table = self.tables.get(name)
-        if not table:
-            return None
+        table = self.tables[name]
 
         # convert the dictionary into a simple namespace object
         return types.SimpleNamespace(

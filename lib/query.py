@@ -22,11 +22,19 @@ def fetch(engine, bucket, table_name, schema, q):
 
         # only keep records that overlap the queried region
         yield from filter(overlaps, _read_records(bucket, cursor))
-    else:
-        cursor = _run_value_query(engine, table_name, q)
 
-        # read the records from the query results
-        yield from _read_records(bucket, cursor)
+    # simple value query
+    else:
+        yield from _read_records(bucket, _run_value_query(engine, table_name, q))
+
+
+def fetch_all(bucket, s3_prefix):
+    """
+    Scans for all the S3 files in the schema and creates a dummy cursor
+    to read all the records from all the files.
+    """
+    for s3_obj in lib.s3.list_objects(bucket, s3_prefix):
+        yield from _read_records_from_s3(bucket, s3_obj['Key'], None, None)
 
 
 def count(engine, bucket, table_name, schema, q):
@@ -37,10 +45,11 @@ def count(engine, bucket, table_name, schema, q):
         chromosome, start, stop = lib.locus.parse(q, allow_ens_lookup=True)
         cursor = _run_locus_query(engine, table_name, chromosome, start, stop)
 
+        # count the records
         return _count_records(bucket, cursor)
-    else:
-        cursor = _run_value_query(engine, table_name, q)
-        return _count_records(bucket, cursor)
+
+    # simple value query
+    return _count_records(bucket, _run_value_query(engine, table_name, q))
 
 
 def keys(engine, table_name, schema):
@@ -111,7 +120,9 @@ def _read_records_from_s3(bucket, path, start_offset, end_offset):
     Returns a generator that reads  all the records from a given object in
     S3 from a start to end byte offset.
     """
-    length = end_offset - start_offset
+    length = end_offset
+    if length and start_offset:
+        length -= start_offset
 
     try:
         content = lib.s3.read_object(bucket, path, offset=start_offset, length=length)
