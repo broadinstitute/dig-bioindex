@@ -59,6 +59,23 @@ def cli_query(index, q):
         print(obj)
 
 
+@click.command(name='all')
+@click.argument('index')
+@click.option('--limit', type=int)
+def cli_all(index, limit):
+    config = lib.config.Config()
+    table = config.table(index)
+    records = lib.query.fetch_all(config.s3_bucket, table.prefix)
+
+    # prevent an insane number of results
+    if limit:
+        records = map(lambda r: r[1], zip(range(limit), records))
+
+    # lookup the table class from the schema
+    for obj in records:
+        print(obj)
+
+
 @click.command(name='count')
 @click.argument('index')
 @click.argument('q')
@@ -100,6 +117,7 @@ def cli_keys(index):
 # initialize the cli
 cli.add_command(cli_index)
 cli.add_command(cli_query)
+cli.add_command(cli_all)
 cli.add_command(cli_count)
 cli.add_command(cli_keys)
 
