@@ -200,10 +200,10 @@
             actions: {
                 // simple guess as to the number of records in the region
                 async countVariants(context, { locus }) {
-                    await count(context, 'setVariantCount', 'variants', locus);
+                    await count(context, 'setVariantCount', 'Associations', locus);
                 },
                 async countRegions(context, { locus }) {
-                    await count(context, 'setRegionCount', 'regions', locus);
+                    await count(context, 'setRegionCount', 'AnnotatedRegions', locus);
                 },
 
                 // perform fetch queries to get the actual records
@@ -212,7 +212,7 @@
                     commit('setVariants', []);
                     commit('setProfile', 0);
 
-                    return fetch(`/api/query/associations?q=${encodeURIComponent(locus)}`)
+                    return fetch(`/api/query/Associations?q=${encodeURIComponent(locus)}`)
                         .then(resp => resp.json())
                         .then(json => {
                             commit('setLoading', false);
