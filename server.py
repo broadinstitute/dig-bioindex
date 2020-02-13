@@ -21,7 +21,7 @@ app = flask.Flask(__name__, static_folder='web/static')
 engine = lib.secrets.connect_to_mysql(config.rds_instance)
 
 # max number of records to return per request
-RECORD_LIMIT = int(os.getenv('BIOINDEX_RECORD_LIMIT', 10000))
+RECORD_LIMIT = int(os.getenv('BIOINDEX_RECORD_LIMIT', 5000))
 
 
 @app.route('/')
