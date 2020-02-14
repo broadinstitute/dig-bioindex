@@ -56,10 +56,10 @@
                                 Query
                             </button>
                         </div>
-                        <div class="sm mb-4">Examples:
-                            <a href="#" @click="locus='SLC30A8'">SLC30A8</a>,
-                            <a href="#" @click="locus='chr9:21,940,000-22,190,000'">chr9:21,940,000-22,190,000</a>
-                        </div>
+                    </div>
+                    <div class="sm mb-4">Examples:
+                        <a href="#" @click="locus='SLC30A8'">SLC30A8</a>,
+                        <a href="#" @click="locus='chr9:21,940,000-22,190,000'">chr9:21,940,000-22,190,000</a>
                     </div>
                 </div>
 
@@ -131,15 +131,12 @@
                 locus: '',
             },
             computed: {
-                results() {
-                    return this.$store.results;
-                },
                 dataLoaded() {
                     return this.$store.results && Object.entries(this.$store.results).length > 0;
                 },
             },
             watch: {
-                results(json) {
+                '$store.state.results': function(json) {
                     let jsonTree = document.querySelector('#json-results');
                     let pathTarget = document.querySelectorAll('.path');
 
