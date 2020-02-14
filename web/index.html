@@ -73,7 +73,7 @@
             </div>
 
             <!-- output JSON results -->
-            <div class="w-75">
+            <div class="w-50">
                 <div v-if="$store.state.loading">
                     <button class="btn btn-light btn-sm" type="button" disabled>
                         <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
@@ -146,7 +146,7 @@
             },
             watch: {
                 '$store.state.results': function(json) {
-                    this.viewer.showJSON(json);
+                    this.viewer.showJSON(json, -1, 1);
                 },
             },
         });
