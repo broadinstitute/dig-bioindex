@@ -52,7 +52,7 @@
                                @change="" type="text">
                         <div class="input-group-append">
                             <button type="button" class="btn btn-primary mb-3"
-                                    @click="$store.dispatch('query', {locus})">
+                                    @click="$store.dispatch('queryByRegion', {locus})">
                                 Query
                             </button>
                         </div>
@@ -65,6 +65,23 @@
 
                 <!-- search by phenotype -->
                 <div class="tab-pane fade" id="by-trait" role="tabpanel" aria-labelledby="trait-tab">
+                    <div class="input-group mx-auto px-md-5 bg-white rounded">
+                        <input v-model="trait" class="form-control"
+                               aria-describedby="locus"
+                               placeholder="gene or region"
+                               @change="" type="text">
+                        <div class="input-group-append">
+                            <button type="button" class="btn btn-primary mb-3"
+                                    @click="$store.dispatch('queryByTrait', {trait})">
+                                Query
+                            </button>
+                        </div>
+                    </div>
+                    <div class="sm mb-4">Examples:
+                        <a href="#" @click="trait='T2D'">T2D</a>,
+                        <a href="#" @click="trait='Stroke'">Stroke</a>,
+                        <a href="#" @click="trait='UACR'">UACR</a>,
+                    </div>
                 </div>
 
                 <!-- search by variant -->
@@ -109,11 +126,23 @@
                 setResults: (state, json) => state.results = json,
             },
             actions: {
-                async query({ commit }, { locus }) {
+                async queryByRegion({ commit }, { locus }) {
                     commit('setLoading', true);
                     commit('setResults', {});
 
                     return fetch(`/api/query/Associations?q=${encodeURIComponent(locus)}`)
+                        .then(resp => resp.json())
+                        .then(json => {
+                            commit('setResults', json);
+                            commit('setLoading', false);
+                        });
+                },
+
+                async queryByTrait({ commit }, { trait }) {
+                    commit('setLoading', true);
+                    commit('setResults', {});
+
+                    return fetch(`/api/query/PhenotypeAssociations?q=${encodeURIComponent(trait)}`)
                         .then(resp => resp.json())
                         .then(json => {
                             commit('setResults', json);
