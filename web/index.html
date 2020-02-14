@@ -112,11 +112,13 @@
         // entry point
         let app = new Vue({
             el: '#app',
+            store,
             data: {
                 locus: '',
             },
             computed: {
                 results: () => this.$store.results,
+                dataLoaded: () => Object.entries(this.$store.results).length > 0,
             },
             watch: {
                 locus: debounce(function (locus) {
