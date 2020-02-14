@@ -86,6 +86,21 @@
 
                 <!-- search by variant -->
                 <div class="tab-pane fade" id="by-variant" role="tabpanel" aria-labelledby="variant-tab">
+                    <div class="input-group mx-auto px-md-5 bg-white rounded">
+                        <input v-model="variant" class="form-control"
+                               aria-describedby="variant"
+                               placeholder="variant or rsID"
+                               @change="" type="text">
+                        <div class="input-group-append">
+                            <button type="button" class="btn btn-primary mb-3"
+                                    @click="$store.dispatch('queryByVariant', {variant})">
+                                Query
+                            </button>
+                        </div>
+                    </div>
+                    <div class="sm mb-4">Examples:
+                        <a href="#" @click="variant='10:114750500:A:G'">10:114750500:A:G</a>,
+                    </div>
                 </div>
             </div>
 
@@ -126,30 +141,31 @@
                 setResults: (state, json) => state.results = json,
             },
             actions: {
-                async queryByRegion({ commit }, { locus }) {
-                    commit('setLoading', true);
-                    commit('setResults', {});
+                async queryByRegion(context, { locus }) {
+                    return await context.query('/api/query/Associations', locus);
+                },
+                async queryByTrait(context, { trait }) {
+                    return await context.query('/api/query/PhenotypeAssociations', trait);
+                },
+                async queryByVariant(context, { variant }) {
+                    return await context.query('/api/query/Variants', variant);
+                },
+            },
 
-                    return fetch(`/api/query/Associations?q=${encodeURIComponent(locus)}`)
+            // shared fetch method
+            methods: {
+                async query(url, q) {
+                    this.commit('setLoading', true);
+                    this.commit('setResults', {});
+
+                    return fetch(`{url}?q=${encodeURIComponent(q)}`)
                         .then(resp => resp.json())
                         .then(json => {
-                            commit('setResults', json);
-                            commit('setLoading', false);
+                            this.commit('setResults', json);
+                            this.commit('setLoading', false);
                         });
                 },
-
-                async queryByTrait({ commit }, { trait }) {
-                    commit('setLoading', true);
-                    commit('setResults', {});
-
-                    return fetch(`/api/query/PhenotypeAssociations?q=${encodeURIComponent(trait)}`)
-                        .then(resp => resp.json())
-                        .then(json => {
-                            commit('setResults', json);
-                            commit('setLoading', false);
-                        });
-                },
-            }
+            },
         });
 
         // entry point
@@ -160,6 +176,7 @@
                 return {
                     locus: '',
                     trait: '',
+                    variant: '',
                     viewer: new JSONViewer(),
                 }
             },
