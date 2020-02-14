@@ -9,7 +9,7 @@
     <link href="https://fonts.googleapis.com/css?family=Lato:700&display=swap" rel="stylesheet">
 
     <!-- bootstrap css -->
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">\
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
     <link rel="stylesheet" href="/static/jsonpath-picker.min.css" />
 
     <!-- title last -->
@@ -34,23 +34,46 @@
             </div>
 
             <!-- locus input -->
-            <div class="input-group mx-auto px-md-5 bg-white rounded w-50">
-                <input v-model="locus" class="form-control"
-                       aria-describedby="locus"
-                       placeholder="gene, region, variant, or phenotype"
-                       @change="" type="text">
-                <div class="input-group-append">
-                    <button type="button" class="btn btn-primary mb-3"
-                            @click="$store.dispatch('query', {locus})">
-                        Query
-                    </button>
+            <ul class="nav-tabs justify-content-center">
+                <li class="nav-item">
+                    <a class="nav-link active" href="#" id="region-tab">Gene or Region</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="#" id="phenotype-tab">Phenotype</a>
+                </li>>
+                <li class="nav-item">
+                    <a class="nav-link" href="#" id="variant-tab">Variant</a>
+                </li>
+            </ul>
+            <div class="tab-content">
+
+                <!-- search by region or gene -->
+                <div class="tab-pane fade show active" id="region" role="tabpanel" aria-labelledby="region-tab">
+                    <div class="input-group mx-auto px-md-5 bg-white rounded w-50">
+                        <input v-model="locus" class="form-control"
+                               aria-describedby="locus"
+                               placeholder="gene or region"
+                               @change="" type="text">
+                        <div class="input-group-append">
+                            <button type="button" class="btn btn-primary mb-3"
+                                    @click="$store.dispatch('query', {locus})">
+                                Query
+                            </button>
+                        </div>
+                        <div class="sm mb-4">Examples:
+                            <a href="#" @click="locus='SLC30A8'">SLC30A8</a>,
+                            <a href="#" @click="locus='chr9:21,940,000-22,190,000'">chr9:21,940,000-22,190,000</a>
+                        </div>
+                    </div>
                 </div>
-            </div>
-            <div class="sm mb-4">Examples:
-                <a href="#" @click="locus='SLC30A8'">SLC30A8</a>,
-                <a href="#" @click="locus='chr9:21,940,000-22,190,000'">chr9:21,940,000-22,190,000</a>
-                <a href="#" @click="locus='T2D'">T2D</a>
-                <a href="#" @click="locus='8:118139192:T:C'">8:118139192:T:C</a>
+
+                <!-- search by phenotype -->
+                <div class="tab-pane fade" id="phenotype" role="tabpanel" aria-labelledby="phenotype-tab">
+                </div>
+
+                <!-- search by variant -->
+                <div class="tab-pane fade" id="variant" role="tabpanel" aria-labelledby="variant-tab">
+                </div>
             </div>
 
             <!-- output JSON results -->
@@ -63,14 +86,7 @@
                 </div>
 
                 <!-- response here -->
-                <div v-if="dataLoaded">
-                    <pre id="json-results" class="json-tree"></pre>
-                </div>
-
-                <!-- show profiling -->
-                <button class="btn btn-light btn-sm m-4" v-if="dataLoaded" type="button" disabled>
-                    <!--Query: {{ msQuery }}, Fetch: {{ msFetch }}-->
-                </button>
+                <pre id="json-results" class="json-tree"></pre>
             </div>
         </div>
     </center>
