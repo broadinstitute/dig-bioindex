@@ -34,7 +34,7 @@
             </div>
 
             <!-- search field -->
-            <div class="w-75">
+            <div class="w-50">
                 <div class="input-group mx-auto px-md-5 bg-white rounded">
                     <input v-model="q" class="form-control"
                            aria-describedby="q"
@@ -109,10 +109,10 @@
                 },
 
                 // perform the search
-                async search({ commit }, { q }) {
+                async search(context, { q }) {
                     let p = encodeURIComponent(q);
 
-                    commit('clearResults', true);
+                    context.commit('clearResults', true);
 
                     if (context.state.traits.includes(q)) {
                         // phenotype search
@@ -126,7 +126,7 @@
                         qs
                             .then(rs => rs.map((r) => r.json()))
                             .then(rs => {
-                                commit('setResults', {
+                                context.commit('setResults', {
                                     'datasets': rs[0],
                                     'associations': rs[1],
                                     'globalEnrichment': rs[2],
