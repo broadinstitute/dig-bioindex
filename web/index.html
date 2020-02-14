@@ -67,8 +67,8 @@
                 <div class="tab-pane fade" id="by-trait" role="tabpanel" aria-labelledby="trait-tab">
                     <div class="input-group mx-auto px-md-5 bg-white rounded">
                         <input v-model="trait" class="form-control"
-                               aria-describedby="locus"
-                               placeholder="gene or region"
+                               aria-describedby="trait"
+                               placeholder="phenotype"
                                @change="" type="text">
                         <div class="input-group-append">
                             <button type="button" class="btn btn-primary mb-3"
@@ -159,6 +159,7 @@
             data() {
                 return {
                     locus: '',
+                    trait: '',
                     viewer: new JSONViewer(),
                 }
             },
