@@ -34,18 +34,14 @@
             </div>
 
             <!-- locus input -->
-            <ul class="nav-tabs justify-content-center">
-                <li class="nav-item">
-                    <a class="nav-link active" href="#" id="region-tab">Gene or Region</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="#" id="phenotype-tab">Phenotype</a>
-                </li>>
-                <li class="nav-item">
-                    <a class="nav-link" href="#" id="variant-tab">Variant</a>
-                </li>
-            </ul>
-            <div class="tab-content">
+            <nav>
+                <div class="nav nav-tabs" id="nav-tab" role="tablist">
+                    <a class="nav-item nav-link active" href="#by-region" role="tab" id="region-tab" aria-controls="nav-region" aria-selected="true">Region</a>
+                    <a class="nav-item nav-link" href="#by-trait" role="tab" id="trait-tab" aria-controls="nav-trait" aria-selected="false">Trait</a>
+                    <a class="nav-item nav-link" href="#by-variant" role="tab" id="variant-tab" aria-controls="nav-variant" aria-selected="false">Variant</a>
+                </div>
+            </nav>
+            <div class="tab-content" id="nav-tabContent">
 
                 <!-- search by region or gene -->
                 <div class="tab-pane fade show active" id="region" role="tabpanel" aria-labelledby="region-tab">
@@ -68,7 +64,7 @@
                 </div>
 
                 <!-- search by phenotype -->
-                <div class="tab-pane fade" id="phenotype" role="tabpanel" aria-labelledby="phenotype-tab">
+                <div class="tab-pane fade" id="trait" role="tabpanel" aria-labelledby="trait-tab">
                 </div>
 
                 <!-- search by variant -->
