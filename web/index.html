@@ -10,7 +10,7 @@
 
     <!-- bootstrap css -->
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
-    <link rel="stylesheet" href="/static/jsonpath-picker.min.css" />
+    <link rel="stylesheet" href="/static/jso-formatter.css" />
 
     <!-- title last -->
     <title>KPN Bio Index</title>
@@ -23,13 +23,13 @@
     </style>
 
     <!-- javascript files -->
-    <script src="/static/jsonpath-picker.min.js"></script>
+    <script src="/static/json-formatter.umd.js"></script>
 </head>
 
 <body>
     <center>
         <div id="app" v-cloak>
-            <div class="mt-5 mb-2">
+            <div class="mt-5 mb-4">
                 <h1 style="font-family: 'Lato', sans-serif">KPN Bio-Index</h1>
             </div>
 
@@ -82,7 +82,7 @@
                 </div>
 
                 <!-- response here -->
-                <pre id="json-results" class="json-tree"></pre>
+                <div id="results"></div>
             </div>
         </div>
     </center>
@@ -137,11 +137,20 @@
             },
             watch: {
                 '$store.state.results': function(json) {
-                    let jsonTree = document.querySelector('#json-results');
-                    let pathTarget = document.querySelectorAll('.path');
+                    let el = document.querySelector('#results');
 
-                    // render the JSON
-                    JPPicker.render(jsonTree, json, pathTarget, {});
+                    // remove all child elements (get rid of previous results)
+                    while(el.firstChild) {
+                        el.removeChild(el.firstChild);
+                    }
+
+                    // create a new JSON visualization
+                    if (Object.entries(json).length > 0) {
+                        let formatter = JSONFormatter(json, 2, { hoverPreviewEnabled: true });
+
+                        // show the new results
+                        el.appendChild(formatter.render());
+                    }
                 },
             },
         });
