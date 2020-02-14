@@ -97,7 +97,7 @@
 
                 clearResults(state, loading) {
                     state.loading = loading;
-                    state.results = null;
+                    state.results = {};
                 },
             },
             actions: {
@@ -134,9 +134,38 @@
                             });
                     } else if (q.match(/^(rs\d+|(\d{1,2}|x|y|xy|mt?):\d+:[agct]+:[agct.]+)$/i)) {
                         // variant search
+                        let qs = Promise.all([
+                            fetch(`/api/query/Variants?q=${p}`),
+                            fetch(`/api/query/DatasetAssociations?q=${p}`),
+                        ]);
+
+                        // when done, commit results
+                        qs
+                            .then(rs => rs.map((r) => r.json()))
+                            .then(rs => {
+                                context.commit('setResults', {
+                                    'variants': rs[0],
+                                    'datasetAssociations': rs[1],
+                                });
+                            });
                     } else {
                         // region/gene search
+                        let qs = Promise.all([
+                            fetch(`/api/query/Associations?q=${p}`),
+                            fetch(`/api/query/Genes?q=${p}`),
+                            fetch(`/api/query/AnnotatedRegions?q=${p}`),
+                        ]);
 
+                        // when done, commit results
+                        qs
+                            .then(rs => rs.map((r) => r.json()))
+                            .then(rs => {
+                                context.commit('setResults', {
+                                    'associations': rs[0],
+                                    'genes': rs[1],
+                                    'functionalRegions': rs[2],
+                                });
+                            });
                     }
                 },
             },
