@@ -41,7 +41,7 @@
                        @change="" type="text">
                 <div class="input-group-append">
                     <button type="button" class="btn btn-primary mb-3"
-                            @click="$store.dispatch('fetch', {locus})">
+                            @click="$store.dispatch('query', {locus})">
                         Query
                     </button>
                 </div>
@@ -63,11 +63,13 @@
                 </div>
 
                 <!-- response here -->
-                <pre id="json-results" class="json-tree"></pre>
+                <div v-if="dataLoaded">
+                    <pre id="json-results" class="json-tree"></pre>
+                </div>
 
                 <!-- show profiling -->
                 <button class="btn btn-light btn-sm m-4" v-if="dataLoaded" type="button" disabled>
-                    Query: {{ msQuery }}, Fetch: {{ msFetch }}
+                    <!--Query: {{ msQuery }}, Fetch: {{ msFetch }}-->
                 </button>
             </div>
         </div>
@@ -99,7 +101,7 @@
                     commit('setLoading', true);
                     commit('setResults', {});
 
-                    return fetch(`http://localhost:5000/api/query/Associations?q=${encodeURIComponent(locus)}`)
+                    return fetch(`/api/query/Associations?q=${encodeURIComponent(locus)}`)
                         .then(resp => resp.json())
                         .then(json => {
                             commit('setResults', json);
@@ -121,13 +123,10 @@
                     return this.$store.results;
                 },
                 dataLoaded() {
-                    return Object.entries(this.$store.results).length > 0;
-                }
+                    return this.$store.results && Object.entries(this.$store.results).length > 0;
+                },
             },
             watch: {
-                locus: debounce(function (locus) {
-                    // TODO:
-                }, 500),
                 results(json) {
                     let jsonTree = document.querySelector('#json-results');
                     let pathTarget = document.querySelectorAll('.path');
@@ -137,31 +136,6 @@
                 },
             },
         });
-
-        // call function after a delay, overwrite any previous delay in place
-        function debounce(f, wait, immediate) {
-            let timeout = null;
-
-            return function () {
-                let context = this;
-                let args = arguments;
-                let callNow = immediate && !timeout;
-
-                let later = function () {
-                    timeout = null;
-                    if (!immediate) {
-                        f.apply(context, args);
-                    }
-                };
-
-                clearTimeout(timeout);
-                timeout = setTimeout(later, wait);
-
-                if (callNow) {
-                    f.apply(context, args);
-                }
-            };
-        }
     </script>
 </body>
 
