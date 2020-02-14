@@ -9,11 +9,8 @@
     <link href="https://fonts.googleapis.com/css?family=Lato:700&display=swap" rel="stylesheet">
 
     <!-- bootstrap css -->
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://unpkg.com/bootstrap-table@1.15.5/dist/bootstrap-table.min.css">
-
-    <!-- locuszoom css -->
-    <link rel="stylesheet" href="/static/locuszoom.css">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">\
+    <link rel="stylesheet" href="/static/jsonpath-picker.min.css" />
 
     <!-- title last -->
     <title>KPN Bio Index</title>
@@ -24,6 +21,9 @@
             display: none;
         }
     </style>
+
+    <!-- javascript files -->
+    <script src="/static/jsonpath-picker.min.js"></script>
 </head>
 
 <body>
@@ -35,11 +35,13 @@
 
             <!-- locus input -->
             <div class="input-group mx-auto px-md-5 bg-white rounded w-50">
-                <input v-model="locus" class="form-control" aria-describedby="locus" placeholder="gene or region"
+                <input v-model="locus" class="form-control"
+                       aria-describedby="locus"
+                       placeholder="gene, region, variant, or phenotype"
                        @change="" type="text">
                 <div class="input-group-append">
                     <button type="button" class="btn btn-primary mb-3"
-                            @click="$store.dispatch('queryVariants', {locus})">
+                            @click="$store.dispatch('fetch', {locus})">
                         Query
                     </button>
                 </div>
@@ -47,30 +49,11 @@
             <div class="sm mb-4">Examples:
                 <a href="#" @click="locus='SLC30A8'">SLC30A8</a>,
                 <a href="#" @click="locus='chr9:21,940,000-22,190,000'">chr9:21,940,000-22,190,000</a>
+                <a href="#" @click="locus='T2D'">T2D</a>
+                <a href="#" @click="locus='8:118139192:T:C'">8:118139192:T:C</a>
             </div>
 
-            <!-- match group -->
-            <div class="btn-group mb-4" role="group" aria-label="Matches">
-                <span class="btn btn-light btn-sm">Regions
-                    <span v-if="hasRegions"
-                        class=" badge badge-pill"
-                        :class="{ 'badge-primary': !$store.state.outOfSync
-                                , 'badge-danger': $store.state.outOfSync
-                                }">
-                        {{$store.state.regionCount}}
-                    </span>
-                </span>
-                <span class="btn btn-light btn-sm">Variants
-                    <span v-if="hasVariants"
-                        class=" badge badge-pill"
-                        :class="{ 'badge-primary': !$store.state.outOfSync
-                                , 'badge-danger': $store.state.outOfSync
-                                }">
-                        {{$store.state.variantCount}}
-                    </span>
-                </span>
-            </div>
-
+            <!-- output JSON results -->
             <div class="w-75">
                 <div v-if="$store.state.loading">
                     <button class="btn btn-light btn-sm" type="button" disabled>
@@ -78,49 +61,11 @@
                         Loading...
                     </button>
                 </div>
-                <div class="card" :class="{'border-danger': $store.state.outOfSync}" v-show="dataLoaded">
-                    <div class="shadow card-body py-4">
 
-                        <!-- phenotypes -->
-                        <div class="mb-4">
-                            <button type="button" class="btn btn-sm m-1 py-1 px-2"
-                                    v-for="i in (showAllPhenotypes ? phenotypes : phenotypes.slice(0, 20))"
-                                    @click="$store.commit('setPhenotype', i[0])"
-                                    :class="{ 'btn-primary': i[0] == phenotype
-                                            , 'btn-success': i[0] != phenotype && i[1] <= 5.0e-8
-                                            , 'btn-warning': i[0] != phenotype && i[1] <= 0.05 && i[1] > 5.0e-8
-                                            , 'btn-secondary': i[0] != phenotype && 0.05 < i[1]
-                                            }"
-                            >{{ i[0] }}</button>
+                <!-- response here -->
+                <pre id="json-results" class="json-tree"></pre>
 
-                            <!-- all toggle -->
-                            <span v-if="!showAllPhenotypes">
-                                <a href="#" @click="showAllPhenotypes=true">All...</a>
-                            </span>
-                            <span v-else>
-                                <a href="#" @click="showAllPhenotypes=false">Less...</a>
-                            </span>
-                        </div>
-
-                        <!-- tabs -->
-                        <ul class="nav nav-tabs justify-content-center mb-3">
-                            <li class="nav-item">
-                                <a class="nav-link active" href="#">Associations</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" href="#">PheWAS</a>
-                            </li>
-                        </ul>
-
-                        <!-- lz plot -->
-                        <div id="locuszoom"></div>
-
-                        <!-- all variants -->
-                        <bootstrap-table id="table" :columns="tableColumns" :data="variants"
-                            :options="{sortName:'pValue', ...tableOptions}"></bootstrap-table>
-                    </div>
-                </div>
-
+                <!-- show profiling -->
                 <button class="btn btn-light btn-sm m-4" v-if="dataLoaded" type="button" disabled>
                     Query: {{ msQuery }}, Fetch: {{ msFetch }}
                 </button>
@@ -135,105 +80,29 @@
 
     <!-- vue.js -->
     <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
-    <!--<script src="https://cdn.jsdelivr.net/npm/vue"></script>-->
     <script src="https://unpkg.com/vuex"></script>
-
-    <!-- bootstrap table -->
-    <script src="https://unpkg.com/bootstrap-table@1.15.5/dist/bootstrap-table.min.js"></script>
-    <script src="https://unpkg.com/bootstrap-table@1.15.5/dist/bootstrap-table-vue.min.js"></script>
-
-    <!-- d3 graphing and locuszoom -->
-    <script src="/static/locuszoom.vendor.min.js"></script>
-    <script src="/static/locuszoom.app.min.js"></script>
 
     <!-- vue app -->
     <script>
-        Vue.use(BootstrapTable);
-
-        let assocDataSource = LocusZoom.KnownDataSources.extend('StaticJSON', 'BioIndexAssocLZ', {
-            getURL(state) {
-                return `/api/query/variants?q=${state.chr}:${state.start}-${state.end}`;
-            },
-
-            annotateData(records) {
-                records.forEach(r => {
-                    r['id'] = r.varId;
-                    r['log_pvalue'] = -Math.log10(r.pValue);
-                    r['ref_allele'] = r.reference;
-                    r['variant'] = r.alt;
-                });
-
-                return records;
-            },
-        });
-
         // SPA state
         let store = new Vuex.Store({
             state: {
-                region: {},
                 loading: false,
-                outOfSync: false,
-                phenotype: null,
-
-                // how many estimated records per key space
-                variantCount: 0,
-                regionCount: 0,
-                geneCount: 0,
-
-                // records per key space
-                variants: [],
-                profile: {},
+                results: {},
             },
             mutations: {
                 setLoading: (state, flag) => state.loading = flag,
-                setOutOfSync: (state, flag) => state.outOfSync = flag,
-                setRegion: (state, region) => state.region = region,
-                setPhenotype: (state, phenotype) => state.phenotype = phenotype,
-
-                // estimated counts
-                setVariantCount: (state, n) => state.variantCount = n,
-                setRegionCount: (state, n) => state.regionCount = n,
-                setGeneCount: (state, n) => state.geneCount = n,
-
-                // fetched records
-                setVariants: (state, records) => state.variants = records,
-                setProfile: (state, profile) => state.profile = profile,
+                setResults: (state, json) => state.results = json,
             },
             actions: {
-                // simple guess as to the number of records in the region
-                async countVariants(context, { locus }) {
-                    await count(context, 'setVariantCount', 'Associations', locus);
-                },
-                async countRegions(context, { locus }) {
-                    await count(context, 'setRegionCount', 'AnnotatedRegions', locus);
-                },
-                async countGenes(context, { locus }) {
-                    await count(context, 'setGeneCount', 'Genes', locus);
-                },
-
-                // perform fetch queries to get the actual records
-                async queryVariants({ commit }, { locus }) {
+                async query({ commit }, { locus }) {
                     commit('setLoading', true);
-                    commit('setVariants', []);
-                    commit('setProfile', 0);
+                    commit('setResults', {});
 
-                    return fetch(`/api/query/Associations?q=${encodeURIComponent(locus)}`)
+                    return fetch(`http://localhost:5000/api/query/Associations?q=${encodeURIComponent(locus)}`)
                         .then(resp => resp.json())
                         .then(json => {
-                            commit('setLoading', false);
-                            commit('setQuery', json.q);
-                            commit('setVariants', json.records);
-                            commit('setProfile', json.profile);
-                            commit('setOutOfSync', false);
-
-                            if (json.data.length > 0) {
-                                commit('setPhenotype', json.records[0].phenotype);
-                            } else {
-                                commit('setPhenotype', null);
-                            }
-                        })
-                        .catch(err => {
-                            commit('setOutOfSync', true);
+                            commit('setResults', json);
                             commit('setLoading', false);
                         });
                 },
@@ -243,186 +112,25 @@
         // entry point
         let app = new Vue({
             el: '#app',
-            store,
-            components: {
-                'BootstrapTable': BootstrapTable,
-            },
             data: {
                 locus: '',
-                showAllPhenotypes: false,
-                tableOptions: {
-                    pagination: true,
-                    pageSize: 10,
-                    search: true,
-                    dataSortClass: 'table-active',
-                },
-                tableColumns: [
-                    { title: 'Position', field: 'position', sortable: true },
-                    { title: 'Ref', field: 'reference' },
-                    { title: 'Alt', field: 'alt' },
-                    { title: 'Phenotype', field: 'phenotype', sortable: true },
-                    { title: 'P-Value', field: 'pValue', sortable: true },
-                    { title: 'Effect', field: 'beta', sortable: true },
-                    { title: 'Z-Score', field: 'zScore', sortable: true },
-                    { title: 'StdErr', field: 'stdErr', sortable: true },
-                    { title: 'N', field: 'n', sortable: true },
-                ],
             },
             computed: {
-                hasVariants() { return this.$store.state.variantCount > 0 },
-                hasGenes() { return this.$store.state.geneCount > 0 },
-                hasRegions() { return this.$store.state.regionCount > 0 },
-
-                // true if there are loaded variants
-                dataLoaded() { return this.$store.state.variants.length > 0 },
-
-                // all the variants returned by the query
-                variants() { return this.$store.state.variants },
-                phenotype() { return this.$store.state.phenotype },
-
-                // all the unique phenotypes in the region
-                phenotypes() {
-                    let ph = new Map();
-
-                    // find all the unique phenotypes across all variants
-                    this.$store.state.variants.forEach(v => {
-                        if (!ph.has(v.phenotype)) {
-                            ph.set(v.phenotype, v.pValue);
-                        }
-                    });
-
-                    return Array.from(ph.entries());
-                },
-
-                // profile strings
-                msQuery() { return this.$store.state.profile.toFixed() + 'ms'; },
+                results: () => this.$store.results,
             },
             watch: {
                 locus: debounce(function (locus) {
-                    this.$store.commit('setOutOfSync', this.dataLoaded);
-                    this.$store.dispatch('countVariants', { locus });
-                    this.$store.dispatch('countGenes', { locus });
-                    this.$store.dispatch('countRegions', { locus });
-                }, 500),
-
-                // update lz when variant data is updated
-                variants(variants) {
-                    this.updateLZ(variants, this.phenotype);
-                },
-
-                phenotype(phenotype) {
-                    this.updateLZ(this.$store.state.variants, phenotype);
-                },
-            },
-            methods: {
-                updateLZ(variants, phenotype) {
-                    let assocData = [];
-                    let phewasData = [];
-
-                    // filter and transform the variants into LZ format
-                    variants.forEach(r => {
-                        if (r.phenotype == phenotype) {
-                            assocData.push({
-                                id: r.varId,
-                                position: r.position,
-                                log_pvalue: -Math.log10(r.pValue),
-                                ref_allele: r.reference,
-                                variant: r.varId,
-                            });
-                        }
-                    });
-
-                    // create the phewas data from the variants
-                    this.phenotypes.forEach(p => {
-                        phewasData.push({
-                            id: p[0],
-                            trait_label: p[0],
-                            trait_group: 'GLYCEMIC',
-                            log_pvalue: -Math.log10(p[1]),
-                        });
-                    });
-
-                    let ds = new LocusZoom.DataSources()
-                        .add("assoc", ["StaticJSON", { data: assocData }])
-                        .add("phewas", ["StaticJSON", { data: phewasData }])
-
-                        // LD server
-                        .add("ld", ["LDLZ2", {
-                            url: "https://portaldev.sph.umich.edu/ld/",
-                            params: {
-                                source: '1000G',
-                                build: 'GRCh37',
-                                population: 'ALL',
-                            },
-                        }])
-
-                        // recombinations
-                        .add("recomb", ["RecombLZ", {
-                            url: "https://portaldev.sph.umich.edu/api/v1/annotation/recomb/results/",
-                            params: {
-                                build: 'GRCh37',
-                            },
-                        }])
-
-                        // genes
-                        .add("gene", ["GeneLZ", {
-                            url: "https://portaldev.sph.umich.edu/api/v1/annotation/genes/",
-                            params: {
-                                build: 'GRCh37',
-                            },
-                        }])
-
-                        // gene constraints
-                        .add("constraint", ["GeneConstraintLZ", {
-                            url: "http://exac.broadinstitute.org/api/constraint",
-                        }]);
-
-                    let panelOptions = {
-                        unnamespaced: true,
-                        proportional_height: 0.5,
-                        dashboard: null,
-                    };
-
-                    let panels = [
-                        LocusZoom.Layouts.get('panel', 'association', { ...panelOptions }),
-                        //LocusZoom.Layouts.get('panel', 'phewas', { ...panelOptions }),
-                        LocusZoom.Layouts.get('panel', 'genes', { ...panelOptions }),
-                    ];
-
-                    let layout = LocusZoom.Layouts.get('plot', 'standard_association', {
-                        panels,
-                        state: {
-                            chr: this.$store.state.region.chromosome,
-                            start: this.$store.state.region.start,
-                            end: this.$store.state.region.stop,
-                        },
-                    });
-
-                    // update the plot with the data sources and layout
-                    window.plot = LocusZoom.populate('#locuszoom', ds, layout);
-
-                    // when scrolling a new data is requested, do something
-                    window.plot.on('data_requested', () => {
-                        let { chr, start, end } = window.plot.state;
-
-                        // update the input and dispatch
-                        this.locus = `${chr}:${start}-${end}`;
-                        this.$store.dispatch('queryVariants', { locus: this.locus });
-                    });
-                },
-                switchPheWAS() {
                     // TODO:
+                }, 500),
+                results(json) {
+                    let jsonTree = document.querySelector('#json-results');
+                    let pathTarget = document.querySelectorAll('.path');
+
+                    // render the JSON
+                    JPPicker.render(jsonTree, json, pathTarget, {});
                 },
             },
         });
-
-        // request the estimated count for the number of records
-        function count({ commit }, mutation, key, locus) {
-            return fetch(`/api/count/${key}?q=${encodeURIComponent(locus)}`)
-                .then(resp => resp.json())
-                .then(json => commit(mutation, json.n))
-                .catch(err => commit(mutation, 0));
-        }
 
         // call function after a delay, overwrite any previous delay in place
         function debounce(f, wait, immediate) {
