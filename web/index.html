@@ -34,27 +34,27 @@
             </div>
 
             <!-- search field -->
-            <div class="input-group mx-auto px-md-5 bg-white rounded">
-                <input v-model="q" class="form-control"
-                       aria-describedby="q"
-                       placeholder="gene, region, variant, or trait"
-                       @change="" type="text">
-                <div class="input-group-append">
-                    <button type="button" class="btn btn-primary mb-3"
-                            @click="$store.dispatch('search', {q})">
-                        Search
-                    </button>
+            <div class="w-75">
+                <div class="input-group mx-auto px-md-5 bg-white rounded">
+                    <input v-model="q" class="form-control"
+                           aria-describedby="q"
+                           placeholder="gene, region, variant, or trait"
+                           @change="" type="text">
+                    <div class="input-group-append">
+                        <button type="button" class="btn btn-primary mb-3"
+                                @click="$store.dispatch('search', {q})">
+                            Search
+                        </button>
+                    </div>
                 </div>
-            </div>
-            <div class="sm mb-4">Examples:
-                <a href="#" @click="dataset='DIAMANTE'">SLC30A8</a>,
-                <a href="#" @click="assoc='chr9:21,940,000-22,190,000'">chr9:21,940,000-22,190,000</a>,
-                <a href="#" @click="variant='10:114750500:A:G'">10:114750500:A:G</a>,
-                <a href="#" @click="dataset='T2D'">T2D</a>
-            </div>
+                <div class="sm mb-4">Examples:
+                    <a href="#" @click="q='DIAMANTE'">SLC30A8</a>,
+                    <a href="#" @click="q='chr9:21,940,000-22,190,000'">chr9:21,940,000-22,190,000</a>,
+                    <a href="#" @click="q='10:114750500:A:G'">10:114750500:A:G</a>,
+                    <a href="#" @click="q='T2D'">T2D</a>
+                </div>
 
-            <!-- output JSON results -->
-            <div class="w-50">
+                <!-- output JSON results -->
                 <div v-if="$store.state.loading">
                     <button class="btn btn-light btn-sm" type="button" disabled>
                         <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
@@ -137,10 +137,7 @@
             store,
             data() {
                 return {
-                    dataset: '',
-                    assoc: '',
-                    variant: '',
-                    region: '',
+                    q: '',
                     viewer: new JSONViewer(),
                 }
             },
