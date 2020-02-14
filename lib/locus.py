@@ -150,24 +150,33 @@ def parse(s, allow_ens_lookup=False):
         return request_ens_locus(s)
 
     chromosome, start, adjust, end = match.groups()
+    cur_locale = locale.getlocale()
 
-    # parse the start position
-    start = locale.atoi(start)
+    try:
+        # parse thousands-separator commas
+        locale.setlocale(locale.LC_ALL, 'en_US.UTF8')
 
-    # if the adjustment is a + then end is a length, otherwise a position
-    if adjust == '+':
-        end = start + locale.atoi(end)
-    elif adjust == '/':
-        shift = locale.atoi(end)
-        start, end = start - shift, start + shift + 1
-    else:
-        end = locale.atoi(end) if end else start + 1
+        # parse the start position
+        start = locale.atoi(start)
 
-    # stop position must be > start
-    if end <= start:
-        raise ValueError(f'Stop ({end}) must be > start ({start})')
+        # if the adjustment is a + then end is a length, otherwise a position
+        if adjust == '+':
+            end = start + locale.atoi(end)
+        elif adjust == '/':
+            shift = locale.atoi(end)
+            start, end = start - shift, start + shift + 1
+        else:
+            end = locale.atoi(end) if end else start + 1
 
-    return chromosome.upper(), start, end
+        # stop position must be > start
+        if end <= start:
+            raise ValueError(f'Stop ({end}) must be > start ({start})')
+
+        return chromosome.upper(), start, end
+
+    finally:
+        # restore the original locale
+        locale.setlocale(locale.LC_ALL, cur_locale)
 
 
 def request_ens_locus(q):
