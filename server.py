@@ -48,15 +48,15 @@ def api_keys(idx):
     try:
         schema = config.table(idx).schema
         keys, query_s = profile(lib.query.keys, engine, idx, schema)
-        fetched_keys = list(keys)
+        fetched = list(keys)
 
         return {
             'profile': {
                 'query': query_s,
             },
             'index': idx,
-            'count': len(fetched_keys),
-            'keys': list(fetched_keys),
+            'count': len(fetched),
+            'data': list(fetched),
         }
     except AssertionError:
         flask.abort(400, f'Index {idx} is not indexed by value')
