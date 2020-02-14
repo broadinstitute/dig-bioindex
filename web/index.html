@@ -188,7 +188,7 @@
             },
             computed: {
                 dataLoaded() {
-                    return this.$store.results && Object.entries(this.$store.results).length > 0;
+                    return Object.entries(this.$store.state.results).length > 0;
                 },
             },
             watch: {
