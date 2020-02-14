@@ -158,7 +158,7 @@
             commit('setLoading', true);
             commit('setResults', {});
 
-            return fetch(`{url}?q=${encodeURIComponent(q)}`)
+            return fetch(`${url}?q=${encodeURIComponent(q)}`)
                 .then(resp => resp.json())
                 .then(json => {
                     commit('setResults', json);
