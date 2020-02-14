@@ -34,18 +34,18 @@
             </div>
 
             <!-- locus input -->
-            <nav class="w-75 mb-1">
+            <nav class="w-50 mb-3">
                 <div class="nav nav-tabs" id="nav-tab" role="tablist">
                     <a class="nav-item nav-link active" href="#by-region" data-toggle="tab" role="tab" id="region-tab" aria-controls="nav-region" aria-selected="true">Region</a>
                     <a class="nav-item nav-link" href="#by-trait" role="tab" data-toggle="tab" id="trait-tab" aria-controls="nav-trait" aria-selected="false">Trait</a>
                     <a class="nav-item nav-link" href="#by-variant" role="tab" data-toggle="tab" id="variant-tab" aria-controls="nav-variant" aria-selected="false">Variant</a>
                 </div>
             </nav>
-            <div class="tab-content" id="nav-tabContent">
+            <div class="tab-content w-50" id="nav-tabContent">
 
                 <!-- search by region or gene -->
                 <div class="tab-pane fade show active" id="by-region" role="tabpanel" aria-labelledby="region-tab">
-                    <div class="input-group mx-auto px-md-5 bg-white rounded w-50">
+                    <div class="input-group mx-auto px-md-5 bg-white rounded">
                         <input v-model="locus" class="form-control"
                                aria-describedby="locus"
                                placeholder="gene or region"
