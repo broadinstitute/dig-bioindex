@@ -102,13 +102,13 @@
                 setResults(state, json) {
                     state.loading = false;
                     state.results = json;
-                    state.searchTime = Date().now() - state.t0;
+                    state.searchTime = Date.now() - state.t0;
                 },
 
                 clearResults(state, loading) {
                     state.loading = loading;
                     state.results = {};
-                    state.t0 = Date().now();
+                    state.t0 = Date.now();
                 },
             },
             actions: {
