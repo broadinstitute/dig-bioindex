@@ -154,7 +154,7 @@
         });
 
         // perform async fetch
-        async query({ commit }, url, q) {
+        async function query({ commit }, url, q) {
             this.commit('setLoading', true);
             this.commit('setResults', {});
 
