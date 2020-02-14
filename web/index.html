@@ -153,14 +153,16 @@
                         // region/gene search
                         let rs = await Promise.all([
                             fetch(`/api/query/Associations?q=${p}`).then(r => r.json()),
+                            fetch(`/api/query/TopAssociations?q=${p}`).then(r => r.json()),
                             fetch(`/api/query/Genes?q=${p}`).then(r => r.json()),
                             fetch(`/api/query/AnnotatedRegions?q=${p}`).then(r => r.json()),
                         ]);
 
                         context.commit('setResults', {
                             'associations': rs[0],
-                            'genes': rs[1],
-                            'functionalRegions': rs[2],
+                            'topAssociations': rs[1],
+                            'genes': rs[2],
+                            'functionalRegions': rs[3],
                         });
                     }
                 },
