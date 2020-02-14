@@ -172,7 +172,9 @@
                     commit('setTraits', json.data);
                 },
                 async queryDatasets(context, { dataset }) {
-                    if (context.state.traits.included(dataset)) {
+                    let traits = context.state.traits;
+
+                    if (traits.included(dataset)) {
                         await query(context, '/api/query/Datasets', dataset);
                     }
                 },
@@ -183,7 +185,9 @@
                     await query(context, '/api/query/Variants', variant);
                 },
                 async queryFunctionalRegions(context, { region }) {
-                    if (context.state.traits.included(region)) {
+                    let traits = context.state.traits;
+
+                    if (traits.included(region)) {
                         await query(context, '/api/query/GlobalEnrichment', region);
                     } else {
                         await query(context, '/api/query/AnnotatedRegions', region);
