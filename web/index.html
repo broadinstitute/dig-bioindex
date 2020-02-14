@@ -142,31 +142,29 @@
             },
             actions: {
                 async queryByRegion(context, { locus }) {
-                    return await context.query('/api/query/Associations', locus);
+                    return await query(context, '/api/query/Associations', locus);
                 },
                 async queryByTrait(context, { trait }) {
-                    return await context.query('/api/query/PhenotypeAssociations', trait);
+                    return await query(context, '/api/query/PhenotypeAssociations', trait);
                 },
                 async queryByVariant(context, { variant }) {
-                    return await context.query('/api/query/Variants', variant);
-                },
-            },
-
-            // shared fetch method
-            methods: {
-                async query(url, q) {
-                    this.commit('setLoading', true);
-                    this.commit('setResults', {});
-
-                    return fetch(`{url}?q=${encodeURIComponent(q)}`)
-                        .then(resp => resp.json())
-                        .then(json => {
-                            this.commit('setResults', json);
-                            this.commit('setLoading', false);
-                        });
+                    return await query(context, '/api/query/Variants', variant);
                 },
             },
         });
+
+        // perform async fetch
+        async query({ commit }, url, q) {
+            this.commit('setLoading', true);
+            this.commit('setResults', {});
+
+            return fetch(`{url}?q=${encodeURIComponent(q)}`)
+                .then(resp => resp.json())
+                .then(json => {
+                    this.commit('setResults', json);
+                    this.commit('setLoading', false);
+                });
+        },
 
         // entry point
         let app = new Vue({
