@@ -48,7 +48,7 @@
                     </div>
                 </div>
                 <div class="sm mb-4">Examples:
-                    <a href="#" @click="q='DIAMANTE'">SLC30A8</a>,
+                    <a href="#" @click="q='SLC30A8'">SLC30A8</a>,
                     <a href="#" @click="q='chr9:21,940,000-22,190,000'">chr9:21,940,000-22,190,000</a>,
                     <a href="#" @click="q='10:114750500:A:G'">10:114750500:A:G</a>,
                     <a href="#" @click="q='T2D'">T2D</a>
@@ -59,6 +59,13 @@
                     <button class="btn btn-light btn-sm" type="button" disabled>
                         <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                         Loading...
+                    </button>
+                </div>
+
+                <!-- results time -->
+                <div v-if="dataLoaded">
+                    <button class="btn btn-light btn-sm" type="button" disabled>
+                        Search time: {$store.state.searchTime} ms
                     </button>
                 </div>
 
@@ -83,6 +90,8 @@
         let store = new Vuex.Store({
             state: {
                 loading: false,
+                searchTime: 0.0,
+                t0: 0.0,
                 traits: [],
                 results: {},
             },
@@ -93,11 +102,13 @@
                 setResults(state, json) {
                     state.loading = false;
                     state.results = json;
+                    state.searchTime = Date().now() - state.t0;
                 },
 
                 clearResults(state, loading) {
                     state.loading = loading;
                     state.results = {};
+                    state.t0 = Date().now();
                 },
             },
             actions: {
