@@ -33,97 +33,24 @@
                 <h1 style="font-family: 'Lato', sans-serif">KPN Bio-Index</h1>
             </div>
 
-            <!-- locus input -->
-            <nav class="w-50 mb-3">
-                <div class="nav nav-tabs" id="nav-tab" role="tablist">
-                    <a class="nav-item nav-link" href="#datasets" data-toggle="tab" role="tab" id="datasets-tab" aria-controls="nav-datasets" aria-selected="false">Datasets</a>
-                    <a class="nav-item nav-link active" href="#assocs" data-toggle="tab" role="tab" id="assocs-tab" aria-controls="nav-assocs" aria-selected="true">Associations</a>
-                    <a class="nav-item nav-link" href="#variants" role="tab" data-toggle="tab" id="variants-tab" aria-controls="nav-variants" aria-selected="false">Variants</a>
-                    <a class="nav-item nav-link" href="#regions" role="tab" data-toggle="tab" id="regions-tab" aria-controls="nav-regions" aria-selected="false">Functional Regions</a>
+            <!-- search field -->
+            <div class="input-group mx-auto px-md-5 bg-white rounded">
+                <input v-model="q" class="form-control"
+                       aria-describedby="q"
+                       placeholder="gene, region, variant, or trait"
+                       @change="" type="text">
+                <div class="input-group-append">
+                    <button type="button" class="btn btn-primary mb-3"
+                            @click="$store.dispatch('search', {q})">
+                        Search
+                    </button>
                 </div>
-            </nav>
-            <div class="tab-content w-50" id="nav-tabContent">
-
-                <!-- search datasets -->
-                <div class="tab-pane fade" id="datasets" role="tabpanel" aria-labelledby="datasets-tab">
-                    <div class="input-group mx-auto px-md-5 bg-white rounded">
-                        <input v-model="dataset" class="form-control"
-                               aria-describedby="dataset"
-                               placeholder="phenotype"
-                               @change="" type="text">
-                        <div class="input-group-append">
-                            <button type="button" class="btn btn-primary mb-3"
-                                    @click="$store.dispatch('queryDatasets', {dataset})">
-                                Search
-                            </button>
-                        </div>
-                    </div>
-                    <div class="sm mb-4">Examples:
-                        <a href="#" @click="dataset='DIAMANTE'">DIAMANTE</a>,
-                        <a href="#" @click="dataset='T2D'">T2D</a>
-                    </div>
-                </div>
-
-                <!-- search associations -->
-                <div class="tab-pane fade show active" id="assocs" role="tabpanel" aria-labelledby="region-tab">
-                    <div class="input-group mx-auto px-md-5 bg-white rounded">
-                        <input v-model="assoc" class="form-control"
-                               aria-describedby="assoc"
-                               placeholder="gene, region, or trait"
-                               @change="" type="text">
-                        <div class="input-group-append">
-                            <button type="button" class="btn btn-primary mb-3"
-                                    @click="$store.dispatch('queryAssociations', {assoc})">
-                                Search
-                            </button>
-                        </div>
-                    </div>
-                    <div class="sm mb-4">Examples:
-                        <a href="#" @click="assoc='SLC30A8'">SLC30A8</a>,
-                        <a href="#" @click="assoc='chr9:21,940,000-22,190,000'">chr9:21,940,000-22,190,000</a>,
-                        <a href="#" @click="assoc='T2D'">T2D</a>
-                    </div>
-                </div>
-
-                <!-- search variants -->
-                <div class="tab-pane fade" id="variants" role="tabpanel" aria-labelledby="variant-tab">
-                    <div class="input-group mx-auto px-md-5 bg-white rounded">
-                        <input v-model="variant" class="form-control"
-                               aria-describedby="variant"
-                               placeholder="variant or rsID"
-                               @change="" type="text">
-                        <div class="input-group-append">
-                            <button type="button" class="btn btn-primary mb-3"
-                                    @click="$store.dispatch('queryVariants', {variant})">
-                                Search
-                            </button>
-                        </div>
-                    </div>
-                    <div class="sm mb-4">Examples:
-                        <a href="#" @click="variant='10:114750500:A:G'">10:114750500:A:G</a>,
-                        <a href="#" @click="variant='4:111677041:T:A'">4:111677041:T:A</a>
-                    </div>
-                </div>
-
-                <!-- search functional regions -->
-                <div class="tab-pane fade" id="regions" role="tabpanel" aria-labelledby="trait-tab">
-                    <div class="input-group mx-auto px-md-5 bg-white rounded">
-                        <input v-model="region" class="form-control"
-                               aria-describedby="region"
-                               placeholder="gene, region, or phenotype"
-                               @change="" type="text">
-                        <div class="input-group-append">
-                            <button type="button" class="btn btn-primary mb-3"
-                                    @click="$store.dispatch('queryFunctionalRegions', {region})">
-                                Search
-                            </button>
-                        </div>
-                    </div>
-                    <div class="sm mb-4">Examples:
-                        <a href="#" @click="region='BANF2'">BANF2</a>,
-                        <a href="#" @click="region='Stroke'">Stroke</a>
-                    </div>
-                </div>
+            </div>
+            <div class="sm mb-4">Examples:
+                <a href="#" @click="dataset='DIAMANTE'">SLC30A8</a>,
+                <a href="#" @click="assoc='chr9:21,940,000-22,190,000'">chr9:21,940,000-22,190,000</a>,
+                <a href="#" @click="variant='10:114750500:A:G'">10:114750500:A:G</a>,
+                <a href="#" @click="dataset='T2D'">T2D</a>
             </div>
 
             <!-- output JSON results -->
@@ -171,39 +98,38 @@
 
                     commit('setTraits', json.data);
                 },
-                async queryDatasets(context, { dataset }) {
-                    if (context.state.traits.includes(dataset)) {
-                        await query(context, '/api/query/Datasets', dataset);
-                    }
-                },
-                async queryAssociations(context, { locus }) {
-                    await query(context, '/api/query/Associations', assoc);
-                },
-                async queryVariants(context, { variant }) {
-                    await query(context, '/api/query/Variants', variant);
-                },
-                async queryFunctionalRegions(context, { region }) {
-                    if (context.state.traits.includes(region)) {
-                        await query(context, '/api/query/GlobalEnrichment', region);
+
+                // perform the search
+                async search(context, { q }) {
+                    let p = encodeURIComponent(q);
+
+                    if (context.state.traits.includes(q)) {
+                        // phenotype search
+                        let qs = Promise.all([
+                            fetch(`/api/query/Datasets?q=${p}`),
+                            fetch(`/api/query/PhenotypeAssociations?q=${p}`),
+                            fetch(`/api/query/GlobalEnrichment?q=${p}`),
+                        ]);
+
+                        // when done, commit results
+                        qs
+                            .then(rs => rs.map((r) => r.json()))
+                            .then(rs => {
+                                commit('setResults', {
+                                    'datasets': rs[0],
+                                    'associations': rs[1],
+                                    'globalEnrichment': rs[2],
+                                });
+                            });
+                    } else if (q.match(/^(rs\d+|(\d{1,2}|x|y|xy|mt?):\d+:[agct]+:[agct.]+)$/i)) {
+                        // variant search
                     } else {
-                        await query(context, '/api/query/AnnotatedRegions', region);
+                        // region/gene search
+
                     }
                 },
             },
         });
-
-        // perform async fetch
-        async function query({ commit }, url, q) {
-            commit('setLoading', true);
-            commit('setResults', {});
-
-            return fetch(`${url}?q=${encodeURIComponent(q)}`)
-                .then(resp => resp.json())
-                .then(json => {
-                    commit('setResults', json);
-                    commit('setLoading', false);
-                });
-        }
 
         // entry point
         let app = new Vue({
