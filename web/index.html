@@ -165,13 +165,14 @@
                 setResults: (state, json) => state.results = json,
             },
             actions: {
-                async queryPhenotypes({ commit }) {
-                    await fetch(`/api/keys/Datasets`)
-                        .then(resp => resp.json())
-                        .then(json => commit('setTraits', json.data));
+                async queryTraits({ commit }) {
+                    let json = await fetch(`/api/keys/Datasets`)
+                        .then(resp => resp.json());
+
+                    commit('setTraits', json.data);
                 },
                 async queryDatasets(context, { dataset }) {
-                    if (context.state.phenotypes.included(dataset)) {
+                    if (context.state.traits.included(dataset)) {
                         await query(context, '/api/query/Datasets', dataset);
                     }
                 },
@@ -182,7 +183,7 @@
                     await query(context, '/api/query/Variants', variant);
                 },
                 async queryFunctionalRegions(context, { region }) {
-                    if (context.state.phenotypes.included(region)) {
+                    if (context.state.traits.included(region)) {
                         await query(context, '/api/query/GlobalEnrichment', region);
                     } else {
                         await query(context, '/api/query/AnnotatedRegions', region);
@@ -218,7 +219,7 @@
                 }
             },
             creates() {
-                this.$store.dispatch('queryPhenotypes');
+                this.$store.dispatch('queryTraits');
             },
             mounted() {
                 let el = document.querySelector('#results');
