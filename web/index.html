@@ -123,16 +123,14 @@
                         ]);
 
                         // when done, commit results
-                        qs
-                            .then(rs => rs.map((r) => r.json()))
-                            .then(rs => {
-                                context.commit('setResults', {
-                                    'datasets': rs[0],
-                                    'associations': rs[1],
-                                    'globalEnrichment': rs[2],
-                                });
+                        qs.then(rs => {
+                            context.commit('setResults', {
+                                'datasets': rs[0].json(),
+                                'associations': rs[1].json(),
+                                'globalEnrichment': rs[2].json(),
                             });
-                    } else if (q.match(/^(rs\d+|(\d{1,2}|x|y|xy|mt?):\d+:[agct]+:[agct.]+)$/i)) {
+                        });
+                    } else if (q.match(/^(rs\d+|([1-9]|1\d|2[012]|x|y|xy|mt?):\d+:[agct]+:[agct.]+)$/i)) {
                         // variant search
                         let qs = Promise.all([
                             fetch(`/api/query/Variants?q=${p}`),
@@ -140,14 +138,12 @@
                         ]);
 
                         // when done, commit results
-                        qs
-                            .then(rs => rs.map((r) => r.json()))
-                            .then(rs => {
-                                context.commit('setResults', {
-                                    'variants': rs[0],
-                                    'datasetAssociations': rs[1],
-                                });
+                        qs.then(rs => {
+                            context.commit('setResults', {
+                                'variants': rs[0].json(),
+                                'datasetAssociations': rs[1].json(),
                             });
+                        });
                     } else {
                         // region/gene search
                         let qs = Promise.all([
@@ -157,15 +153,13 @@
                         ]);
 
                         // when done, commit results
-                        qs
-                            .then(rs => rs.map((r) => r.json()))
-                            .then(rs => {
-                                context.commit('setResults', {
-                                    'associations': rs[0],
-                                    'genes': rs[1],
-                                    'functionalRegions': rs[2],
-                                });
+                        qs.then(rs => {
+                            context.commit('setResults', {
+                                'associations': rs[0].json(),
+                                'genes': rs[1].json(),
+                                'functionalRegions': rs[2].json(),
                             });
+                        });
                     }
                 },
             },
