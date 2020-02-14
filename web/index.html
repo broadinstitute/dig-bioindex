@@ -89,7 +89,16 @@
             mutations: {
                 setLoading: (state, flag) => state.loading = flag,
                 setTraits: (state, traits) => state.traits = traits,
-                setResults: (state, json) => state.results = json,
+
+                setResults(state, json) {
+                    state.loading = false;
+                    state.results = json;
+                },
+
+                clearResults(state, loading) {
+                    state.loading = loading;
+                    state.results = null;
+                },
             },
             actions: {
                 async queryTraits({ commit }) {
@@ -100,8 +109,10 @@
                 },
 
                 // perform the search
-                async search(context, { q }) {
+                async search({ commit }, { q }) {
                     let p = encodeURIComponent(q);
+
+                    commit('clearResults', true);
 
                     if (context.state.traits.includes(q)) {
                         // phenotype search
