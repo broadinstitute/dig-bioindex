@@ -155,14 +155,14 @@
 
         // perform async fetch
         async function query({ commit }, url, q) {
-            this.commit('setLoading', true);
-            this.commit('setResults', {});
+            commit('setLoading', true);
+            commit('setResults', {});
 
             return fetch(`{url}?q=${encodeURIComponent(q)}`)
                 .then(resp => resp.json())
                 .then(json => {
-                    this.commit('setResults', json);
-                    this.commit('setLoading', false);
+                    commit('setResults', json);
+                    commit('setLoading', false);
                 });
         }
 
