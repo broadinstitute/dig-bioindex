@@ -117,39 +117,39 @@
                     if (context.state.traits.includes(q)) {
                         // phenotype search
                         let rs = await Promise.all([
-                            fetch(`/api/query/Datasets?q=${p}`),
-                            fetch(`/api/query/PhenotypeAssociations?q=${p}`),
-                            fetch(`/api/query/GlobalEnrichment?q=${p}`),
+                            fetch(`/api/query/Datasets?q=${p}`).then(r => r.json()),
+                            fetch(`/api/query/PhenotypeAssociations?q=${p}`).then(r => r.json()),
+                            fetch(`/api/query/GlobalEnrichment?q=${p}`).then(r => r.json()),
                         ]);
 
                         context.commit('setResults', {
-                            'datasets': rs[0].json(),
-                            'associations': rs[1].json(),
-                            'globalEnrichment': rs[2].json(),
+                            'datasets': rs[0],
+                            'associations': rs[1],
+                            'globalEnrichment': rs[2],
                         });
                     } else if (q.match(/^(rs\d+|([1-9]|1\d|2[012]|x|y|xy|mt?):\d+:[agct]+:[agct.]+)$/i)) {
                         // variant search
                         let rs = await Promise.all([
-                            fetch(`/api/query/Variants?q=${p}`),
-                            fetch(`/api/query/DatasetAssociations?q=${p}`),
+                            fetch(`/api/query/Variants?q=${p}`).then(r => r.json()),
+                            fetch(`/api/query/DatasetAssociations?q=${p}`).then(r => r.json()),
                         ]);
 
                         context.commit('setResults', {
-                            'variants': rs[0].json(),
-                            'datasetAssociations': rs[1].json(),
+                            'variants': rs[0],
+                            'datasetAssociations': rs[1],
                         });
                     } else {
                         // region/gene search
                         let rs = await Promise.all([
-                            fetch(`/api/query/Associations?q=${p}`),
-                            fetch(`/api/query/Genes?q=${p}`),
-                            fetch(`/api/query/AnnotatedRegions?q=${p}`),
+                            fetch(`/api/query/Associations?q=${p}`).then(r => r.json()),
+                            fetch(`/api/query/Genes?q=${p}`).then(r => r.json()),
+                            fetch(`/api/query/AnnotatedRegions?q=${p}`).then(r => r.json()),
                         ]);
 
                         context.commit('setResults', {
-                            'associations': rs[0].json(),
-                            'genes': rs[1].json(),
-                            'functionalRegions': rs[2].json(),
+                            'associations': rs[0],
+                            'genes': rs[1],
+                            'functionalRegions': rs[2],
                         });
                     }
                 },
