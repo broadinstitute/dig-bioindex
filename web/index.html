@@ -82,7 +82,7 @@
                 </div>
 
                 <!-- response here -->
-                <div id="results"></div>
+                <div id="results text-left"></div>
             </div>
         </div>
     </center>
@@ -127,11 +127,13 @@
         let app = new Vue({
             el: '#app',
             store,
-            data: {
-                locus: '',
-                viewer: JSONViewer(),
+            data() {
+                return {
+                    locus: '',
+                    viewer: new JSONViewer(),
+                }
             },
-            mounted() {
+            created() {
                 let el = document.querySelector('#results');
 
                 // add the viewer to the DOM
