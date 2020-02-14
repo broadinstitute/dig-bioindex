@@ -45,7 +45,7 @@
             <div class="tab-content w-50" id="nav-tabContent">
 
                 <!-- search datasets -->
-                <div class="tab-pane fade show active" id="datasets" role="tabpanel" aria-labelledby="datasets-tab">
+                <div class="tab-pane fade" id="datasets" role="tabpanel" aria-labelledby="datasets-tab">
                     <div class="input-group mx-auto px-md-5 bg-white rounded">
                         <input v-model="dataset" class="form-control"
                                aria-describedby="dataset"
@@ -74,7 +74,7 @@
                         <div class="input-group-append">
                             <button type="button" class="btn btn-primary mb-3"
                                     @click="$store.dispatch('queryAssociations', {assoc})">
-                                Query
+                                Search
                             </button>
                         </div>
                     </div>
