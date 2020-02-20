@@ -37,7 +37,12 @@ def api_indexes():
     """
     Return all queryable tables.
     """
-    return {'indexes': list(config.tables.keys())}
+    indexes = config.tables.keys()
+
+    return {
+        'count': len(indexes),
+        'data': list(indexes),
+    }
 
 
 @app.route('/api/keys/<idx>')
