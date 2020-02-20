@@ -20,13 +20,7 @@ class Cont:
 
     def __post_init__(self):
         """
-        Set the default expiration to 2 minutes from now.
-        """
-        self.update()
-
-    def update(self):
-        """
-        Keep the continuation alive for another minute.
+        Set the default expiration.
         """
         self.expiration = time.time() + 60
 
@@ -41,6 +35,23 @@ def make_continuation(**kwargs):
     # add it to the map
     with _cont_lock:
         _cont_map[token] = cont
+
+    return token
+
+
+def next_continuation(cont):
+    """
+    Create a new continuation from an existing one.
+    """
+    token = secrets.token_urlsafe()
+
+    # add it to the map
+    with _cont_lock:
+        _cont_map[token] = dataclasses.replace(
+            cont,
+            page=cont.page + 1,
+            expiration=time.time() + 60,
+        )
 
     return token
 

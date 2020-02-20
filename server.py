@@ -213,16 +213,16 @@ def api_cont():
         token = flask.request.args['token']
         cont = lib.continuation.lookup_continuation(token)
 
-        # advance the page of the continuation
-        cont.page += 1
-
         # fetch more records from S3
         fetched_records, fetch_s, needs_cont = fetch_records(cont.records, cont.fmt)
         count = len(fetched_records)
 
-        # check for no more records
-        if not needs_cont:
-            token = lib.continuation.remove_continuation(token)
+        # remove the continuation
+        token = lib.continuation.remove_continuation(token)
+
+        # create another continuation
+        if needs_cont:
+            token = lib.continuation.next_continuation(cont)
 
         return {
             'profile': {
