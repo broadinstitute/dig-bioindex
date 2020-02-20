@@ -36,12 +36,13 @@ def connect_to_mysql(secret_id):
     password = secret['password']
     db = secret['dbname']
 
-    # create the connection pool
-    return sqlalchemy.create_engine(
-        'mysql://{login}:{password}@{host}/{db}?local_infile=1'.format(
-            login=user,
-            password=password,
-            host=host,
-            db=db,
-        )
+    # mysql connection url
+    connection_string = 'mysql://{login}:{password}@{host}/{db}?local_infile=1'.format(
+        login=user,
+        password=password,
+        host=host,
+        db=db,
     )
+
+    # create the connection pool
+    return sqlalchemy.create_engine(connection_string, pool_recycle=3600)
