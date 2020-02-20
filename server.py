@@ -1,5 +1,6 @@
 import dotenv
 import flask
+import flask_cors
 import os
 
 import lib.config
@@ -16,6 +17,7 @@ config = lib.config.Config()
 
 # create flask app; this will load .env
 app = flask.Flask(__name__, static_folder='web/static')
+flask_cors.CORS(app)
 
 # connect to database
 engine = lib.secrets.connect_to_mysql(config.rds_instance)
