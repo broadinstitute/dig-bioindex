@@ -22,7 +22,7 @@ def api_portals():
     Returns the list of portals available.
     """
     sql = (
-        'SELECT DISTINCT `name`, `description`, `host` FROM Portals'
+        'SELECT DISTINCT `name`, `description`, `domain` FROM Portals'
     )
 
     # run the query
@@ -30,11 +30,11 @@ def api_portals():
     portals = []
 
     # transform response
-    for name, desc, host in resp:
+    for name, desc, domain in resp:
         portals.append({
             'name': name,
             'description': desc,
-            'host': host,
+            'domain': domain,
         })
 
     return {
