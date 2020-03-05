@@ -16,22 +16,22 @@ routes = flask.Blueprint('portal', __name__)
 engine = lib.secrets.connect_to_mysql(config.rds_instance, schema='portal')
 
 
-@routes.route('/api/portal/list')
+@routes.route('/api/portal/DiseaseGroups')
 def api_portals():
     """
     Returns the list of portals available.
     """
     sql = (
-        'SELECT DISTINCT `name`, `description`, `domain` FROM Portals'
+        'SELECT DISTINCT `name`, `description`, `domain` FROM DiseaseGroups'
     )
 
     # run the query
     resp, query_s = profile(engine.execute, sql)
-    portals = []
+    disease_groups = []
 
     # transform response
     for name, desc, domain in resp:
-        portals.append({
+        disease_groups.append({
             'name': name,
             'description': desc,
             'domain': domain,
@@ -41,12 +41,12 @@ def api_portals():
         'profile': {
             'query': query_s,
         },
-        'data': portals,
-        'count': len(portals),
+        'data': disease_groups,
+        'count': len(disease_groups),
     }
 
 
-@routes.route('/api/portal/phenotypes')
+@routes.route('/api/portal/Phenotypes')
 def api_phenotypes():
     """
     Returns all available phenotypes or just those for a given portal.
@@ -68,8 +68,8 @@ def api_phenotypes():
     # update query for just the portal
     if q is not None:
         sql += (
-            ', Portals WHERE Portals.`name` = %s AND ('
-            '   Portals.`groups` IS NULL OR FIND_IN_SET(Phenotypes.`group`, Portals.`groups`) '
+            ', DiseaseGroups WHERE DiseaseGroups.`name` = %s AND ('
+            '   DiseaseGroups.`groups` IS NULL OR FIND_IN_SET(Phenotypes.`group`, DiseaseGroups.`phenotypeGroups`) '
             ')'
         )
 
