@@ -22,7 +22,7 @@ def api_portals():
     Returns the list of portals available.
     """
     sql = (
-        'SELECT DISTINCT `name`, `description`, `hostname` FROM DiseaseGroups'
+        'SELECT DISTINCT `name`, `description`, `default`, `hostname` FROM DiseaseGroups'
     )
 
     # run the query
@@ -30,9 +30,10 @@ def api_portals():
     disease_groups = []
 
     # transform response
-    for name, desc, hostname in resp:
+    for name, desc, default, hostname in resp:
         disease_groups.append({
             'name': name,
+            'default': default != 0,
             'description': desc,
             'hostname': hostname,
         })
