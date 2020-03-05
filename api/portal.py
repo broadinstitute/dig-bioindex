@@ -62,6 +62,10 @@ def api_phenotypes():
 
     # optional filter by portal
     q = flask.request.args.get('q')
+    if q == '':
+        q = None
+
+    # update query for just the portal
     if q is not None:
         sql += (
             ', Portals WHERE Portals.`name` = %s AND ('
