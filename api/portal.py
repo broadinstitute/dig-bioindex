@@ -69,7 +69,8 @@ def api_phenotypes():
     if q is not None:
         sql += (
             ', DiseaseGroups WHERE DiseaseGroups.`name` = %s AND ('
-            '   DiseaseGroups.`groups` IS NULL OR FIND_IN_SET(Phenotypes.`group`, DiseaseGroups.`phenotypeGroups`) '
+            '   DiseaseGroups.`phenotypeGroups` IS NULL OR '
+            '   FIND_IN_SET(Phenotypes.`group`, DiseaseGroups.`phenotypeGroups`) '
             ')'
         )
 
