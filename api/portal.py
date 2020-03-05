@@ -22,7 +22,7 @@ def api_portals():
     Returns the list of portals available.
     """
     sql = (
-        'SELECT DISTINCT `name`, `description`, `domain` FROM DiseaseGroups'
+        'SELECT DISTINCT `name`, `description`, `hostname` FROM DiseaseGroups'
     )
 
     # run the query
@@ -30,11 +30,11 @@ def api_portals():
     disease_groups = []
 
     # transform response
-    for name, desc, domain in resp:
+    for name, desc, hostname in resp:
         disease_groups.append({
             'name': name,
             'description': desc,
-            'domain': domain,
+            'hostname': hostname,
         })
 
     return {
@@ -69,8 +69,7 @@ def api_phenotypes():
     if q is not None:
         sql += (
             ', DiseaseGroups WHERE DiseaseGroups.`name` = %s AND ('
-            '   DiseaseGroups.`phenotypeGroups` IS NULL OR '
-            '   FIND_IN_SET(Phenotypes.`group`, DiseaseGroups.`phenotypeGroups`) '
+            '   DiseaseGroups.`groups` IS NULL OR FIND_IN_SET(Phenotypes.`group`, DiseaseGroups.`groups`) '
             ')'
         )
 
