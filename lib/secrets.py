@@ -24,7 +24,7 @@ def secret_lookup(secret_id):
     return json.loads(secret)
 
 
-def connect_to_mysql(secret_id):
+def connect_to_mysql(secret_id, schema=None):
     """
     Create and return a connection to a MySQL server.
     """
@@ -34,7 +34,7 @@ def connect_to_mysql(secret_id):
     host = secret['host']
     user = secret['username']
     password = secret['password']
-    db = secret['dbname']
+    db = schema or secret['dbname']
 
     # mysql connection url
     connection_string = 'mysql://{login}:{password}@{host}/{db}?local_infile=1'.format(
