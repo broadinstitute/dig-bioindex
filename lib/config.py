@@ -14,7 +14,7 @@ class Config:
         """
         Loads the configuration file using environment.
         """
-        with open(os.getenv('BIOINDEX', 'index.json')) as fp:
+        with open(os.getenv('BIOINDEX_CONFIG', 'config.json')) as fp:
             self.index = json.load(fp)
 
     @property
