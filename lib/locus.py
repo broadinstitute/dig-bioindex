@@ -60,7 +60,7 @@ class SNPLocus(Locus):
         A generator of record loci. Reduce the total number of records by
         dividing and placing them in buckets.
         """
-        yield self.chromosome, self.position // self.LOCUS_STEP
+        yield self.chromosome, (self.position // self.LOCUS_STEP) * self.LOCUS_STEP
 
     def overlaps(self, chromosome, start, stop):
         """
