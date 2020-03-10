@@ -11,156 +11,119 @@ class Schema(abc.ABC):
     value.
     """
 
-    common_columns = [
-        Column('id', Integer, primary_key=True),
-        Column('path', String(1024)),
-        Column('start_offset', Integer),
-        Column('end_offset', Integer),
-    ]
-
-    @classmethod
-    def from_string(cls, schema):
+    def __init__(self, schema):
         """
-        Act as a base constructor for either a Locus schema or a Value
-        schema derived from the string.
+        Initialize a new schema object from a schema string. The schema
+        string is a comma-separated list of columns that act as a compound
+        index. If one of the "columns" is a locus string, then those
+        columns are combined together.
+
+        It is an error to have a locus column index in any position other
+        than the final position in a compound index!
         """
-        locus_class, locus_columns = parse_columns(schema)
+        self.schema = schema
+        self.schema_columns = schema.split(',')
+        self.index_columns = []
+        self.key_columns = []
 
-        if locus_class:
-            return LocusSchema(locus_class, locus_columns)
-        else:
-            return ValueSchema(schema)
+        # if this table is indexed by locus, track the class and columns
+        self.locus_class = None
+        self.locus_columns = None
 
-    @abc.abstractmethod
+        # add table columns that will be indexed
+        for column in self.schema_columns:
+            assert self.locus_class is None, f'Invalid index schema: {self.schema}'
+
+            # is this "column" name a locus?
+            self.locus_class, self.locus_columns = parse_columns(column)
+
+            # append either locus or value columns
+            if self.locus_class:
+                self.index_columns += [
+                    Column('chromosome', String(4)),
+                    Column('position', Integer),
+                ]
+            else:
+                self.index_columns.append(Column(column, String(200)))
+                self.key_columns.append(column)
+
     def __str__(self):
-        pass
+        return self.schema
 
-    @abc.abstractmethod
-    def table_columns(self):
-        pass
+    @property
+    def has_locus(self):
+        """
+        True if this schema has a locus in the index.
+        """
+        return self.locus_class is not None
 
     def build_table(self, name, meta):
         """
         Returns the table definition for this schema.
         """
-        return Table(name, MetaData(), *self.common_columns, *self.table_columns())
-
-    @abc.abstractmethod
-    def build_index(self, engine, table):
-        pass
-
-    @abc.abstractmethod
-    def index_keys(self, row):
-        pass
-
-    @abc.abstractmethod
-    def column_values(self, index_key):
-        pass
-
-
-class LocusSchema(Schema):
-    """
-    A LocusSchema indexes a table by chromosome and position. It can either
-    be a single locus (e.g. SNP) or a region (start-end).
-    """
-
-    def __init__(self, locus_class, locus_columns):
-        """
-        Initialize the schema with a locus class constructor and the list
-        of columns used in the class constructor.
-        """
-        self.locus_class = locus_class
-        self.locus_columns = locus_columns
-
-    def __str__(self):
-        """
-        Returns the string stored in the database for table.
-        """
-        pos = f'{self.locus_columns[0]}:{self.locus_columns[1]}'
-
-        # either a region or a single SNP position
-        return f'{pos}-{self.locus_columns[2]}' if self.locus_columns[2] else pos
-
-    def table_columns(self):
-        """
-        Define the columns for this schema.
-        """
-        return [
-            Column('chromosome', String(4)),
-            Column('position', Integer),
+        table_columns = [
+            Column('id', Integer, primary_key=True),
+            Column('path', String(1024)),
+            Column('start_offset', Integer),
+            Column('end_offset', Integer),
         ]
 
+        return Table(name, MetaData(), *table_columns, *self.index_columns)
+
     def build_index(self, engine, table):
         """
-        Build the index for the provided table.
+        Construct the compound index for this table.
         """
-        Index('locus_idx', table.c.chromosome, table.c.position).create(engine)
+        Index('schema_idx', *self.index_columns).create(engine)
 
     def locus_of_row(self, row):
         """
         Returns the locus class of a row in s3 for the columns of this schema.
         """
+        assert self.locus_class is not None, f'Index schema has not locus: {self.schema}'
+
+        # instantiate the locus for this row
         return self.locus_class(*(row.get(col) for col in self.locus_columns if col))
 
     def index_keys(self, row):
         """
-        LocusSchema objects divide the locus of a given row into multiple
-        index keys. For more detail, see at Locus.loci().
+        A generator of list, where each tuple consists of the value for this
+        index. A single row may produce multiple values.
         """
-        return self.locus_of_row(row).loci()
+        if self.locus_class:
+            for locus in self.locus_of_row(row).loci():
+                yield tuple(row[k.name] for k in self.index_columns[:-2]) + locus
+        else:
+            yield tuple(row[k] for k in self.index_columns)
 
     def column_values(self, index_key):
         """
-        Return a dictionary of values for a given index key. Since a LocusSchema
-        has index keys of (chromosome, position), for a given index key it will
-        return a dictionary of {'chromosome': chr, 'position': pos}.
+        Given a tuple yielded by index_keys, convert it into a map of the actual
+        column names and values.
         """
-        return {'chromosome': index_key[0], 'position': index_key[1]}
+        return {c.name: v for c, v in zip(self.index_columns, index_key)}
 
+    @property
+    def sql_filters(self):
+        """
+        Builds the query string from the index columns that can be used in a
+        SQL execute statement.
+        """
+        tests = 'AND'.join(map(lambda k: f'`{k}`=%s ', self.key_columns))
 
-class ValueSchema(Schema):
-    """
-    A ValueSchema is a table indexed by a single columns value. It can be
-    any scalar type (e.g. string, integer, or float).
-    """
+        # if there's a locus index, append it
+        if self.has_locus:
+            if tests != '':
+                tests += 'AND '
 
-    def __init__(self, column, column_type=String(200)):
-        """
-        Initialize the schema with a chromosome column name, start position
-        column name, and an optional stop position column name.
-        """
-        self.column = column
-        self.column_type = column_type
+            # add the chromosome and position
+            tests += '`chromosome`=%s AND `position` BETWEEN %s AND (%s - 1) '
 
-    def __str__(self):
-        """
-        Returns the string stored in the database for table.
-        """
-        return self.column
+        return tests
 
-    def table_columns(self):
+    @property
+    def arity(self):
         """
-        Define the columns for this schema.
+        Returns the number of expected query arguments.
         """
-        return [
-            Column('value', self.column_type),
-        ]
-
-    def build_index(self, engine, table):
-        """
-        Build the index for the provided table.
-        """
-        Index('value_idx', table.c.value).create(engine)
-
-    def index_keys(self, row):
-        """
-        ValueSchema objects only have a single index key per row.
-        """
-        yield row[self.column]
-
-    def column_values(self, index_key):
-        """
-        Return a dictionary of values for a given index key. Since a ValueSchema
-        has index keys of a single value, it is returned for the value column.
-        """
-        return {'value': index_key}
+        return len(self.key_columns) + (1 if self.has_locus else 0)

@@ -11,21 +11,22 @@ from lib.profile import profile
 
 def fetch(engine, bucket, table_name, schema, q):
     """
-    Use the table schema to determine the type of query to execute.
+    Use the table schema to determine the type of query to execute. The
+    query should be either a tuple of parameters, where each parameter
+    is a column or locus in the schema's index.
     """
-    if isinstance(schema, lib.schema.LocusSchema):
-        chromosome, start, stop = lib.locus.parse(q, allow_ens_lookup=True)
-        cursor = _run_locus_query(engine, table_name, chromosome, start, stop)
+    if len(q) != schema.arity:
+        raise ValueError(f'Arity mismatch of query parameters for index: {schema}')
 
-        def overlaps(row):
-            return schema.locus_of_row(row).overlaps(chromosome, start, stop)
+    # execute the query and fetch the records from s3
+    cursor, locus_filter = _run_query(engine, bucket, table_name, schema, q)
+    records = _read_records(bucket, cursor)
 
-        # only keep records that overlap the queried region
-        yield from filter(overlaps, _read_records(bucket, cursor))
-
-    # simple value query
+    # apply the locus filter
+    if locus_filter:
+        yield from filter(locus_filter, records)
     else:
-        yield from _read_records(bucket, _run_value_query(engine, table_name, q))
+        yield from records
 
 
 def fetch_all(bucket, s3_prefix):
@@ -41,33 +42,42 @@ def count(engine, bucket, table_name, schema, q):
     """
     Estimate the number of records that will be returned by a query.
     """
-    if isinstance(schema, lib.schema.LocusSchema):
-        chromosome, start, stop = lib.locus.parse(q, allow_ens_lookup=True)
-        cursor = _run_locus_query(engine, table_name, chromosome, start, stop)
+    cursor, _ = _run_query(engine, bucket, table_name, schema, q)
 
-        # count the records
-        return _count_records(bucket, cursor)
-
-    # simple value query
-    return _count_records(bucket, _run_value_query(engine, table_name, q))
+    # estimate the count
+    return _count_records(bucket, cursor)
 
 
-def keys(engine, table_name, schema):
+def keys(engine, table_name, schema, q):
     """
-    Assumes schema is a ValueSchema and asserts if not. If so, it
-    fetches all the distinct values available that can be queried
-    from the table.
-    """
-    assert isinstance(schema, lib.schema.ValueSchema)
+    Returns all the unique keys within an index. If it's a compound
+    index, then for every query parameter present, the keys for those
+    parameters will be returned instead.
 
-    sql = (
-        f'SELECT DISTINCT `value` '
-        f'FROM `{table_name}` '
-        f'ORDER BY `value` ASC '
-    )
+    If the final column being indexed is a locus, it is an error and
+    no keys will be returned.
+    """
+    if len(q) >= len(schema.key_columns):
+        raise ValueError(f'Too many key parameters for index: {schema}')
+
+    # which column will be returned?
+    distinct_column = schema.key_columns[len(q)]
+
+    # filter query parameters
+    tests = [f'{k} = %s ' for k in schema.key_columns[:len(q)]]
+
+    # build the SQL statement
+    sql = f'SELECT DISTINCT `{distinct_column}` FROM `{table_name}` '
+
+    # if there are any keys provided, add the conditionals
+    if len(tests) > 0:
+        sql += f'WHERE {"AND".join(tests)} '
+
+    # order the results
+    sql += f'ORDER BY `{distinct_column}` ASC'
 
     # fetch all the results
-    cursor, query_ms = profile(engine.execute, sql)
+    cursor, query_ms = profile(engine.execute, sql, *q)
     logging.info('Query %s (distinct values) took %d ms', table_name, query_ms)
 
     # yield all the results
@@ -75,36 +85,36 @@ def keys(engine, table_name, schema):
         yield r[0]
 
 
-def _run_locus_query(engine, table_name, chromosome, start, stop):
+def _run_query(engine, bucket, table_name, schema, q):
     """
-    Run a SQL query and return a results cursor for a region query.
-    """
-    sql = (
-        f'SELECT `path`, MIN(`start_offset`), MAX(`end_offset`) '
-        f'FROM `{table_name}` '
-        f'WHERE `chromosome` = %s AND `position` BETWEEN %s AND (%s - 1) '
-        f'GROUP BY `path` '
-        f'ORDER BY `path` ASC '
-    )
-
-    # fetch all the results
-    return engine.execute(sql, chromosome, start, stop)
-
-
-def _run_value_query(engine, table_name, q):
-    """
-    Run a SQL query and return a results cursor for a value query.
+    Construct a SQL query to fetch S3 objects and byte offsets. Run it and
+    return a cursor to the results along with an optional filter function
+    if the schema contains a locus.
     """
     sql = (
         f'SELECT `path`, MIN(`start_offset`), MAX(`end_offset`) '
         f'FROM `{table_name}` '
-        f'WHERE `value` = %s '
+        f'WHERE {schema.sql_filters} '
         f'GROUP BY `path` '
-        f'ORDER BY `path` ASC '
+        f'ORDER BY `path` ASC'
     )
 
-    # fetch all the results
-    return engine.execute(sql, q)
+    # if the schema has a locus, parse the query parameter
+    if schema.has_locus:
+        locus = lib.locus.parse(q[-1], allow_ens_lookup=True)
+
+        # replace the last query parameter with the locus
+        q = [*q[:-1], *locus]
+
+        # don't return rows that fail to overlap the locus
+        def overlaps(row):
+            return schema.locus_of_row(row).overlaps(*locus)
+
+        # execute the query
+        return engine.execute(sql, *q), overlaps
+
+    # execute the query
+    return engine.execute(sql, *q), None
 
 
 def _read_records(bucket, cursor):

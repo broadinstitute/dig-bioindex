@@ -43,7 +43,7 @@ def cli_index(index):
 
 @click.command(name='query')
 @click.argument('index')
-@click.argument('q')
+@click.argument('q', nargs=-1)
 def cli_query(index, q):
     config = lib.config.Config()
     table = config.table(index)
@@ -78,7 +78,7 @@ def cli_all(index, limit):
 
 @click.command(name='count')
 @click.argument('index')
-@click.argument('q')
+@click.argument('q', nargs=-1)
 def cli_count(index, q):
     config = lib.config.Config()
     table = config.table(index)
@@ -96,7 +96,8 @@ def cli_count(index, q):
 
 @click.command(name='keys')
 @click.argument('index')
-def cli_keys(index):
+@click.argument('q', nargs=-1)
+def cli_keys(index, q):
     config = lib.config.Config()
     table = config.table(index)
 
@@ -108,7 +109,7 @@ def cli_keys(index):
 
     # lookup the table class from the schema
     try:
-        for obj in lib.query.keys(engine, index, table.schema):
+        for obj in lib.query.keys(engine, index, table.schema, q):
             print(obj)
     except AssertionError:
         logging.error('Index %s is not indexed by value!', index)

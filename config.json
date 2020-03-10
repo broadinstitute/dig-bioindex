@@ -20,7 +20,7 @@
     },
     "Associations": {
       "s3_prefix": "associations/locus",
-      "schema": "chromosome:position"
+      "schema": "phenotype,chromosome:position"
     },
     "TopAssociations": {
       "s3_prefix": "associations/top",

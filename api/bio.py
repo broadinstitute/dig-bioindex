@@ -44,7 +44,12 @@ def api_keys(idx):
     """
     try:
         schema = config.table(idx).schema
-        keys, query_s = profile(lib.query.keys, engine, idx, schema)
+
+        # get the partial query parameters to apply
+        q = parse_query()
+
+        # execute the query
+        keys, query_s = profile(lib.query.keys, engine, idx, schema, q)
         fetched = list(keys)
 
         return {
@@ -69,9 +74,7 @@ def api_count(idx):
     Query the database and estimate how many records will be returned.
     """
     try:
-        q = flask.request.args.get('q')
-        if q is None:
-            raise ValueError('Missing query parameter')
+        q = parse_query(required=True)
 
         # lookup the schema for this index and perform the query
         schema = config.table(idx).schema
@@ -151,7 +154,9 @@ def api_query(idx):
     read the records from s3.
     """
     try:
-        q = flask.request.args.get('q')
+        q = parse_query(required=True)
+
+        # optional data format and record limit
         fmt = flask.request.args.get('format', 'row')
         limit = flask.request.args.get('limit', type=int)
 
@@ -237,6 +242,21 @@ def api_cont():
         flask.abort(400, f'Invalid, expired, or missing continuation token')
     except ValueError as e:
         flask.abort(400, str(e))
+
+
+def parse_query(required=False):
+    """
+    Get the `q` query parameter and split it by comma into query parameters
+    for a schema query.
+    """
+    q = flask.request.args.get('q')
+
+    # some query parameters are required
+    if required and q is None:
+        raise ValueError('Missing query parameter')
+
+    # if no query parameter is provided, assume empty string
+    return q.split(',') if q else []
 
 
 def fetch_records(records, fmt):

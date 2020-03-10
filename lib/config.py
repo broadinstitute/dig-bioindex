@@ -35,5 +35,5 @@ class Config:
         # convert the dictionary into a simple namespace object
         return types.SimpleNamespace(
             prefix=table['s3_prefix'],
-            schema=Schema.from_string(table['schema']),
+            schema=Schema(table['schema']),
         )
