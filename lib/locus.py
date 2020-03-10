@@ -37,6 +37,12 @@ class Locus(abc.ABC):
         """
         pass
 
+    def stepped_pos(self, pos):
+        """
+        Returns a position as a stepped position.
+        """
+        return (pos // self.LOCUS_STEP) * self.LOCUS_STEP
+
 
 class SNPLocus(Locus):
     """
@@ -60,7 +66,7 @@ class SNPLocus(Locus):
         A generator of record loci. Reduce the total number of records by
         dividing and placing them in buckets.
         """
-        yield self.chromosome, (self.position // self.LOCUS_STEP) * self.LOCUS_STEP
+        yield self.chromosome, self.stepped_pos(self.position)
 
     def overlaps(self, chromosome, start, stop):
         """

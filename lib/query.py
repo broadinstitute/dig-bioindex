@@ -101,14 +101,18 @@ def _run_query(engine, bucket, table_name, schema, q):
 
     # if the schema has a locus, parse the query parameter
     if schema.has_locus:
-        locus = lib.locus.parse(q[-1], allow_ens_lookup=True)
+        chromosome, start, stop = lib.locus.parse(q[-1], allow_ens_lookup=True)
+
+        # positions are stepped, and need to be between stepped ranges
+        step_start = (start // lib.locus.Locus.LOCUS_STEP) * lib.locus.Locus.LOCUS_STEP
+        step_stop = (stop // lib.locus.Locus.LOCUS_STEP) * lib.locus.Locus.LOCUS_STEP
 
         # replace the last query parameter with the locus
-        q = [*q[:-1], *locus]
+        q = [*q[:-1], chromosome, step_start, step_stop]
 
         # don't return rows that fail to overlap the locus
         def overlaps(row):
-            return schema.locus_of_row(row).overlaps(*locus)
+            return schema.locus_of_row(row).overlaps(chromosome, start, stop)
 
         # execute the query
         return engine.execute(sql, *q), overlaps

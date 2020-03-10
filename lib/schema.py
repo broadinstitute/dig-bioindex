@@ -121,7 +121,7 @@ class Schema(abc.ABC):
                 tests += 'AND '
 
             # add the chromosome and position
-            tests += '`chromosome`=%s AND `position` BETWEEN %s AND (%s - 1) '
+            tests += '`chromosome`=%s AND `position` BETWEEN %s AND %s '
 
         return tests
 
