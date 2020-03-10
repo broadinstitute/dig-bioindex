@@ -96,7 +96,7 @@ class Schema(abc.ABC):
         """
         if self.locus_class:
             for locus in self.locus_of_row(row).loci():
-                yield self.key_columns + locus
+                yield tuple(row[k] for k in self.key_columns) + locus
         else:
             yield self.key_columns
 
