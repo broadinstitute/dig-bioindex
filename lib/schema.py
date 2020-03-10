@@ -47,6 +47,10 @@ class Schema(abc.ABC):
                 self.index_columns.append(Column(column, String(200)))
                 self.key_columns.append(column)
 
+        # convert to tuples
+        self.key_columns = tuple(self.key_columns)
+        self.index_columns = tuple(self.index_columns)
+
     def __str__(self):
         return self.schema
 
@@ -92,9 +96,9 @@ class Schema(abc.ABC):
         """
         if self.locus_class:
             for locus in self.locus_of_row(row).loci():
-                yield tuple(row[k.name] for k in self.index_columns[:-2]) + locus
+                yield self.key_columns + locus
         else:
-            yield tuple(row[k] for k in self.index_columns)
+            yield self.key_columns
 
     def column_values(self, index_key):
         """

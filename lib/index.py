@@ -49,11 +49,11 @@ def build(engine, table_name, schema, bucket, s3_objects):
                 end_offset = start_offset + len(line) + 1  # newline
 
                 try:
-                    for k in schema.index_keys(row):
-                        if k in records:
-                            records[k]['end_offset'] = end_offset
+                    for key_tuple in schema.index_keys(row):
+                        if key_tuple in records:
+                            records[key_tuple]['end_offset'] = end_offset
                         else:
-                            records[k] = {
+                            records[key_tuple] = {
                                 'path': path,
                                 'start_offset': start_offset,
                                 'end_offset': end_offset,
@@ -62,7 +62,7 @@ def build(engine, table_name, schema, bucket, s3_objects):
                 except (KeyError, ValueError) as e:
                     logging.warning('%s; skipping...', e)
 
-                # update the progress bar
+                # update the progress bary
                 file_progress.update(incr=(end_offset // 1024) - file_progress.count)
 
                 # track current file offset

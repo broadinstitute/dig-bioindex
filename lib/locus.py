@@ -11,6 +11,8 @@ class Locus(abc.ABC):
     a RegionLocus.
     """
 
+    LOCUS_STEP = 20000
+
     def __init__(self, chromosome):
         """
         Ensure a valid chromosome.
@@ -55,9 +57,10 @@ class SNPLocus(Locus):
 
     def loci(self):
         """
-        A generator of record loci.
+        A generator of record loci. Reduce the total number of records by
+        dividing and placing them in buckets.
         """
-        yield self.chromosome, self.position
+        yield self.chromosome, self.position // self.LOCUS_STEP
 
     def overlaps(self, chromosome, start, stop):
         """
@@ -88,12 +91,11 @@ class RegionLocus(Locus):
         """
         A generator of record loci.
         """
-        step = 20000
-        start = self.start // step
-        stop = self.stop // step
+        start = self.start // self.LOCUS_STEP
+        stop = self.stop // self.LOCUS_STEP
 
         for position in range(start, stop + 1):
-            yield self.chromosome, position * step
+            yield self.chromosome, position * self.LOCUS_STEP
 
     def overlaps(self, chromosome, start, stop):
         """
