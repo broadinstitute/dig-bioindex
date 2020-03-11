@@ -12,7 +12,7 @@ import lib.s3
 import lib.schema
 
 
-def build(engine, table_name, schema, bucket, s3_objects, workers=1):
+def build(engine, table_name, schema, bucket, s3_objects):
     """
     Builds the index table for objects in S3.
     """
@@ -27,21 +27,16 @@ def build(engine, table_name, schema, bucket, s3_objects, workers=1):
     # collect all the s3 objects into a list so the size is known
     objects = list(s3_objects)
 
-    # create a thread executor to process multiple files at once
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
-
-    # create a task for each job
-    jobs = [pool.submit(_index_object, engine, bucket, obj, table, schema) for obj in objects]
-
     # as each job finishes...
     with enlighten.get_manager() as progress_mgr:
-        with progress_mgr.counter(total=len(jobs), unit='files', series=' #') as overall_progress:
-            for job in concurrent.futures.as_completed(jobs):
-                err = job.exception()
+        with progress_mgr.counter(total=len(objects), unit='files', series=' #') as overall_progress:
+            for obj in objects:
+                path, size = obj['Key'], obj['Size']
+                logging.info('Processing %s...', path)
 
-                # quit if there was a problem
-                if err is not None:
-                    raise err
+                # per-file progress of indexer
+                with progress_mgr.counter(total=size // 1024, unit='KB', series=' #', leave=False) as file_progress:
+                    _index_object(engine, bucket, path, table, schema, file_progress)
 
                 # tick the overall progress
                 overall_progress.update()
@@ -53,14 +48,10 @@ def build(engine, table_name, schema, bucket, s3_objects, workers=1):
     schema.build_index(engine, table)
 
 
-def _index_object(engine, bucket, s3_object, table, schema):
+def _index_object(engine, bucket, path, table, schema, counter):
     """
     Read a file in S3, index it, and insert records into the table.
     """
-    path, size = s3_object['Key'], s3_object['Size']
-    logging.info('Processing %s...', path)
-
-    # stream the file from s3
     content = lib.s3.read_object(bucket, path)
     start_offset = 0
     records = {}
@@ -84,6 +75,9 @@ def _index_object(engine, bucket, s3_object, table, schema):
         except (KeyError, ValueError) as e:
             logging.warning('%s; skipping...', e)
 
+        # update progress
+        counter.update(incr=(end_offset // 1024) - counter.count)
+
         # track current file offset
         start_offset = end_offset
 
@@ -100,6 +94,9 @@ def _bulk_insert(engine, table, records):
     """
     if len(records) == 0:
         return
+
+    # output number of records
+    logging.info(f'Writing {len(records):,} records...')
 
     # get the field names from the first record
     fieldnames = list(records[0].keys())

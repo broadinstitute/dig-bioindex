@@ -15,10 +15,9 @@ def cli():
 
 
 @click.command(name='index')
-@click.option('--workers', default=1, help='number of parallel worker threads')
 @click.argument('index')
 @click.confirmation_option(prompt='This will rebuild the index; continue? [y/N] ')
-def cli_index(index, workers):
+def cli_index(index):
     config = lib.config.Config()
     engine = lib.secrets.connect_to_mysql(config.rds_instance)
 
@@ -35,7 +34,7 @@ def cli_index(index, workers):
         s3_objects = lib.s3.list_objects(config.s3_bucket, table.prefix, exclude='_SUCCESS')
 
         # build the index
-        lib.index.build(engine, i, table.schema, config.s3_bucket, s3_objects, workers=workers)
+        lib.index.build(engine, i, table.schema, config.s3_bucket, s3_objects)
         logging.info('Successfully built index.')
 
     # finished building all indexes
