@@ -36,6 +36,11 @@
             <!-- search field -->
             <div class="w-50">
                 <div class="input-group mx-auto px-md-5 bg-white rounded">
+                    <div class="input-group-prepend">
+                        <select class="form-control" id="query" v-model="index">
+                            <option v-for="i in $store.indexes">{{i}}</option>
+                        </select>
+                    </div>
                     <input v-model="q" class="form-control"
                            aria-describedby="q"
                            placeholder="gene, region, variant, or trait"
@@ -49,7 +54,7 @@
                 </div>
                 <div class="sm mb-4">Examples:
                     <a href="#" @click="q='SLC30A8'">SLC30A8</a>,
-                    <a href="#" @click="q='chr9:21,940,000-22,190,000'">chr9:21,940,000-22,190,000</a>,
+                    <a href="#" @click="q='chr9:21940000-22190000'">chr9:21940000-22190000</a>,
                     <a href="#" @click="q='10:114750500:A:G'">10:114750500:A:G</a>,
                     <a href="#" @click="q='T2D'">T2D</a>
                 </div>
@@ -89,6 +94,7 @@
         // SPA state
         let store = new Vuex.Store({
             state: {
+                indexes: [],
                 loading: false,
                 searchTime: 0.0,
                 t0: 0.0,
@@ -97,6 +103,7 @@
             },
             mutations: {
                 setLoading: (state, flag) => state.loading = flag,
+                setIndexes: (state, indexes) => state.indexes = indexes,
                 setTraits: (state, traits) => state.traits = traits,
 
                 setResults(state, json) {
@@ -112,59 +119,40 @@
                 },
             },
             actions: {
+                async queryIndexes({ commit }) {
+                    let json = await fetch(`/api/indexes`)
+                        .then(resp => resp.json());
+
+                    commit('setIndexes', json.data);
+                },
+
                 async queryTraits({ commit }) {
-                    let json = await fetch(`/api/keys/Datasets`)
+                    let json = await fetch(`/api/portal/Phenotypes`)
                         .then(resp => resp.json());
 
                     commit('setTraits', json.data);
                 },
 
                 // perform the search
-                async search(context, { q }) {
+                async search(context, { index, q }) {
                     let p = encodeURIComponent(q);
 
                     context.commit('clearResults', true);
 
-                    if (context.state.traits.includes(q)) {
-                        // phenotype search
-                        let rs = await Promise.all([
-                            fetch(`/api/query/Datasets?q=${p}`).then(r => r.json()),
-                            fetch(`/api/query/PhenotypeAssociations?q=${p}`).then(r => r.json()),
-                            fetch(`/api/query/GlobalEnrichment?q=${p}`).then(r => r.json()),
-                        ]);
+                    // perform the query
+                    let json = await fetch(`/api/query/${index}?q=${p}`)
+                        .then(r => {
+                            if (!r.ok) {
+                                throw new Error(r.text());
+                            }
 
-                        context.commit('setResults', {
-                            'datasets': rs[0],
-                            'associations': rs[1],
-                            'globalEnrichment': rs[2],
+                            return r.json();
+                        })
+                        .catch(e => {
+                            return { "error": e };
                         });
-                    } else if (q.match(/^(rs\d+|([1-9]|1\d|2[012]|x|y|xy|mt?):\d+:[agct]+:[agct.]+)$/i)) {
-                        // variant search
-                        let rs = await Promise.all([
-                            fetch(`/api/query/Variants?q=${p}`).then(r => r.json()),
-                            fetch(`/api/query/DatasetAssociations?q=${p}`).then(r => r.json()),
-                        ]);
 
-                        context.commit('setResults', {
-                            'variants': rs[0],
-                            'datasetAssociations': rs[1],
-                        });
-                    } else {
-                        // region/gene search
-                        let rs = await Promise.all([
-                            fetch(`/api/query/Associations?q=${p}`).then(r => r.json()),
-                            fetch(`/api/query/TopAssociations?q=${p}`).then(r => r.json()),
-                            fetch(`/api/query/Genes?q=${p}`).then(r => r.json()),
-                            fetch(`/api/query/AnnotatedRegions?q=${p}`).then(r => r.json()),
-                        ]);
-
-                        context.commit('setResults', {
-                            'associations': rs[0],
-                            'topAssociations': rs[1],
-                            'genes': rs[2],
-                            'functionalRegions': rs[3],
-                        });
-                    }
+                    context.commit('setResults', json);
                 },
             },
         });
@@ -175,11 +163,13 @@
             store,
             data() {
                 return {
+                    index: null,
                     q: '',
                     viewer: new JSONViewer(),
                 }
             },
             created() {
+                this.$store.dispatch('queryIndexes');
                 this.$store.dispatch('queryTraits');
             },
             mounted() {

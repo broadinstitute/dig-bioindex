@@ -1,3 +1,4 @@
+import concurrent.futures
 import csv
 import enlighten
 import json
@@ -11,7 +12,7 @@ import lib.s3
 import lib.schema
 
 
-def build(engine, table_name, schema, bucket, s3_objects):
+def build(engine, table_name, schema, bucket, s3_objects, workers=1):
     """
     Builds the index table for objects in S3.
     """
@@ -26,74 +27,77 @@ def build(engine, table_name, schema, bucket, s3_objects):
     # collect all the s3 objects into a list so the size is known
     objects = list(s3_objects)
 
-    # progress bar management
+    # create a thread executor to process multiple files at once
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
+
+    # create a task for each job
+    jobs = [pool.submit(_index_object, engine, bucket, obj, table, schema) for obj in objects]
+
+    # as each job finishes...
     with enlighten.get_manager() as progress_mgr:
-        overall_progress = progress_mgr.counter(total=len(objects), unit='files', series=' #')
+        with progress_mgr.counter(total=len(jobs), unit='files', series=' #') as overall_progress:
+            for job in concurrent.futures.as_completed(jobs):
+                err = job.exception()
 
-        # process each s3 object
-        for obj in objects:
-            path, size = obj['Key'], obj['Size']
-            logging.info('Processing %s...', path)
+                # quit if there was a problem
+                if err is not None:
+                    raise err
 
-            # create progress bar for each file
-            file_progress = progress_mgr.counter(total=size // 1024, unit='KB', series=' #', leave=False)
+                # tick the overall progress
+                overall_progress.update()
 
-            # stream the file from s3
-            content = lib.s3.read_object(bucket, path)
-            start_offset = 0
-            records = {}
+    # finally, build the index after all inserts are done
+    logging.info('Building table index...')
 
-            # process each line (record)
-            for line_num, line in enumerate(content.iter_lines()):
-                row = json.loads(line)
-                end_offset = start_offset + len(line) + 1  # newline
+    # each table knows how to build its own index
+    schema.build_index(engine, table)
 
-                try:
-                    for key_tuple in schema.index_keys(row):
-                        if key_tuple in records:
-                            records[key_tuple]['end_offset'] = end_offset
-                        else:
-                            records[key_tuple] = {
-                                'path': path,
-                                'start_offset': start_offset,
-                                'end_offset': end_offset,
-                            }
 
-                except (KeyError, ValueError) as e:
-                    logging.warning('%s; skipping...', e)
+def _index_object(engine, bucket, s3_object, table, schema):
+    """
+    Read a file in S3, index it, and insert records into the table.
+    """
+    path, size = s3_object['Key'], s3_object['Size']
+    logging.info('Processing %s...', path)
 
-                # update the progress bary
-                file_progress.update(incr=(end_offset // 1024) - file_progress.count)
+    # stream the file from s3
+    content = lib.s3.read_object(bucket, path)
+    start_offset = 0
+    records = {}
 
-                # track current file offset
-                start_offset = end_offset
+    # process each line (record)
+    for line_num, line in enumerate(content.iter_lines()):
+        row = json.loads(line)
+        end_offset = start_offset + len(line) + 1  # newline
 
-            # transform all the records and collect them all into an insert batch
-            batch = [{**schema.column_values(k), **r} for k, r in records.items()]
+        try:
+            for key_tuple in schema.index_keys(row):
+                if key_tuple in records:
+                    records[key_tuple]['end_offset'] = end_offset
+                else:
+                    records[key_tuple] = {
+                        'path': path,
+                        'start_offset': start_offset,
+                        'end_offset': end_offset,
+                    }
 
-            # perform the insert in batches
-            _bulk_insert(engine, table, batch)
+        except (KeyError, ValueError) as e:
+            logging.warning('%s; skipping...', e)
 
-            # update progress
-            file_progress.close()
-            overall_progress.update()
+        # track current file offset
+        start_offset = end_offset
 
-        # done
-        overall_progress.close()
+    # transform all the records and collect them all into an insert batch
+    batch = [{**schema.column_values(k), **r} for k, r in records.items()]
 
-        # finally, build the index after all inserts are done
-        logging.info('Building table index...')
-
-        # each table knows how to build its own index
-        schema.build_index(engine, table)
+    # perform the insert in batches
+    _bulk_insert(engine, table, batch)
 
 
 def _bulk_insert(engine, table, records):
     """
     Insert all the records in batches.
     """
-    logging.info(f'Writing {len(records):,} records...')
-
     if len(records) == 0:
         return
 

@@ -94,11 +94,13 @@ class Schema(abc.ABC):
         A generator of list, where each tuple consists of the value for this
         index. A single row may produce multiple values.
         """
+        keys = tuple(row[k] for k in self.key_columns)
+
         if self.locus_class:
             for locus in self.locus_of_row(row).loci():
-                yield tuple(row[k] for k in self.key_columns) + locus
+                yield keys + locus
         else:
-            yield self.key_columns
+            yield keys
 
     def column_values(self, index_key):
         """

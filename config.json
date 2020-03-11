@@ -2,35 +2,48 @@
   "s3_bucket": "dig-bio-index",
   "rds_instance": "dig-bio-index",
   "tables": {
+    "Gene": {
+      "description": "Gene by name",
+      "s3_prefix": "genes/name",
+      "schema": "name"
+    },
     "Genes": {
+      "description": "Genes in region",
       "s3_prefix": "genes/region",
       "schema": "chromosome:start-end"
     },
     "PhenotypeAssociations": {
+      "description": "Genome-wide associations by trait",
       "s3_prefix": "associations/phenotype",
       "schema": "phenotype"
     },
     "GlobalEnrichment": {
+      "description": "Globally enriched tissues by trait",
       "s3_prefix": "global_enrichment/phenotype",
       "schema": "phenotype"
     },
     "AnnotatedRegions": {
+      "description": "Functional regions overlapping region",
       "s3_prefix": "regions",
       "schema": "chromosome:start-end"
     },
     "Associations": {
+      "description": "Variant associations by trait in region",
       "s3_prefix": "associations/locus",
       "schema": "phenotype,chromosome:position"
     },
     "TopAssociations": {
+      "description": "Most significant associations in region",
       "s3_prefix": "associations/top",
       "schema": "chromosome:position"
     },
     "Variants": {
+      "description": "Variant effects by ID",
       "s3_prefix": "variants",
       "schema": "varId"
     },
     "Datasets": {
+      "description": "Variant datasets by trait",
       "s3_prefix": "datasets/phenotype",
       "schema": "phenotype"
     },
