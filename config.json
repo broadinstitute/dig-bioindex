@@ -46,6 +46,6 @@
       "description": "Variants by locus",
       "s3_prefix": "variants",
       "schema": "chromosome:position"
-    },
+    }
   }
 }
