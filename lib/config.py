@@ -17,6 +17,10 @@ class Config:
         with open(os.getenv('BIOINDEX_CONFIG', 'config.json')) as fp:
             self.index = json.load(fp)
 
+            # parse all the table schemas
+            for table in self.tables.values():
+                table['schema'] = Schema(table['schema'])
+
     @property
     def s3_bucket(self):
         return self.index['s3_bucket']
@@ -30,10 +34,4 @@ class Config:
         return self.index['tables']
 
     def table(self, name):
-        table = self.tables[name]
-
-        # convert the dictionary into a simple namespace object
-        return types.SimpleNamespace(
-            prefix=table['s3_prefix'],
-            schema=Schema(table['schema']),
-        )
+        return types.SimpleNamespace(**self.tables[name])

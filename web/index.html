@@ -36,34 +36,35 @@
             <!-- search field -->
             <div class="w-50">
                 <div class="input-group mx-auto px-md-5 bg-white rounded">
-                    <div class="input-group-prepend">
-                        <select class="form-control" id="query" v-model="index">
-                            <option v-for="i in $store.indexes">{{i}}</option>
-                        </select>
-                    </div>
                     <input v-model="q" class="form-control"
                            aria-describedby="q"
-                           placeholder="gene, region, variant, or trait"
+                           placeholder=""
                            @change="" type="text">
                     <div class="input-group-append">
-                        <button type="button" class="btn btn-primary mb-3"
-                                @click="$store.dispatch('search', {q})">
-                            Search
-                        </button>
+                        <button type="button" class="btn btn-primary mb-3 dropdown-toggle" data-toggle="dropdown">Query</button>
+                        <div class="dropdown-menu">
+                            <a v-for="i in $store.state.indexes" class="dropdown-item" href="#"
+                               @click="$store.dispatch('search', {index: i, q})">
+                            {{i}}</a>
+                        </div>
                     </div>
                 </div>
-                <div class="sm mb-4">Examples:
-                    <a href="#" @click="q='SLC30A8'">SLC30A8</a>,
-                    <a href="#" @click="q='chr9:21940000-22190000'">chr9:21940000-22190000</a>,
-                    <a href="#" @click="q='10:114750500:A:G'">10:114750500:A:G</a>,
-                    <a href="#" @click="q='T2D'">T2D</a>
+                <div class="text-sm mb-4">
+                    Enter search term(s) and query an index...
+                </div>
+
+                <!-- show the API call being made -->
+                <div v-if="$store.state.call" class="mb-4">
+                    <a class="alert alert-info" :href="$store.state.call">
+                        {{ $store.state.call }}
+                    </a>
                 </div>
 
                 <!-- output JSON results -->
                 <div v-if="$store.state.loading">
                     <button class="btn btn-light btn-sm" type="button" disabled>
                         <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                        Searching...
+                        Searching {{$store.state.loading}}...
                     </button>
                 </div>
 
@@ -95,25 +96,26 @@
         let store = new Vuex.Store({
             state: {
                 indexes: [],
-                loading: false,
+                loading: null,
                 searchTime: 0.0,
+                call: null,
                 t0: 0.0,
                 traits: [],
                 results: {},
             },
             mutations: {
-                setLoading: (state, flag) => state.loading = flag,
                 setIndexes: (state, indexes) => state.indexes = indexes,
                 setTraits: (state, traits) => state.traits = traits,
+                setCall: (state, call) => state.call = call,
 
                 setResults(state, json) {
-                    state.loading = false;
+                    state.loading = null;
                     state.results = json;
                     state.searchTime = Date.now() - state.t0;
                 },
 
-                clearResults(state, loading) {
-                    state.loading = loading;
+                startLoading(state, index) {
+                    state.loading = index;
                     state.results = {};
                     state.t0 = Date.now();
                 },
@@ -126,21 +128,16 @@
                     commit('setIndexes', json.data);
                 },
 
-                async queryTraits({ commit }) {
-                    let json = await fetch(`/api/portal/Phenotypes`)
-                        .then(resp => resp.json());
-
-                    commit('setTraits', json.data);
-                },
-
                 // perform the search
                 async search(context, { index, q }) {
                     let p = encodeURIComponent(q);
+                    let call = `/api/query/${index}?q=${p}`;
 
-                    context.commit('clearResults', true);
+                    context.commit('setCall', call);
+                    context.commit('startLoading', index);
 
                     // perform the query
-                    let json = await fetch(`/api/query/${index}?q=${p}`)
+                    let json = await fetch(call)
                         .then(r => {
                             if (!r.ok) {
                                 throw new Error(r.text());
@@ -163,14 +160,12 @@
             store,
             data() {
                 return {
-                    index: null,
                     q: '',
                     viewer: new JSONViewer(),
                 }
             },
             created() {
                 this.$store.dispatch('queryIndexes');
-                this.$store.dispatch('queryTraits');
             },
             mounted() {
                 let el = document.querySelector('#results');
@@ -185,7 +180,7 @@
             },
             watch: {
                 '$store.state.results': function(json) {
-                    this.viewer.showJSON(json, -1, 2);
+                    this.viewer.showJSON(json, -1, 1);
                 },
             },
         });

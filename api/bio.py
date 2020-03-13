@@ -100,7 +100,7 @@ def api_all(idx):
     Query the database and return ALL records for a given index.
     """
     try:
-        s3_prefix = config.table(idx).prefix
+        s3_prefix = config.table(idx).s3_prefix
 
         # optional parameters
         fmt = flask.request.args.get('format', 'row')

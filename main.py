@@ -31,7 +31,7 @@ def cli_index(index):
             raise KeyError(f'Unknown index: {i}')
 
         # connect to mysql and get an s3 object listing
-        s3_objects = lib.s3.list_objects(config.s3_bucket, table.prefix, exclude='_SUCCESS')
+        s3_objects = lib.s3.list_objects(config.s3_bucket, table.s3_prefix, exclude='_SUCCESS')
 
         # build the index
         lib.index.build(engine, i, table.schema, config.s3_bucket, s3_objects)
@@ -65,7 +65,7 @@ def cli_query(index, q):
 def cli_all(index, limit):
     config = lib.config.Config()
     table = config.table(index)
-    records = lib.query.fetch_all(config.s3_bucket, table.prefix)
+    records = lib.query.fetch_all(config.s3_bucket, table.s3_prefix)
 
     # prevent an insane number of results
     if limit:

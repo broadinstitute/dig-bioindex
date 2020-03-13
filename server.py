@@ -1,3 +1,4 @@
+import colorama
 import dotenv
 import flask
 import flask_cors
@@ -16,6 +17,9 @@ flask_cors.CORS(app)
 # resource service routes
 app.register_blueprint(api.bio.routes)
 app.register_blueprint(api.portal.routes)
+
+# allow ansi colors
+colorama.init()
 
 
 @app.route('/')
