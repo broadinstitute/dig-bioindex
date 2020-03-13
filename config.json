@@ -8,7 +8,7 @@
       "schema": "name"
     },
     "Genes": {
-      "description": "Genes in region",
+      "description": "Genes overlapping locus",
       "s3_prefix": "genes/region",
       "schema": "chromosome:start-end"
     },
@@ -23,33 +23,29 @@
       "schema": "phenotype"
     },
     "AnnotatedRegions": {
-      "description": "Functional regions overlapping region",
+      "description": "Functional regions overlapping locus",
       "s3_prefix": "regions",
       "schema": "chromosome:start-end"
     },
     "Associations": {
-      "description": "Variant associations by trait in region",
+      "description": "Variant associations by trait in locus",
       "s3_prefix": "associations/locus",
       "schema": "phenotype,chromosome:position"
     },
     "TopAssociations": {
-      "description": "Most significant associations in region",
+      "description": "Most significant associations in locus",
       "s3_prefix": "associations/top",
       "schema": "chromosome:position"
     },
-    "Variants": {
-      "description": "Variant effects by ID",
+    "Variant": {
+      "description": "Variants by ID",
       "s3_prefix": "variants",
       "schema": "varId"
     },
-    "Datasets": {
-      "description": "Variant datasets by trait",
-      "s3_prefix": "datasets/phenotype",
-      "schema": "phenotype"
+    "Variants": {
+      "description": "Variants by locus",
+      "s3_prefix": "variants",
+      "schema": "chromosome:position"
     },
-    "DatasetAssociations": {
-      "s3_prefix": "associations/dataset",
-      "schema": "varId"
-    }
   }
 }
