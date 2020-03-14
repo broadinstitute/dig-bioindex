@@ -58,8 +58,8 @@
 
                 <!-- show the API call being made -->
                 <div v-if="$store.state.call" class="mb-4">
-                    <a id="api-call" class="alert alert-info" :href="$store.state.call" target="_blank">
-                        {{ $store.state.call }}
+                    <a id="api-call" class="alert alert-info" :href="$store.state.call.href" target="_blank">
+                        {{ $store.state.link }}
                     </a>
                 </div>
 
@@ -154,13 +154,16 @@
                 // perform the search
                 async search(context, { index, q }) {
                     let p = encodeURIComponent(q);
-                    let call = `/api/query/${index}?q=${p}`;
 
-                    context.commit('setCall', call);
+                    // don't url encode the query parameter for the example call
+                    let link = `/api/query/${index}?q=${p}`;
+                    let href = `/api/query/${index}?q=${q}`;
+
+                    context.commit('setCall', {href, link});
                     context.commit('startLoading', index);
 
                     // perform the query
-                    let resp = await fetch(call);
+                    let resp = await fetch(href);
 
                     if (resp.ok) {
                         $('#api-call').removeClass('alert-danger').addClass('alert-info');
