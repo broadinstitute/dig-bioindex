@@ -41,11 +41,11 @@ def build(engine, table_name, schema, bucket, s3_objects):
                 # tick the overall progress
                 overall_progress.update()
 
-    # finally, build the index after all inserts are done
-    logging.info('Building table index...')
+        # finally, build the index after all inserts are done
+        logging.info('Building table index...')
 
-    # each table knows how to build its own index
-    schema.build_index(engine, table)
+        # each table knows how to build its own index
+        schema.build_index(engine, table)
 
 
 def _index_object(engine, bucket, path, table, schema, counter):

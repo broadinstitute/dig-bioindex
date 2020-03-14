@@ -1,4 +1,5 @@
 import click
+import colorama
 import dotenv
 import logging
 
@@ -133,5 +134,10 @@ if __name__ == '__main__':
     # load dot files
     dotenv.load_dotenv()
 
-    # run command
-    cli()
+    # initialize ansi terminal
+    colorama.init()
+
+    try:
+        cli()
+    finally:
+        colorama.deinit()

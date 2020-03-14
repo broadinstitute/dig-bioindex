@@ -1,6 +1,7 @@
 botocore
 boto3
 click
+colorama
 python-dotenv
 enlighten
 flask
