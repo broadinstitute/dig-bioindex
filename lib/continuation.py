@@ -3,6 +3,8 @@ import threading
 import time
 import secrets
 
+import lib.reader
+
 
 _cont_map = {}
 _cont_lock = threading.RLock()
@@ -10,7 +12,7 @@ _cont_lock = threading.RLock()
 
 @dataclasses.dataclass()
 class Cont:
-    records: any
+    reader: lib.reader.RecordReader
     idx: str
     q: str = None
     fmt: str = 'row'

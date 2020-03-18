@@ -32,7 +32,8 @@ class Schema(abc.ABC):
 
         # add table columns that will be indexed
         for column in self.schema_columns:
-            assert self.locus_class is None, f'Invalid index schema: {self.schema}'
+            if self.locus_class is not None:
+                raise ValueError(f'Invalid schema (locus must be last): {self.schema}')
 
             # is this "column" name a locus?
             self.locus_class, self.locus_columns = parse_columns(column)
@@ -84,7 +85,7 @@ class Schema(abc.ABC):
         """
         Returns the locus class of a row in s3 for the columns of this schema.
         """
-        assert self.locus_class is not None, f'Index schema has not locus: {self.schema}'
+        assert self.locus_class is not None, f'Index schema does not have a locus: {self.schema}'
 
         # instantiate the locus for this row
         return self.locus_class(*(row.get(col) for col in self.locus_columns if col))

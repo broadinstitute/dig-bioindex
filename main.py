@@ -52,28 +52,24 @@ def cli_query(index, q):
     if not table:
         raise KeyError(f'Unknown index: {index}')
 
-    # connect to mysql
+    # connect to mysql and fetch the results
     engine = lib.secrets.connect_to_mysql(config.rds_instance)
+    reader = lib.query.fetch(engine, config.s3_bucket, index, table.schema, q)
 
-    # lookup the table class from the schema
-    for obj in lib.query.fetch(engine, config.s3_bucket, index, table.schema, q):
-        print(obj)
+    # dump all the records
+    for record in reader.records:
+        print(record)
 
 
 @click.command(name='all')
 @click.argument('index')
-@click.option('--limit', type=int)
-def cli_all(index, limit):
+def cli_all(index):
     config = lib.config.Config()
     table = config.table(index)
-    records = lib.query.fetch_all(config.s3_bucket, table.s3_prefix)
-
-    # prevent an insane number of results
-    if limit:
-        records = map(lambda r: r[1], zip(range(limit), records))
+    reader = lib.query.fetch_all(config.s3_bucket, table.s3_prefix)
 
     # lookup the table class from the schema
-    for obj in records:
+    for obj in reader.records:
         print(obj)
 
 
