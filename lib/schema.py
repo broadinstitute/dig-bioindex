@@ -9,6 +9,15 @@ class Schema(abc.ABC):
     Each table has a particular schema associated with it that defines
     how is is indexed. The two supported schemas are by locus and by
     value.
+
+    Multiple indexes can be built per index. To do this, indexes are
+    separated by the '|' character. Some example schemas:
+
+    "phenotype"
+    "name|dbSNP"
+    "chr:pos"
+    "chromosome:start-stop"
+    "phenotype,chromosome:start-stop"
     """
 
     def __init__(self, schema):
