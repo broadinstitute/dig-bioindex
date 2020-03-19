@@ -11,7 +11,7 @@ import api.portal
 dotenv.load_dotenv()
 
 # create flask app; this will load .env
-app = flask.Flask(__name__, static_folder='web/static')
+app = flask.Flask(__name__, static_url_path='', static_folder='web/static')
 flask_cors.CORS(app)
 
 # resource service routes

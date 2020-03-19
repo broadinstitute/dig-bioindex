@@ -9,6 +9,15 @@ class Schema(abc.ABC):
     Each table has a particular schema associated with it that defines
     how is is indexed. The two supported schemas are by locus and by
     value.
+
+    Multiple indexes can be built per index. To do this, indexes are
+    separated by the '|' character. Some example schemas:
+
+    "phenotype"
+    "name|dbSNP"
+    "chr:pos"
+    "chromosome:start-stop"
+    "phenotype,chromosome:start-stop"
     """
 
     def __init__(self, schema):
@@ -32,7 +41,8 @@ class Schema(abc.ABC):
 
         # add table columns that will be indexed
         for column in self.schema_columns:
-            assert self.locus_class is None, f'Invalid index schema: {self.schema}'
+            if self.locus_class is not None:
+                raise ValueError(f'Invalid schema (locus must be last): {self.schema}')
 
             # is this "column" name a locus?
             self.locus_class, self.locus_columns = parse_columns(column)
@@ -84,7 +94,7 @@ class Schema(abc.ABC):
         """
         Returns the locus class of a row in s3 for the columns of this schema.
         """
-        assert self.locus_class is not None, f'Index schema has not locus: {self.schema}'
+        assert self.locus_class is not None, f'Index schema does not have a locus: {self.schema}'
 
         # instantiate the locus for this row
         return self.locus_class(*(row.get(col) for col in self.locus_columns if col))

@@ -1,5 +1,6 @@
 import dotenv
 import flask
+import itertools
 import os
 
 import lib.config
@@ -20,8 +21,8 @@ routes = flask.Blueprint('api', __name__)
 # connect to database
 engine = lib.secrets.connect_to_mysql(config.rds_instance, schema='bio')
 
-# max number of records to return per request
-RECORD_LIMIT = int(os.getenv('BIOINDEX_RECORD_LIMIT', 5000))
+# max number of bytes to return per request
+RESPONSE_LIMIT = int(os.getenv('BIOINDEX_RESPONSE_LIMIT', 1 * 1024 * 1024))
 
 
 @routes.route('/api/indexes')
@@ -111,19 +112,19 @@ def api_all(idx):
             raise ValueError('Invalid output format')
 
         # lookup the schema for this index and perform the query
-        records, query_s = profile(lib.query.fetch_all, config.s3_bucket, s3_prefix)
+        reader, query_s = profile(lib.query.fetch_all, config.s3_bucket, s3_prefix)
 
         # use a zip to limit the total number of records that will be read
         if limit is not None:
-            records = map(lambda x: x[1], zip(range(limit), records))
+            reader.limit(limit)
 
         # fetch the records from S3
-        fetched_records, fetch_s, count = fetch_records(records, fmt)
-        needs_cont = count == RECORD_LIMIT
+        fetched_records, fetch_s, count = fetch_records(reader, fmt)
+        needs_cont = reader.bytes_read < reader.bytes_total
 
         # make a continuation token if there are more records left to read
         cont_token = None if not needs_cont else lib.continuation.make_continuation(
-            records=records,
+            reader=reader,
             idx=idx,
             fmt=fmt,
             limit=limit,
@@ -136,6 +137,10 @@ def api_all(idx):
             },
             'index': idx,
             'count': count,
+            'progress': {
+                'bytes_read': reader.bytes_read,
+                'bytes_total': reader.bytes_total,
+            },
             'page': 1,
             'limit': limit,
             'data': fetched_records,
@@ -168,19 +173,19 @@ def api_query(idx):
 
         # lookup the schema for this index and perform the query
         schema = config.table(idx).schema
-        records, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, schema, q)
+        reader, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, schema, q)
 
         # use a zip to limit the total number of records that will be read
         if limit is not None:
-            records = map(lambda x: x[1], zip(range(limit), records))
+            reader.limit(limit)
 
         # fetch the records from s3
-        fetched_records, fetch_s, count = fetch_records(records, fmt)
-        needs_cont = count == RECORD_LIMIT
+        fetched_records, fetch_s, count = fetch_records(reader, fmt)
+        needs_cont = reader.bytes_read < reader.bytes_total
 
         # make a continuation token if there are more records left to read
         cont_token = None if not needs_cont else lib.continuation.make_continuation(
-            records=records,
+            reader=reader,
             idx=idx,
             q=q,
             fmt=fmt,
@@ -195,6 +200,10 @@ def api_query(idx):
             'index': idx,
             'q': q,
             'count': count,
+            'progress': {
+                'bytes_read': reader.bytes_read,
+                'bytes_total': reader.bytes_total,
+            },
             'page': 1,
             'limit': limit,
             'data': fetched_records,
@@ -216,8 +225,8 @@ def api_cont():
         cont = lib.continuation.lookup_continuation(token)
 
         # fetch more records from S3
-        fetched_records, fetch_s, count = fetch_records(cont.records, cont.fmt)
-        needs_cont = count == RECORD_LIMIT
+        fetched_records, fetch_s, count = fetch_records(cont.reader, cont.fmt)
+        needs_cont = cont.reader.bytes_read < cont.reader.bytes_total
 
         # remove the continuation
         token = lib.continuation.remove_continuation(token)
@@ -233,6 +242,10 @@ def api_cont():
             'index': cont.idx,
             'q': cont.q,
             'count': count,
+            'progress': {
+                'bytes_read': cont.reader.bytes_read,
+                'bytes_total': cont.reader.bytes_total,
+            },
             'page': cont.page,
             'limit': cont.limit,
             'data': fetched_records,
@@ -259,22 +272,25 @@ def parse_query(required=False):
     return q.split(',') if q else []
 
 
-def fetch_records(records, fmt):
+def fetch_records(reader, fmt):
     """
-    Reads up to LIMIT records from a record generator and formats
-    them according to the fmt parameter before returning them.
+    Reads up to RESPONSE_LIMIT bytes from a RecordReader and format
+    them before returning.
 
-    Returns the zipped records, how long it took (in seconds) along
-    with the count.
+    Returns the records, how long it took (in seconds), along with the
+    count of how many were read.
 
     NOTE: Use the count returned and NOT len(records), since the
     length of column-major format will the number of columns and not
     the number of records!
     """
-    zipped_records = map(lambda x: x[1], zip(range(RECORD_LIMIT), records))
+    limit = reader.bytes_read + RESPONSE_LIMIT
+
+    # keep reading records as long as the bytes read is under the limit
+    take = itertools.takewhile(lambda x: reader.bytes_read < limit, reader.records)
 
     # profile how long it takes to fetch the records from s3
-    fetched_records, fetch_s = profile(list, zipped_records)
+    fetched_records, fetch_s = profile(list, take)
     count = len(fetched_records)
 
     # transform a list of dictionaries into a dictionary of lists
