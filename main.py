@@ -23,19 +23,19 @@ def cli_index(index):
     engine = lib.secrets.connect_to_mysql(config.rds_instance)
 
     # which tables will be indexed? allow "all" with "*"
-    idx = list(config.tables.keys()) if index == '*' else index.split(',')
+    indexes = list(config.indexes.keys()) if index == '*' else index.split(',')
 
-    for i in idx:
-        table = config.table(i)
+    for i in indexes:
+        idx = config.index(i)
 
-        if not table:
+        if not idx:
             raise KeyError(f'Unknown index: {i}')
 
         # connect to mysql and get an s3 object listing
-        s3_objects = lib.s3.list_objects(config.s3_bucket, table.s3_prefix, exclude='_SUCCESS')
+        s3_objects = lib.s3.list_objects(config.s3_bucket, idx.s3_prefix, exclude='_SUCCESS')
 
         # build the index
-        lib.index.build(engine, i, table.schema, config.s3_bucket, s3_objects)
+        lib.index.build(engine, idx, config.s3_bucket, s3_objects)
         logging.info('Successfully built index.')
 
     # finished building all indexes
@@ -47,14 +47,14 @@ def cli_index(index):
 @click.argument('q', nargs=-1)
 def cli_query(index, q):
     config = lib.config.Config()
-    table = config.table(index)
+    idx = config.index(index)
 
-    if not table:
+    if not idx:
         raise KeyError(f'Unknown index: {index}')
 
     # connect to mysql and fetch the results
     engine = lib.secrets.connect_to_mysql(config.rds_instance)
-    reader = lib.query.fetch(engine, config.s3_bucket, index, table.schema, q)
+    reader = lib.query.fetch(engine, config.s3_bucket, idx, q)
 
     # dump all the records
     for record in reader.records:
@@ -65,8 +65,8 @@ def cli_query(index, q):
 @click.argument('index')
 def cli_all(index):
     config = lib.config.Config()
-    table = config.table(index)
-    reader = lib.query.fetch_all(config.s3_bucket, table.s3_prefix)
+    idx = config.index(index)
+    reader = lib.query.fetch_all(config.s3_bucket, idx.s3_prefix)
 
     # lookup the table class from the schema
     for obj in reader.records:
@@ -78,16 +78,16 @@ def cli_all(index):
 @click.argument('q', nargs=-1)
 def cli_count(index, q):
     config = lib.config.Config()
-    table = config.table(index)
+    idx = config.index(index)
 
-    if not table:
+    if not idx:
         raise KeyError(f'Unknown index: {index}')
 
     # connect to mysql
     engine = lib.secrets.connect_to_mysql(config.rds_instance)
 
     # lookup the table class from the schema
-    count = lib.query.count(engine, config.s3_bucket, index, table.schema, q)
+    count = lib.query.count(engine, config.s3_bucket, idx, q)
     print(count)
 
 
@@ -96,9 +96,9 @@ def cli_count(index, q):
 @click.argument('q', nargs=-1)
 def cli_keys(index, q):
     config = lib.config.Config()
-    table = config.table(index)
+    idx = config.index(index)
 
-    if not table:
+    if not idx:
         raise KeyError(f'Unknown index: {index}')
 
     # connect to mysql
@@ -106,7 +106,7 @@ def cli_keys(index, q):
 
     # lookup the table class from the schema
     try:
-        for obj in lib.query.keys(engine, index, table.schema, q):
+        for obj in lib.query.keys(engine, idx, q):
             print(obj)
     except AssertionError:
         logging.error('Index %s is not indexed by value!', index)

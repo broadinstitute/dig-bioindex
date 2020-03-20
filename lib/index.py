@@ -12,12 +12,12 @@ import lib.s3
 import lib.schema
 
 
-def build(engine, table_name, schema, bucket, s3_objects):
+def build(engine, index, bucket, s3_objects):
     """
     Builds the index table for objects in S3.
     """
     meta = sqlalchemy.MetaData()
-    table = schema.build_table(table_name, meta)
+    table = index.schema.build_table(index.table, meta)
 
     # create the index table (drop any existing table already there)
     logging.info('Creating %s table...', table.name)
@@ -36,7 +36,7 @@ def build(engine, table_name, schema, bucket, s3_objects):
 
                 # per-file progress of indexer
                 with progress_mgr.counter(total=size // 1024, unit='KB', series=' #', leave=False) as file_progress:
-                    _index_object(engine, bucket, path, table, schema, file_progress)
+                    _index_object(engine, bucket, path, table, index.schema, file_progress)
 
                 # tick the overall progress
                 overall_progress.update()
@@ -45,7 +45,7 @@ def build(engine, table_name, schema, bucket, s3_objects):
         logging.info('Building table index...')
 
         # each table knows how to build its own index
-        schema.build_index(engine, table)
+        index.schema.build_index(engine, table)
 
 
 def _index_object(engine, bucket, path, table, schema, counter):
