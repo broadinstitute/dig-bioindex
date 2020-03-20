@@ -1,50 +1,59 @@
 {
   "s3_bucket": "dig-bio-index",
   "rds_instance": "dig-bio-index",
-  "tables": {
+  "indexes": {
     "Gene": {
       "comment": "gene by name",
       "s3_prefix": "genes/name",
+      "table": "Gene",
       "schema": "name"
     },
     "Genes": {
       "comment": "genes overlapping locus",
       "s3_prefix": "genes/region",
+      "table": "Genes",
       "schema": "chromosome:start-end"
     },
     "PhenotypeAssociations": {
       "comment": "genome-wide associations by trait",
       "s3_prefix": "associations/phenotype",
+      "table": "PhenotypeAssociations",
       "schema": "phenotype"
     },
     "GlobalEnrichment": {
       "comment": "globally enriched tissues by trait",
       "s3_prefix": "global_enrichment/phenotype",
+      "table": "GlobalEnrichment",
       "schema": "phenotype"
     },
     "AnnotatedRegions": {
       "comment": "functional regions overlapping locus",
       "s3_prefix": "regions",
+      "table": "AnnotatedRegions",
       "schema": "chromosome:start-end"
     },
     "Associations": {
       "comment": "variant associations by trait overlapping locus",
       "s3_prefix": "associations/locus",
+      "table": "Associations",
       "schema": "phenotype,chromosome:position"
     },
     "TopAssociations": {
       "comment": "most significant associations in locus",
       "s3_prefix": "associations/top",
+      "table": "TopAssociations",
       "schema": "chromosome:position"
     },
     "Variant": {
       "comment": "lookup variant by ID",
       "s3_prefix": "variants",
+      "table": "Variant",
       "schema": "varId"
     },
     "Variants": {
       "comment": "variants by locus",
       "s3_prefix": "variants",
+      "table": "Variants",
       "schema": "chromosome:position"
     }
   }

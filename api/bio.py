@@ -30,7 +30,7 @@ def api_indexes():
     """
     Return all queryable tables.
     """
-    indexes = config.tables.keys()
+    indexes = config.indexes.keys()
 
     return {
         'count': len(indexes),
@@ -38,39 +38,39 @@ def api_indexes():
     }
 
 
-@routes.route('/api/keys/<idx>')
-def api_keys(idx):
+@routes.route('/api/keys/<index>')
+def api_keys(index):
     """
     Return all the unique keys for a value-indexed table.
     """
     try:
-        schema = config.table(idx).schema
+        idx = config.index(index)
 
         # get the partial query parameters to apply
         q = parse_query()
 
         # execute the query
-        keys, query_s = profile(lib.query.keys, engine, idx, schema, q)
+        keys, query_s = profile(lib.query.keys, engine, idx, q)
         fetched = list(keys)
 
         return {
             'profile': {
                 'query': query_s,
             },
-            'index': idx,
+            'index': index,
             'count': len(fetched),
             'data': list(fetched),
         }
     except AssertionError:
-        flask.abort(400, f'Index {idx} is not indexed by value')
+        flask.abort(400, f'Index {index} is not indexed by value')
     except KeyError:
-        flask.abort(404, f'Unknown index: {idx}')
+        flask.abort(404, f'Unknown index: {index}')
     except ValueError as e:
         flask.abort(400, str(e))
 
 
-@routes.route('/api/count/<idx>')
-def api_count(idx):
+@routes.route('/api/count/<index>')
+def api_count(index):
     """
     Query the database and estimate how many records will be returned.
     """
@@ -78,30 +78,30 @@ def api_count(idx):
         q = parse_query(required=True)
 
         # lookup the schema for this index and perform the query
-        schema = config.table(idx).schema
-        count, query_s = profile(lib.query.count, engine, config.s3_bucket, idx, schema, q)
+        idx = config.index(index)
+        count, query_s = profile(lib.query.count, engine, config.s3_bucket, idx, q)
 
         return {
             'profile': {
                 'query': query_s,
             },
-            'index': idx,
+            'index': index,
             'q': q,
             'count': count,
         }
     except KeyError:
-        flask.abort(400, f'Invalid index: {idx}')
+        flask.abort(400, f'Invalid index: {index}')
     except ValueError as e:
         flask.abort(400, str(e))
 
 
-@routes.route('/api/all/<idx>')
-def api_all(idx):
+@routes.route('/api/all/<index>')
+def api_all(index):
     """
     Query the database and return ALL records for a given index.
     """
     try:
-        s3_prefix = config.table(idx).s3_prefix
+        idx = config.index(index)
 
         # optional parameters
         fmt = flask.request.args.get('format', 'row')
@@ -112,22 +112,21 @@ def api_all(idx):
             raise ValueError('Invalid output format')
 
         # lookup the schema for this index and perform the query
-        reader, query_s = profile(lib.query.fetch_all, config.s3_bucket, s3_prefix)
+        reader, query_s = profile(lib.query.fetch_all, config.s3_bucket, idx.s3_prefix)
 
         # use a zip to limit the total number of records that will be read
         if limit is not None:
-            reader.limit(limit)
+            reader.set_limit(limit)
 
         # fetch the records from S3
         fetched_records, fetch_s, count = fetch_records(reader, fmt)
-        needs_cont = reader.bytes_read < reader.bytes_total
+        needs_cont = not reader.at_end
 
         # make a continuation token if there are more records left to read
         cont_token = None if not needs_cont else lib.continuation.make_continuation(
             reader=reader,
-            idx=idx,
+            idx=index,
             fmt=fmt,
-            limit=limit,
         )
 
         return {
@@ -135,25 +134,25 @@ def api_all(idx):
                 'query': query_s,
                 'fetch': fetch_s,
             },
-            'index': idx,
+            'index': index,
             'count': count,
             'progress': {
                 'bytes_read': reader.bytes_read,
                 'bytes_total': reader.bytes_total,
             },
             'page': 1,
-            'limit': limit,
+            'limit': reader.limit,
             'data': fetched_records,
             'continuation': cont_token,
         }
     except KeyError:
-        flask.abort(400, f'Invalid index: {idx}')
+        flask.abort(400, f'Invalid index: {index}')
     except ValueError as e:
         flask.abort(400, str(e))
 
 
-@routes.route('/api/query/<idx>')
-def api_query(idx):
+@routes.route('/api/query/<index>')
+def api_query(index):
     """
     Query the database for records matching the query parameter and
     read the records from s3.
@@ -172,24 +171,23 @@ def api_query(idx):
             raise ValueError('Invalid output format')
 
         # lookup the schema for this index and perform the query
-        schema = config.table(idx).schema
-        reader, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, schema, q)
+        idx = config.index(index)
+        reader, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, q)
 
         # use a zip to limit the total number of records that will be read
         if limit is not None:
-            reader.limit(limit)
+            reader.set_limit(limit)
 
         # fetch the records from s3
         fetched_records, fetch_s, count = fetch_records(reader, fmt)
-        needs_cont = reader.bytes_read < reader.bytes_total
+        needs_cont = not reader.at_end
 
         # make a continuation token if there are more records left to read
         cont_token = None if not needs_cont else lib.continuation.make_continuation(
             reader=reader,
-            idx=idx,
+            idx=index,
             q=q,
             fmt=fmt,
-            limit=limit,
         )
 
         return {
@@ -197,7 +195,7 @@ def api_query(idx):
                 'query': query_s,
                 'fetch': fetch_s,
             },
-            'index': idx,
+            'index': index,
             'q': q,
             'count': count,
             'progress': {
@@ -205,12 +203,12 @@ def api_query(idx):
                 'bytes_total': reader.bytes_total,
             },
             'page': 1,
-            'limit': limit,
+            'limit': reader.limit,
             'data': fetched_records,
             'continuation': cont_token,
         }
     except KeyError:
-        flask.abort(400, f'Invalid index: {idx}')
+        flask.abort(400, f'Invalid index: {index}')
     except ValueError as e:
         flask.abort(400, str(e))
 
@@ -226,7 +224,7 @@ def api_cont():
 
         # fetch more records from S3
         fetched_records, fetch_s, count = fetch_records(cont.reader, cont.fmt)
-        needs_cont = cont.reader.bytes_read < cont.reader.bytes_total
+        needs_cont = not cont.reader.at_end
 
         # remove the continuation
         token = lib.continuation.remove_continuation(token)
@@ -247,7 +245,7 @@ def api_cont():
                 'bytes_total': cont.reader.bytes_total,
             },
             'page': cont.page,
-            'limit': cont.limit,
+            'limit': cont.reader.limit,
             'data': fetched_records,
             'continuation': token,
         }
@@ -284,10 +282,10 @@ def fetch_records(reader, fmt):
     length of column-major format will the number of columns and not
     the number of records!
     """
-    limit = reader.bytes_read + RESPONSE_LIMIT
+    bytes_limit = reader.bytes_read + RESPONSE_LIMIT
 
     # keep reading records as long as the bytes read is under the limit
-    take = itertools.takewhile(lambda x: reader.bytes_read < limit, reader.records)
+    take = itertools.takewhile(lambda x: reader.bytes_read < bytes_limit, reader.records)
 
     # profile how long it takes to fetch the records from s3
     fetched_records, fetch_s = profile(list, take)

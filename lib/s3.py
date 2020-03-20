@@ -48,6 +48,8 @@ def parse_url(url):
 def list_objects(bucket, prefix, only=None, exclude=None):
     """
     Generator function that returns all the objects in S3 with a given prefix.
+    If the prefix is an absolute path (beginning with "s3://" then the bucket
+    of the URI is used instead.
     """
     kwargs = {
         'Bucket': bucket,
@@ -94,7 +96,9 @@ def list_objects(bucket, prefix, only=None, exclude=None):
 
 def read_object(bucket, path, offset=None, length=None):
     """
-    Open an s3 object and return a streaming portion of it.
+    Open an s3 object and return a streaming portion of it. If the path is
+    an "absolute" path (begins with "s3://") then the bucket name is overridden
+    and the bucket from the path is used.
     """
     kwargs = {
         'Bucket': str(bucket),

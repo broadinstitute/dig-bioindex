@@ -53,6 +53,7 @@ class RecordReader:
         self.bytes_total = 0
         self.bytes_read = 0
         self.count = 0
+        self.limit = None
 
         # sum the total number of bytes to read
         for source in sources:
@@ -94,10 +95,16 @@ class RecordReader:
         """
         True if all records have been read.
         """
+        if self.limit and self.count >= self.limit:
+            return True
+
         return self.bytes_read >= self.bytes_total
 
-    def limit(self, limit):
+    def set_limit(self, limit):
         """
         Apply a limit to the number of records that will be read.
         """
-        self.records = itertools.takewhile(lambda _: self.count < limit, self.records)
+        self.limit = limit
+
+        # update the iterator so it stops once the limit is reached
+        self.records = itertools.takewhile(lambda _: self.count <= self.limit, self.records)
