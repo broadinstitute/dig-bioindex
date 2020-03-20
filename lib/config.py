@@ -20,6 +20,7 @@ class Config:
 
             # post-load fix-up
             for name, index in self.indexes.items():
+                index['s3_bucket'] = index.get('s3_bucket') or self.s3_bucket
                 index['schema'] = Schema(index['schema'])
 
                 # use the index name as the table name by default

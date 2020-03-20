@@ -16,7 +16,7 @@ routes = flask.Blueprint('portal', __name__)
 engine = lib.secrets.connect_to_mysql(config.rds_instance, schema='portal')
 
 
-@routes.route('/api/portal/diseases')
+@routes.route('/api/portal/DiseaseGroups')
 def api_portals():
     """
     Returns the list of portals available.
@@ -47,7 +47,7 @@ def api_portals():
     }
 
 
-@routes.route('/api/portal/phenotypes')
+@routes.route('/api/portal/Phenotypes')
 def api_phenotypes():
     """
     Returns all available phenotypes or just those for a given portal.

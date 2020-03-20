@@ -17,7 +17,6 @@ class Cont:
     q: str = None
     fmt: str = 'row'
     page: int = 1
-    limit: int = None
     expiration: float = None
 
     def __post_init__(self):
