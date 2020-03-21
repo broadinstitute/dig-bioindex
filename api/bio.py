@@ -30,11 +30,23 @@ def api_indexes():
     """
     Return all queryable tables.
     """
-    indexes = config.indexes.keys()
+    indexes = []
+
+    for k in config.indexes.keys():
+        index = config.index(k)
+
+        indexes.append({
+            'index': k,
+            'schema': str(index.schema),
+            'query': {
+                'keys': index.schema.key_columns,
+                'locus': index.schema.has_locus,
+            },
+        })
 
     return {
         'count': len(indexes),
-        'data': list(indexes),
+        'data': indexes,
     }
 
 
