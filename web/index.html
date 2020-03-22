@@ -282,7 +282,7 @@
                         let keys = this.$store.state.index.query.keys;
 
                         if (this.$store.state.index.query.locus) {
-                            keys = keys.concat(['locus']);
+                            keys = keys.concat(['gene or region']);
                         }
 
                         return keys.join(',');
