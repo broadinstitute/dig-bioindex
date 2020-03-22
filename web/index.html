@@ -38,7 +38,7 @@
             <!-- each query is a new card -->
             <div class="w-75">
                 <!-- search field -->
-                <div class="input-group mx-auto px-md-5 mb-3 bg-white rounded">
+                <div class="input-group mb-4 bg-white rounded">
                     <div class="input-group-prepend">
                         <button class="btn btn-secondary dropdown-toggle" type="button" id="indexSelect" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                             {{selectedIndexName || 'Search...'}}
@@ -67,7 +67,7 @@
                 </div>
 
                 <!-- results -->
-                <div v-if="dataLoaded || $store.state.loading" class="card shadow">
+                <div v-if="showResults" class="card shadow">
                     <div v-if="$store.state.call" id="api-call" class="card-header">
                         <a :href="$store.state.call.href" target="_blank">
                             {{ $store.state.call.link }}
@@ -94,8 +94,8 @@
 
                     <!-- response here -->
                     <div v-show="dataLoaded">
-                        <div class="card-body" style="height: 20em">
-                            <editor class="border" editor-id="results" :content="results" :read-only="true"></editor>
+                        <div class="card-body p-0" style="height: 20em">
+                            <editor editor-id="results" :content="results" :read-only="true"></editor>
                         </div>
 
                         <!-- results time -->
@@ -104,6 +104,13 @@
                                 Index: {{ $store.state.searchTime }} ms,
                                 JavaScript: {{ $store.state.jsTime }} ms
                             </span>
+                        </div>
+
+                        <!-- if there's a continuation, follow it? -->
+                        <div v-if="$store.state.results.continuation" class="alert-primary p-2">
+                            <a href="#" @click="$store.dispatch('loadMore')">
+                                There are more results...
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -146,9 +153,6 @@
                 setIndex(state, index) {
                     state.index = index;
                     state.q = '';
-                    state.results = {};
-                    state.loading = null;
-                    state.call = null;
                 },
 
                 clearResults(state) {
@@ -159,7 +163,7 @@
                 },
 
                 setResults(state, json) {
-                    let bioIndexTime = (json.profile.fetch + json.profile.query) * 1000;
+                    let bioIndexTime = (json.profile.fetch + (json.profile.query || 0)) * 1000;
 
                     state.loading = null;
                     state.results = json;
@@ -172,8 +176,8 @@
                     state.error = err;
                 },
 
-                startLoading(state, index) {
-                    state.loading = index;
+                startLoading(state) {
+                    state.loading = state.index.index;
                     state.error = null;
                     state.results = {};
                     state.t0 = Date.now();
@@ -191,27 +195,40 @@
                 async search(context) {
                     let q = context.state.q;
                     let p = encodeURIComponent(q);
-                    let index = context.state.index.index;
+                    let i = context.state.index.index;
 
                     // don't url encode the query parameter for the example call
-                    let href = `/api/query/${index}?q=${p}`;
-                    let link = `/api/query/${index}?q=${q}`;
+                    let href = `/api/query/${i}?q=${p}`;
+                    let link = `/api/query/${i}?q=${q}`;
 
                     context.commit('setCall', {href, link});
-                    context.commit('startLoading', index);
+                    context.commit('startLoading');
 
                     // perform the query
                     let resp = await fetch(href);
 
                     if (resp.ok) {
                         $('#api-call').removeClass('alert-danger').addClass('alert-success');
-
-                        // show the result
                         context.commit('setResults', await resp.json());
                     } else {
                         $('#api-call').removeClass('alert-success').addClass('alert-danger');
+                        context.commit('setError', await resp.text());
+                    }
+                },
 
-                        // show the error html
+                async loadMore(context) {
+                    let href = `/api/cont?token=${context.state.results.continuation}`;
+
+                    context.commit('startLoading');
+
+                    // perform the query
+                    let resp = await fetch(href);
+
+                    if (resp.ok) {
+                        $('#api-call').removeClass('alert-danger').addClass('alert-success');
+                        context.commit('setResults', await resp.json());
+                    } else {
+                        $('#api-call').removeClass('alert-success').addClass('alert-danger');
                         context.commit('setError', await resp.text());
                     }
                 },
@@ -233,6 +250,7 @@
                     this.editor.setValue(value, -1);
                     this.editor.getSession().setMode('ace/mode/json');
                     this.editor.setReadOnly(this.readOnly);
+                    this.editor.setShowPrintMargin(false);
                     this.editor.resize();
                 }
             },
@@ -273,8 +291,11 @@
                 dataLoaded() {
                     return Object.entries(this.$store.state.results).length > 0;
                 },
+                showResults() {
+                    return this.dataLoaded || this.$store.state.loading || this.$store.state.error;
+                },
                 results() {
-                    return JSON.stringify(this.$store.state.results, null, '  ');
+                    return JSON.stringify(this.$store.state.results, null, '    ');
                 },
             },
         });
