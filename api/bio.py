@@ -239,7 +239,8 @@ def api_cont():
         needs_cont = not cont.reader.at_end
 
         # remove the continuation
-        token = lib.continuation.remove_continuation(token)
+        lib.continuation.remove_continuation(token)
+        token = None
 
         # create another continuation
         if needs_cont:
@@ -256,7 +257,7 @@ def api_cont():
                 'bytes_read': cont.reader.bytes_read,
                 'bytes_total': cont.reader.bytes_total,
             },
-            'page': cont.page,
+            'page': cont.page + 1,
             'limit': cont.reader.limit,
             'data': fetched_records,
             'continuation': token,
