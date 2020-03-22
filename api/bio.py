@@ -1,6 +1,5 @@
 import dotenv
 import flask
-import itertools
 import os
 
 import lib.config
@@ -297,11 +296,17 @@ def fetch_records(reader, fmt):
     """
     bytes_limit = reader.bytes_read + RESPONSE_LIMIT
 
-    # keep reading records as long as the bytes read is under the limit
-    take = itertools.takewhile(lambda x: reader.bytes_read < bytes_limit, reader.records)
+    # similar to itertools.takewhile, but keeps the final record
+    def take():
+        for r in reader.records:
+            yield r
+
+            # stop if the byte limit was reached
+            if reader.bytes_read > bytes_limit:
+                break
 
     # profile how long it takes to fetch the records from s3
-    fetched_records, fetch_s = profile(list, take)
+    fetched_records, fetch_s = profile(list, take())
     count = len(fetched_records)
 
     # transform a list of dictionaries into a dictionary of lists
