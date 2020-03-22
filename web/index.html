@@ -160,12 +160,14 @@
                     state.results = {};
                     state.loading = null;
                     state.call = null;
+                    state.error = null;
                 },
 
                 setResults(state, json) {
                     let bioIndexTime = (json.profile.fetch + (json.profile.query || 0)) * 1000;
 
                     state.loading = null;
+                    state.error = null;
                     state.results = json;
                     state.searchTime = Math.trunc(bioIndexTime);
                     state.jsTime = Math.trunc(Date.now() - state.t0 - bioIndexTime);
