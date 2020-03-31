@@ -1,5 +1,5 @@
 import dotenv
-import flask
+import fastapi
 import os
 
 import lib.config
@@ -15,7 +15,7 @@ dotenv.load_dotenv()
 config = lib.config.Config()
 
 # create flask app; this will load .env
-routes = flask.Blueprint('api', __name__)
+router = fastapi.APIRouter()
 
 # connect to database
 engine = lib.secrets.connect_to_mysql(config.rds_instance, schema='bio')
@@ -24,10 +24,10 @@ engine = lib.secrets.connect_to_mysql(config.rds_instance, schema='bio')
 RESPONSE_LIMIT = int(os.getenv('BIOINDEX_RESPONSE_LIMIT', 1 * 1024 * 1024))
 
 
-@routes.route('/api/indexes')
-def api_indexes():
+@router.get('/api/indexes')
+async def api_indexes():
     """
-    Return all queryable tables.
+    Return all queryable indexes.
     """
     indexes = []
 
@@ -49,8 +49,8 @@ def api_indexes():
     }
 
 
-@routes.route('/api/keys/<index>')
-def api_keys(index):
+@router.get('/api/keys/{index}')
+async def api_keys(index: str, q: str = None):
     """
     Return all the unique keys for a value-indexed table.
     """
@@ -58,10 +58,10 @@ def api_keys(index):
         idx = config.index(index)
 
         # get the partial query parameters to apply
-        q = parse_query()
+        qs = parse_query(q)
 
         # execute the query
-        keys, query_s = profile(lib.query.keys, engine, idx, q)
+        keys, query_s = profile(lib.query.keys, engine, idx, qs)
         fetched = list(keys)
 
         return {
@@ -73,50 +73,46 @@ def api_keys(index):
             'data': list(fetched),
         }
     except AssertionError:
-        flask.abort(400, f'Index {index} is not indexed by value')
+        raise fastapi.HTTPException(status_code=400, detail=f'Index {index} is not indexed by value')
     except KeyError:
-        flask.abort(404, f'Unknown index: {index}')
+        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
-        flask.abort(400, str(e))
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
-@routes.route('/api/count/<index>')
-def api_count(index):
+@router.get('/api/count/{index}')
+async def api_count(index: str, q: str):
     """
     Query the database and estimate how many records will be returned.
     """
     try:
-        q = parse_query(required=True)
+        qs = parse_query(q)
 
         # lookup the schema for this index and perform the query
         idx = config.index(index)
-        count, query_s = profile(lib.query.count, engine, config.s3_bucket, idx, q)
+        count, query_s = profile(lib.query.count, engine, config.s3_bucket, idx, qs)
 
         return {
             'profile': {
                 'query': query_s,
             },
             'index': index,
-            'q': q,
+            'q': qs,
             'count': count,
         }
     except KeyError:
-        flask.abort(400, f'Invalid index: {index}')
+        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
-        flask.abort(400, str(e))
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
-@routes.route('/api/all/<index>')
-def api_all(index):
+@router.get('/api/all/{index}')
+async def api_all(index: str, fmt: str = 'row', limit: int = None):
     """
     Query the database and return ALL records for a given index.
     """
     try:
         idx = config.index(index)
-
-        # optional parameters
-        fmt = flask.request.args.get('format', 'row')
-        limit = flask.request.args.get('limit', type=int)
 
         # validate query parameters
         if fmt.lower() not in ['r', 'row', 'c', 'col', 'column']:
@@ -157,37 +153,52 @@ def api_all(index):
             'continuation': cont_token,
         }
     except KeyError:
-        flask.abort(400, f'Invalid index: {index}')
+        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
-        flask.abort(400, str(e))
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
-@routes.route('/api/query/<index>')
-def api_query(index):
+@router.head('/api/query/{index}')
+async def api_test(index: str, q: str):
+    """
+    Query the database for records matching the query parameter. Don't
+    read the records from S3, but instead set the Content-Length to the
+    total number of bytes what would be read.
+    """
+    try:
+        qs = parse_query(q, required=True)
+
+        # lookup the schema for this index and perform the query
+        idx = config.index(index)
+        reader, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, qs)
+
+        return fastapi.Response(headers={'Content-Length': reader.bytes_total})
+    except KeyError:
+        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
+
+
+@router.get('/api/query/{index}')
+async def api_query(index: str, q: str, fmt='row', limit: int = None):
     """
     Query the database for records matching the query parameter and
     read the records from s3.
     """
     try:
-        q = parse_query(required=True)
-
-        # optional data format and record limit
-        fmt = flask.request.args.get('format', 'row')
-        limit = flask.request.args.get('limit', type=int)
+        qs = parse_query(q, required=True)
 
         # validate query parameters
-        if q is None:
-            raise ValueError('Missing query parameter')
         if fmt.lower() not in ['r', 'row', 'c', 'col', 'column']:
             raise ValueError('Invalid output format')
 
         # lookup the schema for this index and perform the query
         idx = config.index(index)
-        reader, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, q)
+        reader, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, qs)
 
         # HEAD requests just return the number of bytes that would be read
-        if flask.request.method == 'HEAD':
-            return flask.Response(headers={'Content-Length': reader.bytes_total})
+        # if flask.request.method == 'HEAD':
+        #     return flask.Response(headers={'Content-Length': reader.bytes_total})
 
         # use a zip to limit the total number of records that will be read
         if limit is not None:
@@ -201,7 +212,7 @@ def api_query(index):
         cont_token = None if not needs_cont else lib.continuation.make_continuation(
             reader=reader,
             idx=index,
-            q=q,
+            q=qs,
             fmt=fmt,
         )
 
@@ -211,7 +222,7 @@ def api_query(index):
                 'fetch': fetch_s,
             },
             'index': index,
-            'q': q,
+            'q': qs,
             'count': count,
             'progress': {
                 'bytes_read': reader.bytes_read,
@@ -223,23 +234,37 @@ def api_query(index):
             'continuation': cont_token,
         }
     except KeyError:
-        flask.abort(400, f'Invalid index: {index}')
+        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
-        flask.abort(400, str(e))
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
-@routes.route('/api/cont')
-def api_cont():
+@router.head('/api/cont')
+async def api_cont_test(token: str):
+    """
+    Lookup a continuation token and determine how many bytes are
+    left to be read.
+    """
+    try:
+        cont = lib.continuation.lookup_continuation(token)
+        bytes_left = cont.reader.bytes_total - cont.reader.bytes_read
+
+        return fastapi.Response(headers={'Content-Length':bytes_left })
+    except KeyError:
+        raise fastapi.HTTPException(status_code=400, detail='Invalid, expired, or missing continuation token')
+
+
+@router.get('/api/cont')
+async def api_cont(token: str):
     """
     Lookup a continuation token and get the next set of records.
     """
     try:
-        token = flask.request.args['token']
         cont = lib.continuation.lookup_continuation(token)
 
         # HEAD requests just return the number of bytes left to-be read
-        if flask.request.method == 'HEAD':
-            return flask.Response(headers={'Content-Length': cont.reader.bytes_total - cont.reader.bytes_read})
+        # if flask.request.method == 'HEAD':
+        #     return flask.Response(headers={'Content-Length': cont.reader.bytes_total - cont.reader.bytes_read})
 
         # fetch more records from S3
         fetched_records, fetch_s, count = fetch_records(cont.reader, cont.fmt)
@@ -270,19 +295,16 @@ def api_cont():
             'continuation': token,
         }
     except KeyError:
-        flask.abort(400, f'Invalid, expired, or missing continuation token')
+        raise fastapi.HTTPException(status_code=400, detail='Invalid, expired, or missing continuation token')
     except ValueError as e:
-        flask.abort(400, str(e))
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
-def parse_query(required=False):
+def parse_query(q, required=False):
     """
     Get the `q` query parameter and split it by comma into query parameters
     for a schema query.
     """
-    q = flask.request.args.get('q')
-
-    # some query parameters are required
     if required and q is None:
         raise ValueError('Missing query parameter')
 

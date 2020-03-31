@@ -23,9 +23,9 @@
     </style>
 
     <!-- javascript files -->
-    <script src="/ace.min.js"></script>
-    <script src="/mode-json.min.js"></script>
-    <script src="/worker-json.js"></script>
+    <script src="/static/ace.min.js"></script>
+    <script src="/static/worker-json.js"></script>
+    <script src="/static/mode-json.min.js"></script>
 </head>
 
 <body>
@@ -130,6 +130,8 @@
 
     <!-- vue app -->
     <script>
+        ace.config.set('basePath', '/static');
+
         // SPA state
         let store = new Vuex.Store({
             state: {

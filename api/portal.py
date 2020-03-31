@@ -1,4 +1,4 @@
-import flask
+import fastapi
 
 import lib.config
 import lib.secrets
@@ -10,14 +10,14 @@ from lib.profile import profile
 config = lib.config.Config()
 
 # create flask app; this will load .env
-routes = flask.Blueprint('portal', __name__)
+router = fastapi.APIRouter()
 
 # connect to database
 engine = lib.secrets.connect_to_mysql(config.rds_instance, schema='portal')
 
 
-@routes.route('/api/portal/DiseaseGroups')
-def api_portals():
+@router.get('/api/portal/DiseaseGroups')
+async def api_portals():
     """
     Returns the list of portals available.
     """
@@ -47,8 +47,8 @@ def api_portals():
     }
 
 
-@routes.route('/api/portal/Phenotypes')
-def api_phenotypes():
+@router.get('/api/portal/Phenotypes')
+async def api_phenotypes(q: str = None):
     """
     Returns all available phenotypes or just those for a given portal.
     """
@@ -62,8 +62,7 @@ def api_phenotypes():
     )
 
     # optional filter by portal
-    q = flask.request.args.get('q')
-    if q == '':
+    if q and not q.strip():
         q = None
 
     # update query for just the portal
