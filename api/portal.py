@@ -1,4 +1,5 @@
 import fastapi
+import json
 
 import lib.config
 import lib.secrets
@@ -22,7 +23,7 @@ async def api_portal_groups():
     Returns the list of portals available.
     """
     sql = (
-        'SELECT DISTINCT `name`, `description`, `default`, `hostname` FROM DiseaseGroups'
+        'SELECT DISTINCT `name`, `description`, `default`, `docs` FROM DiseaseGroups'
     )
 
     # run the query
@@ -30,12 +31,12 @@ async def api_portal_groups():
     disease_groups = []
 
     # transform response
-    for name, desc, default, hostname in resp:
+    for name, desc, default, docs in resp:
         disease_groups.append({
             'name': name,
             'default': default != 0,
             'description': desc,
-            'hostname': hostname,
+            'docs': docs,
         })
 
     return {

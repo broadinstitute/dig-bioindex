@@ -14,12 +14,6 @@
       "table": "Genes",
       "schema": "chromosome:start-end"
     },
-    "global-associations": {
-      "comment": "genome-wide associations by trait",
-      "s3_prefix": "associations/phenotype",
-      "table": "PhenotypeAssociations",
-      "schema": "phenotype"
-    },
     "global-enrichment": {
       "comment": "globally enriched tissues by trait",
       "s3_prefix": "global_enrichment/phenotype",
@@ -38,11 +32,17 @@
       "table": "Associations",
       "schema": "phenotype,chromosome:position"
     },
-    "top": {
+    "top-associations": {
       "comment": "most significant associations in locus",
       "s3_prefix": "associations/top",
       "table": "TopAssociations",
       "schema": "chromosome:position"
+    },
+    "phenotype-associations": {
+      "comment": "genome-wide associations by trait",
+      "s3_prefix": "associations/phenotype",
+      "table": "PhenotypeAssociations",
+      "schema": "phenotype"
     },
     "variant": {
       "comment": "lookup variant by ID",
