@@ -64,7 +64,7 @@ async def api_group_phenotypes(q: str = None):
     )
 
     # optional filter by portal
-    if q and not q.strip():
+    if q and q == '':
         q = None
 
     # update query for just the portal
