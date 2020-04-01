@@ -153,9 +153,17 @@ Each request results in a JSON response that looks like so:
 }
 ```
 
-The `count` is the total number of records returned by this query. The `data` is the array of records (if `format=row`) or a dictionary of columns (if `format=column`). The `profile` shows how long the index query took vs. how much time was spent fetching the records from [S3][s3]. The `progress` shows how many bytes were read from S3 this request and what the total number of bytes that need to be read are.
+The `count` is the total number of records returned by this request.
+
+The `data` is the array of records (if `format=row`) or a dictionary of columns (if `format=column`). 
+
+The `profile` shows how long the index query took vs. how much time was spent fetching the records from [S3][s3].
+
+The `progress` shows how many bytes were read from S3 this request and what the total number of bytes that need to be read are.
 
 If the `continutation` value is non-null, then it is a string, which is a token indicating there are more bytes left to be read and records left to be returned. They can be retrieved using the `/api/bio/cont?token=<token>` end-point.
+
+If the `continuation` is followed to download more records, then the `page` count is increased each subsequent call.
 
 ### Dependencies
 
