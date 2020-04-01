@@ -171,10 +171,6 @@ async def api_query_index(index: str, q: str, fmt='row', limit: int = None):
         idx = config.index(index)
         reader, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, qs)
 
-        # HEAD requests just return the number of bytes that would be read
-        # if flask.request.method == 'HEAD':
-        #     return flask.Response(headers={'Content-Length': reader.bytes_total})
-
         # use a zip to limit the total number of records that will be read
         if limit is not None:
             reader.set_limit(limit)
@@ -242,10 +238,6 @@ async def api_cont(token: str):
     """
     try:
         cont = lib.continuation.lookup_continuation(token)
-
-        # HEAD requests just return the number of bytes left to-be read
-        # if flask.request.method == 'HEAD':
-        #     return flask.Response(headers={'Content-Length': cont.reader.bytes_total - cont.reader.bytes_read})
 
         # fetch more records from S3
         fetched_records, fetch_s, count = fetch_records(cont.reader, cont.fmt)
