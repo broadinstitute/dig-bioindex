@@ -16,8 +16,8 @@ router = fastapi.APIRouter()
 engine = lib.secrets.connect_to_mysql(config.rds_instance, schema='portal')
 
 
-@router.get('/api/portal/DiseaseGroups')
-async def api_portals():
+@router.get('/groups')
+async def api_portal_groups():
     """
     Returns the list of portals available.
     """
@@ -47,10 +47,11 @@ async def api_portals():
     }
 
 
-@router.get('/api/portal/Phenotypes')
-async def api_phenotypes(q: str = None):
+@router.get('/phenotypes')
+async def api_group_phenotypes(q: str = None):
     """
-    Returns all available phenotypes or just those for a given portal.
+    Returns all available phenotypes or just those for a given
+    portal group.
     """
     sql = (
         'SELECT '

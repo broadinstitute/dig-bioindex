@@ -24,8 +24,8 @@ engine = lib.secrets.connect_to_mysql(config.rds_instance, schema='bio')
 RESPONSE_LIMIT = int(os.getenv('BIOINDEX_RESPONSE_LIMIT', 1 * 1024 * 1024))
 
 
-@router.get('/api/indexes')
-async def api_indexes():
+@router.get('/indexes')
+async def api_list_indexes():
     """
     Return all queryable indexes.
     """
@@ -49,7 +49,7 @@ async def api_indexes():
     }
 
 
-@router.get('/api/keys/{index}')
+@router.get('/keys/{index}')
 async def api_keys(index: str, q: str = None):
     """
     Return all the unique keys for a value-indexed table.
@@ -80,8 +80,8 @@ async def api_keys(index: str, q: str = None):
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
-@router.get('/api/count/{index}')
-async def api_count(index: str, q: str):
+@router.get('/count/{index}')
+async def api_count_index(index: str, q: str):
     """
     Query the database and estimate how many records will be returned.
     """
@@ -106,8 +106,8 @@ async def api_count(index: str, q: str):
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
-@router.get('/api/all/{index}')
-async def api_all(index: str, fmt: str = 'row', limit: int = None):
+@router.get('/all/{index}')
+async def api_all(index: str, fmt: str = 'row'):
     """
     Query the database and return ALL records for a given index.
     """
@@ -120,10 +120,6 @@ async def api_all(index: str, fmt: str = 'row', limit: int = None):
 
         # lookup the schema for this index and perform the query
         reader, query_s = profile(lib.query.fetch_all, config.s3_bucket, idx.s3_prefix)
-
-        # use a zip to limit the total number of records that will be read
-        if limit is not None:
-            reader.set_limit(limit)
 
         # fetch the records from S3
         fetched_records, fetch_s, count = fetch_records(reader, fmt)
@@ -158,29 +154,8 @@ async def api_all(index: str, fmt: str = 'row', limit: int = None):
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
-@router.head('/api/query/{index}')
-async def api_test(index: str, q: str):
-    """
-    Query the database for records matching the query parameter. Don't
-    read the records from S3, but instead set the Content-Length to the
-    total number of bytes what would be read.
-    """
-    try:
-        qs = parse_query(q, required=True)
-
-        # lookup the schema for this index and perform the query
-        idx = config.index(index)
-        reader, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, qs)
-
-        return fastapi.Response(headers={'Content-Length': reader.bytes_total})
-    except KeyError:
-        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
-    except ValueError as e:
-        raise fastapi.HTTPException(status_code=400, detail=str(e))
-
-
-@router.get('/api/query/{index}')
-async def api_query(index: str, q: str, fmt='row', limit: int = None):
+@router.get('/query/{index}')
+async def api_query_index(index: str, q: str, fmt='row', limit: int = None):
     """
     Query the database for records matching the query parameter and
     read the records from s3.
@@ -239,22 +214,28 @@ async def api_query(index: str, q: str, fmt='row', limit: int = None):
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
-@router.head('/api/cont')
-async def api_cont_test(token: str):
+@router.head('/query/{index}')
+async def api_test_index(index: str, q: str):
     """
-    Lookup a continuation token and determine how many bytes are
-    left to be read.
+    Query the database for records matching the query parameter. Don't
+    read the records from S3, but instead set the Content-Length to the
+    total number of bytes what would be read.
     """
     try:
-        cont = lib.continuation.lookup_continuation(token)
-        bytes_left = cont.reader.bytes_total - cont.reader.bytes_read
+        qs = parse_query(q, required=True)
 
-        return fastapi.Response(headers={'Content-Length':bytes_left })
+        # lookup the schema for this index and perform the query
+        idx = config.index(index)
+        reader, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, qs)
+
+        return fastapi.Response(headers={'Content-Length': str(reader.bytes_total)})
     except KeyError:
-        raise fastapi.HTTPException(status_code=400, detail='Invalid, expired, or missing continuation token')
+        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
-@router.get('/api/cont')
+@router.get('/cont')
 async def api_cont(token: str):
     """
     Lookup a continuation token and get the next set of records.
@@ -298,6 +279,21 @@ async def api_cont(token: str):
         raise fastapi.HTTPException(status_code=400, detail='Invalid, expired, or missing continuation token')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
+
+
+@router.head('/cont')
+async def api_cont_test(token: str):
+    """
+    Lookup a continuation token and determine how many bytes are
+    left to be read.
+    """
+    try:
+        cont = lib.continuation.lookup_continuation(token)
+        bytes_left = cont.reader.bytes_total - cont.reader.bytes_read
+
+        return fastapi.Response(headers={'Content-Length': str(bytes_left)})
+    except KeyError:
+        raise fastapi.HTTPException(status_code=400, detail='Invalid, expired, or missing continuation token')
 
 
 def parse_query(q, required=False):

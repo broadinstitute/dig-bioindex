@@ -11,11 +11,12 @@ from fastapi.staticfiles import StaticFiles
 # load dot files and configuration
 dotenv.load_dotenv()
 
-# create flask app; this will load .env
-app = fastapi.FastAPI(title='BioIndex', docs_url=None)
+# create web server
+app = fastapi.FastAPI(title='BioIndex', redoc_url=None)
 
-app.include_router(api.bio.router, tags=['bio'])
-app.include_router(api.portal.router, tags=['portal'])
+# all the various routers for each api
+app.include_router(api.bio.router, prefix='/api/bio', tags=['bio'])
+app.include_router(api.portal.router, prefix='/api/portal', tags=['portal'])
 
 # enable cross-origin resource sharing
 app.add_middleware(
@@ -33,6 +34,6 @@ app.mount('/static', StaticFiles(directory="web/static"), name="static")
 @app.get('/')
 def index():
     """
-    SPA page.
+    SPA demonstration page.
     """
     return FileResponse('web/index.html')
