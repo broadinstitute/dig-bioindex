@@ -1,30 +1,39 @@
-import colorama
 import dotenv
-import flask
-import flask_cors
+import fastapi
 
 import api.bio
 import api.portal
 
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 # load dot files and configuration
 dotenv.load_dotenv()
 
-# create flask app; this will load .env
-app = flask.Flask(__name__, static_url_path='', static_folder='web/static')
-flask_cors.CORS(app)
+# create web server
+app = fastapi.FastAPI(title='BioIndex', redoc_url=None)
 
-# resource service routes
-app.register_blueprint(api.bio.routes)
-app.register_blueprint(api.portal.routes)
+# all the various routers for each api
+app.include_router(api.bio.router, prefix='/api/bio', tags=['bio'])
+app.include_router(api.portal.router, prefix='/api/portal', tags=['portal'])
 
-# allow ansi colors
-colorama.init()
+# enable cross-origin resource sharing
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=['*'],
+    allow_credentials=True,
+    allow_methods=['*'],
+    allow_headers=['*'],
+)
+
+# serve static content
+app.mount('/static', StaticFiles(directory="web/static"), name="static")
 
 
-@app.route('/')
+@app.get('/')
 def index():
     """
-    SPA page.
+    SPA demonstration page.
     """
-    return flask.send_file('web/index.html', mimetype='text/html')
+    return FileResponse('web/index.html')

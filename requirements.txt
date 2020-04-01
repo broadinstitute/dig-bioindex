@@ -1,11 +1,13 @@
+aiofiles
 botocore
 boto3
 click
 colorama
 python-dotenv
 enlighten
-flask
-gunicorn
+fastapi
+pydantic
+uvicorn
 mysqlclient
 requests
 sqlalchemy

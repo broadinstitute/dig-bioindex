@@ -23,9 +23,9 @@
     </style>
 
     <!-- javascript files -->
-    <script src="/ace.min.js"></script>
-    <script src="/mode-json.min.js"></script>
-    <script src="/worker-json.js"></script>
+    <script src="/static/ace.min.js"></script>
+    <script src="/static/worker-json.js"></script>
+    <script src="/static/mode-json.min.js"></script>
 </head>
 
 <body>
@@ -33,6 +33,9 @@
         <div id="app" v-cloak>
             <div class="mt-5 mb-4">
                 <h1 style="font-family: 'Lato', sans-serif">KPN Bio-Index</h1>
+                <div>
+                    <a href="/docs" target="_blank">REST API Documentation</a>
+                </div>
             </div>
 
             <!-- each query is a new card -->
@@ -130,6 +133,8 @@
 
     <!-- vue app -->
     <script>
+        ace.config.set('basePath', '/static');
+
         // SPA state
         let store = new Vuex.Store({
             state: {
@@ -186,7 +191,7 @@
             },
             actions: {
                 async queryIndexes({ commit }) {
-                    let json = await fetch(`/api/indexes`)
+                    let json = await fetch(`/api/bio/indexes`)
                         .then(resp => resp.json());
 
                     commit('setIndexes', json.data);
@@ -199,8 +204,8 @@
                     let i = context.state.index.index;
 
                     // don't url encode the query parameter for the example call
-                    let href = `/api/query/${i}?q=${p}`;
-                    let link = `/api/query/${i}?q=${q}`;
+                    let href = `/api/bio/query/${i}?q=${p}`;
+                    let link = `/api/bio/query/${i}?q=${q}`;
 
                     context.commit('setCall', {href, link});
                     context.commit('startLoading');
@@ -218,7 +223,7 @@
                 },
 
                 async loadMore(context) {
-                    let href = `/api/cont?token=${context.state.results.continuation}`;
+                    let href = `/api/bio/cont?token=${context.state.results.continuation}`;
 
                     context.commit('startLoading');
 

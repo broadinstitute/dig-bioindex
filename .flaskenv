@@ -1,2 +1,0 @@
-FLASK_APP=server:app
-FLASK_PORT=5000

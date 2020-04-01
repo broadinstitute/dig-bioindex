@@ -14,19 +14,13 @@
       "table": "Genes",
       "schema": "chromosome:start-end"
     },
-    "PhenotypeAssociations": {
-      "comment": "genome-wide associations by trait",
-      "s3_prefix": "associations/phenotype",
-      "table": "PhenotypeAssociations",
-      "schema": "phenotype"
-    },
     "GlobalEnrichment": {
       "comment": "globally enriched tissues by trait",
       "s3_prefix": "global_enrichment/phenotype",
       "table": "GlobalEnrichment",
       "schema": "phenotype"
     },
-    "AnnotatedRegions": {
+    "Regions": {
       "comment": "functional regions overlapping locus",
       "s3_prefix": "regions",
       "table": "AnnotatedRegions",
@@ -43,6 +37,12 @@
       "s3_prefix": "associations/top",
       "table": "TopAssociations",
       "schema": "chromosome:position"
+    },
+    "PhenotypeAssociations": {
+      "comment": "genome-wide associations by trait",
+      "s3_prefix": "associations/phenotype",
+      "table": "PhenotypeAssociations",
+      "schema": "phenotype"
     },
     "Variant": {
       "comment": "lookup variant by ID",

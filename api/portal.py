@@ -1,4 +1,5 @@
-import flask
+import fastapi
+import json
 
 import lib.config
 import lib.secrets
@@ -10,19 +11,19 @@ from lib.profile import profile
 config = lib.config.Config()
 
 # create flask app; this will load .env
-routes = flask.Blueprint('portal', __name__)
+router = fastapi.APIRouter()
 
 # connect to database
 engine = lib.secrets.connect_to_mysql(config.rds_instance, schema='portal')
 
 
-@routes.route('/api/portal/DiseaseGroups')
-def api_portals():
+@router.get('/groups')
+async def api_portal_groups():
     """
     Returns the list of portals available.
     """
     sql = (
-        'SELECT DISTINCT `name`, `description`, `default`, `hostname` FROM DiseaseGroups'
+        'SELECT DISTINCT `name`, `description`, `default`, `docs` FROM DiseaseGroups'
     )
 
     # run the query
@@ -30,12 +31,12 @@ def api_portals():
     disease_groups = []
 
     # transform response
-    for name, desc, default, hostname in resp:
+    for name, desc, default, docs in resp:
         disease_groups.append({
             'name': name,
             'default': default != 0,
             'description': desc,
-            'hostname': hostname,
+            'docs': docs,
         })
 
     return {
@@ -47,10 +48,11 @@ def api_portals():
     }
 
 
-@routes.route('/api/portal/Phenotypes')
-def api_phenotypes():
+@router.get('/phenotypes')
+async def api_group_phenotypes(q: str = None):
     """
-    Returns all available phenotypes or just those for a given portal.
+    Returns all available phenotypes or just those for a given
+    portal group.
     """
     sql = (
         'SELECT '
@@ -62,8 +64,7 @@ def api_phenotypes():
     )
 
     # optional filter by portal
-    q = flask.request.args.get('q')
-    if q == '':
+    if q and not q.strip():
         q = None
 
     # update query for just the portal

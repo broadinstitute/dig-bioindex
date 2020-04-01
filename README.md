@@ -45,7 +45,7 @@ One of the `.env` variables specified is `BIOINDEX_CONFIG` filename. It defaults
 {
     "s3_bucket": "my-bucket",
     "rds_instance": "my-mysql-instance",
-    "tables": {
+    "indexes": {
         "genes": {
             "path": "path/to/genes",
             "schema": "chromosome:start-end"
@@ -108,33 +108,17 @@ In addition to a CLI, Bio-Index is also a [Flask][flask] server that allows you 
 
 ### Starting the Server
 
-Create (or edit) the `.flaskenv` file to set the `FLASK_APP` to `server:app` and optionally the `FLASK_PORT` (default is 5000). Then run:
+You can run using either the `run-server.sh` (or `run-server.cmd` on Windows) script or yourself manually:
 
 ```bash
-$ flask run
+$ uvicorn server:app --port 5000
 ```
 
-_Note: this assumes `flask` is installed via `pip`. This is also the development environment. If you wish to run this in production, follow the guides on the [Flask][flask] website for doing so._
+_Note: this assumes `uvicorn` is installed via `pip`._
 
 ### REST Queries
 
-The REST server supports all the same commands as the CLI for querying: `query`, `all`, `count`, `keys`, etc. In addition, though, it allows for limits to the number of total results returned and it has a limit on the maximum number of records returned for a single request.
-
-The basic API can be hit with this format:
-
-```
-/api/<command>/<index>?q=<query>
-```
-
-So, if you'd like to query genes, a REST call like so should do the trick:
-
-```
-$ curl http://localhost:5000/api/query/genes?q=chr8:100000-101000
-```
-
-You may optionally pass a `limit=N` to limit the maximum number of results returned.
-
-There is also a `format=<column|row>` option (default=row) that can be used to indicate you'd like the results in column-major format.
+The entire REST API can be explored both via the [demo page](http://localhost:5000/) and via the REST API [documentation page](http://localhost:5000/docs).
 
 Each request results in a JSON response that looks like so:
 
@@ -142,18 +126,44 @@ Each request results in a JSON response that looks like so:
 {
     "continuation": null,
     "count": 1,
-    "data": [...],
+    "page": 1,
+    "data": [
+        {
+            "chromosome": "8",
+            "end": 100728,
+            "ensemblId": "ENSG00000254193",
+            "name": "AC131281.2",
+            "start": 100584,
+            "type": "processed_pseudogene"
+        }
+    ],
     "index": "genes",
     "limit": null,
-    "page": 1,
-    "profile": {...},
-    "q": "chr8:100000-101000"
+    "profile": {
+        "query": 0.138009,
+        "fetch": 0.417972
+    },
+    "progress": {
+        "bytes_read": 368,
+        "bytes_total": 368
+    },
+    "q": [
+        "chr8:100000-101000"
+    ]
 }
 ```
 
-The `count` is the total number of records returned by this query. The `data` is the array of records (if `format=row`) or a dictionary of columns (if `format=column`). The `profile` shows how long the index query took vs. how much time was spent fetching the records from [S3][s3].
+The `count` is the total number of records returned by this request.
 
-If the `continutation` value is non-null, then it is a string, which is a token indicating there are more records left to be returned. They can be retrieved using the `/api/cont?token=<token>` end-point.
+The `data` is the array of records (if `format=row`) or a dictionary of columns (if `format=column`). 
+
+The `profile` shows how long the index query took vs. how much time was spent fetching the records from [S3][s3].
+
+The `progress` shows how many bytes were read from S3 this request and what the total number of bytes that need to be read are.
+
+If the `continutation` value is non-null, then it is a string, which is a token indicating there are more bytes left to be read and records left to be returned. They can be retrieved using the `/api/bio/cont?token=<token>` end-point.
+
+If the `continuation` is followed to download more records, then the `page` count is increased each subsequent call.
 
 ### Dependencies
 
@@ -161,7 +171,10 @@ If the `continutation` value is non-null, then it is a string, which is a token 
 * [setuptools][setuptools]
 * [python-dotenv][dotenv]
 * [click][click]
-* [flask][flask]
+* [fastapi][fastapi]
+* [aiofiles][aiofiles]
+* [uvicorn][uvicorn]
+* [pydantic][pydantic]
 * [boto3][boto3]
 * [sqlalchemy][sqlalchemy]
 * [mysqlclient][mysqlclient]
@@ -177,7 +190,9 @@ If the `continutation` value is non-null, then it is a string, which is a token 
 [emr]: https://aws.amazon.com/emr/
 [click]: https://click.palletsprojects.com/en/7.x/quickstart/
 [enlighten]: https://python-enlighten.readthedocs.io/en/stable/
-[flask]: https://www.palletsprojects.com/p/flask/
+[fastapi]: https://fastapi.tiangolo.com/
+[uvicorn]: https://www.uvicorn.org/
+[pydantic]: https://pydantic-docs.helpmanual.io/
 [boto3]: https://aws.amazon.com/sdk-for-python/
 [sqlalchemy]: http://www.sqlalchemy.org/
 [mysqlclient]: https://pypi.org/project/mysqlclient/
