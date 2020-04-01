@@ -68,7 +68,7 @@ async def api_group_phenotypes(q: str = None):
         q = None
 
     # update query for just the portal
-    if q is not None:
+    if q:
         sql += (
             ', DiseaseGroups WHERE DiseaseGroups.`name` = %s AND ('
             '   DiseaseGroups.`groups` IS NULL OR FIND_IN_SET(Phenotypes.`group`, DiseaseGroups.`groups`) '
