@@ -24,7 +24,7 @@ engine = lib.secrets.connect_to_mysql(config.rds_instance, schema='bio')
 RESPONSE_LIMIT = int(os.getenv('BIOINDEX_RESPONSE_LIMIT', 1 * 1024 * 1024))
 
 
-@router.get('/indexes')
+@router.get('/indexes', response_class=fastapi.responses.ORJSONResponse)
 async def api_list_indexes():
     """
     Return all queryable indexes.
@@ -49,7 +49,7 @@ async def api_list_indexes():
     }
 
 
-@router.get('/keys/{index}')
+@router.get('/keys/{index}', response_class=fastapi.responses.ORJSONResponse)
 async def api_keys(index: str, q: str = None):
     """
     Return all the unique keys for a value-indexed table.
@@ -80,7 +80,7 @@ async def api_keys(index: str, q: str = None):
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
-@router.get('/count/{index}')
+@router.get('/count/{index}', response_class=fastapi.responses.ORJSONResponse)
 async def api_count_index(index: str, q: str):
     """
     Query the database and estimate how many records will be returned.
@@ -106,7 +106,7 @@ async def api_count_index(index: str, q: str):
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
-@router.get('/all/{index}')
+@router.get('/all/{index}', response_class=fastapi.responses.ORJSONResponse)
 async def api_all(index: str, fmt: str = 'row'):
     """
     Query the database and return ALL records for a given index.
@@ -154,7 +154,7 @@ async def api_all(index: str, fmt: str = 'row'):
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
-@router.get('/query/{index}')
+@router.get('/query/{index}', response_class=fastapi.responses.ORJSONResponse)
 async def api_query_index(index: str, q: str, fmt='row', limit: int = None):
     """
     Query the database for records matching the query parameter and
@@ -231,7 +231,7 @@ async def api_test_index(index: str, q: str):
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
-@router.get('/cont')
+@router.get('/cont', response_class=fastapi.responses.ORJSONResponse)
 async def api_cont(token: str):
     """
     Lookup a continuation token and get the next set of records.

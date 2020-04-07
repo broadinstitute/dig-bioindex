@@ -1,5 +1,4 @@
 import fastapi
-import json
 
 import lib.config
 import lib.secrets
@@ -17,7 +16,7 @@ router = fastapi.APIRouter()
 engine = lib.secrets.connect_to_mysql(config.rds_instance, schema='portal')
 
 
-@router.get('/groups')
+@router.get('/groups', response_class=fastapi.responses.ORJSONResponse)
 async def api_portal_groups():
     """
     Returns the list of portals available.
@@ -48,7 +47,7 @@ async def api_portal_groups():
     }
 
 
-@router.get('/phenotypes')
+@router.get('/phenotypes', response_class=fastapi.responses.ORJSONResponse)
 async def api_group_phenotypes(q: str = None):
     """
     Returns all available phenotypes or just those for a given
