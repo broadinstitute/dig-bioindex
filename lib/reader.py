@@ -1,8 +1,8 @@
 import botocore.exceptions
 import dataclasses
 import itertools
-import json
 import logging
+import orjson
 
 import lib.locus
 import lib.s3
@@ -84,7 +84,7 @@ class RecordReader:
                     self.count += 1
 
                     # parse the line as a JSON record
-                    yield json.loads(line)
+                    yield orjson.loads(line)
 
             # handle database out of sync with S3
             except botocore.exceptions.ClientError:

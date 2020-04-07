@@ -6,6 +6,7 @@ colorama
 python-dotenv
 enlighten
 fastapi
+orjson
 pydantic
 uvicorn
 mysqlclient
