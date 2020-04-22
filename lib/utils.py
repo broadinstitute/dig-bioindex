@@ -17,4 +17,4 @@ def nonce(length=20):
     for a period of time (e.g. to identify a specific call in a rolling
     log file).
     """
-    ''.join((random.choice(string.ascii_letters) for i in range(length)))
+    return ''.join((random.choice(string.ascii_letters) for i in range(length)))
