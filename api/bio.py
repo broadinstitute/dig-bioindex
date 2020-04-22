@@ -25,8 +25,16 @@ engine = lib.secrets.connect_to_mysql(config.rds_instance, schema='bio')
 # max number of bytes to return per request
 RESPONSE_LIMIT = int(os.getenv('BIOINDEX_RESPONSE_LIMIT', 1 * 1024 * 1024))
 
-# initialize with all the indexes
-INDEXES = dict((i.name, i) for i in lib.create.list_indexes(engine))
+
+def _load_indexes():
+    """
+    Create a cache of the indexes in the database.
+    """
+    return dict((i.name, i) for i in lib.create.list_indexes(engine, filter_built=False))
+
+
+# initialize with all the indexes, get them all, whether built or not
+INDEXES = _load_indexes()
 
 
 @router.get('/indexes', response_class=fastapi.responses.ORJSONResponse)
@@ -39,7 +47,7 @@ async def api_list_indexes():
     global INDEXES
 
     # update the global index cache
-    INDEXES = dict((i.name, i) for i in lib.create.list_indexes(engine))
+    INDEXES = _load_indexes()
     data = []
 
     # add each index to the response data
@@ -47,6 +55,7 @@ async def api_list_indexes():
         data.append({
             'index': index.name,
             'schema': str(index.schema),
+            'built': bool(index.built),
             'query': {
                 'keys': index.schema.key_columns,
                 'locus': index.schema.has_locus,

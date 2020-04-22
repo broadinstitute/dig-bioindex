@@ -20,7 +20,7 @@ def build(engine, index, bucket, s3_objects):
     table = index.schema.build_table(index.table, meta)
 
     # clear the built flag for the index
-    _set_built_flag(engine, index.name, False)
+    _set_built_flag(engine, index, False)
 
     # create the index table (drop any existing table already there)
     logging.info('Creating %s table...', table.name)
@@ -51,7 +51,7 @@ def build(engine, index, bucket, s3_objects):
         index.schema.build_index(engine, table)
 
         # set the built flag for the index
-        _set_built_flag(engine, index.name, True)
+        _set_built_flag(engine, index, True)
 
 
 def _index_object(engine, bucket, path, table, schema, counter):
