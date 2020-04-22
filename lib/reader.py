@@ -76,8 +76,9 @@ class RecordReader:
             # byte offsets are mucked up and this would cause the reader to
             # read everything from the source file (potentially GB of data)
             # which will have time and bandwidth costs.
-            
+
             if source.end <= source.start:
+                logging.warning('Bad index record: end offset <= start; skipping...')
                 continue
 
             try:
