@@ -71,6 +71,15 @@ class RecordReader:
         A generator that reads each of the records from S3 for the sources.
         """
         for source in self.sources:
+
+            # This is here to handle a particularly bad condition: when the
+            # byte offsets are mucked up and this would cause the reader to
+            # read everything from the source file (potentially GB of data)
+            # which will have time and bandwidth costs.
+            
+            if source.end <= source.start:
+                continue
+
             try:
                 content = lib.s3.read_object(
                     self.bucket,
