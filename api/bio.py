@@ -4,10 +4,12 @@ import os
 
 import lib.config
 import lib.continuation
+import lib.create
 import lib.query
 import lib.secrets
 
 from lib.profile import profile
+from lib.utils import nonce
 
 
 # load dot files and configuration
@@ -23,19 +25,27 @@ engine = lib.secrets.connect_to_mysql(config.rds_instance, schema='bio')
 # max number of bytes to return per request
 RESPONSE_LIMIT = int(os.getenv('BIOINDEX_RESPONSE_LIMIT', 1 * 1024 * 1024))
 
+# initialize with all the indexes
+INDEXES = dict((i.name, i) for i in lib.create.list_indexes(engine))
+
 
 @router.get('/indexes', response_class=fastapi.responses.ORJSONResponse)
 async def api_list_indexes():
     """
-    Return all queryable indexes.
+    Return all queryable indexes. This also refreshes the internal
+    cache of the table so the server doesn't need to be bounced when
+    the table is updated (very rare!).
     """
-    indexes = []
+    global INDEXES
 
-    for k in config.indexes.keys():
-        index = config.index(k)
+    # update the global index cache
+    INDEXES = dict((i.name, i) for i in lib.create.list_indexes(engine))
+    data = []
 
-        indexes.append({
-            'index': k,
+    # add each index to the response data
+    for index in INDEXES.values():
+        data.append({
+            'index': index.name,
             'schema': str(index.schema),
             'query': {
                 'keys': index.schema.key_columns,
@@ -44,8 +54,9 @@ async def api_list_indexes():
         })
 
     return {
-        'count': len(indexes),
-        'data': indexes,
+        'count': len(data),
+        'data': data,
+        'nonce': nonce(),
     }
 
 
@@ -55,7 +66,7 @@ async def api_keys(index: str, q: str = None):
     Return all the unique keys for a value-indexed table.
     """
     try:
-        idx = config.index(index)
+        idx = INDEXES[index]
 
         # get the partial query parameters to apply
         qs = parse_query(q)
@@ -71,6 +82,7 @@ async def api_keys(index: str, q: str = None):
             'index': index,
             'count': len(fetched),
             'data': list(fetched),
+            'nonce': nonce(),
         }
     except AssertionError:
         raise fastapi.HTTPException(status_code=400, detail=f'Index {index} is not indexed by value')
@@ -89,7 +101,7 @@ async def api_count_index(index: str, q: str):
         qs = parse_query(q)
 
         # lookup the schema for this index and perform the query
-        idx = config.index(index)
+        idx = INDEXES[index]
         count, query_s = profile(lib.query.count, engine, config.s3_bucket, idx, qs)
 
         return {
@@ -99,6 +111,7 @@ async def api_count_index(index: str, q: str):
             'index': index,
             'q': qs,
             'count': count,
+            'nonce': nonce(),
         }
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
@@ -112,7 +125,7 @@ async def api_all(index: str, fmt: str = 'row'):
     Query the database and return ALL records for a given index.
     """
     try:
-        idx = config.index(index)
+        idx = INDEXES[index]
 
         # validate query parameters
         if fmt.lower() not in ['r', 'row', 'c', 'col', 'column']:
@@ -147,6 +160,7 @@ async def api_all(index: str, fmt: str = 'row'):
             'limit': reader.limit,
             'data': fetched_records,
             'continuation': cont_token,
+            'nonce': nonce(),
         }
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
@@ -168,7 +182,7 @@ async def api_query_index(index: str, q: str, fmt='row', limit: int = None):
             raise ValueError('Invalid output format')
 
         # lookup the schema for this index and perform the query
-        idx = config.index(index)
+        idx = INDEXES[index]
         reader, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, qs)
 
         # use a zip to limit the total number of records that will be read
@@ -203,6 +217,7 @@ async def api_query_index(index: str, q: str, fmt='row', limit: int = None):
             'limit': reader.limit,
             'data': fetched_records,
             'continuation': cont_token,
+            'nonce': nonce(),
         }
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
@@ -221,7 +236,7 @@ async def api_test_index(index: str, q: str):
         qs = parse_query(q, required=True)
 
         # lookup the schema for this index and perform the query
-        idx = config.index(index)
+        idx = INDEXES[index]
         reader, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, qs)
 
         return fastapi.Response(headers={'Content-Length': str(reader.bytes_total)})
@@ -266,6 +281,7 @@ async def api_cont(token: str):
             'limit': cont.reader.limit,
             'data': fetched_records,
             'continuation': token,
+            'nonce': nonce(),
         }
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail='Invalid, expired, or missing continuation token')

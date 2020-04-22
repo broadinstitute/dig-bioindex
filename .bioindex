@@ -1,0 +1,2 @@
+BIOINDEX_S3_BUCKET=dig-bio-index
+BIOINDEX_RDS_INSTANCE=dig-bio-index

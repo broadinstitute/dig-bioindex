@@ -1,9 +1,4 @@
-import json
 import os
-import re
-import types
-
-from lib.schema import Schema
 
 
 class Config:
@@ -15,35 +10,12 @@ class Config:
         """
         Loads the configuration file using environment.
         """
-        with open(os.getenv('BIOINDEX_CONFIG', 'config.json')) as fp:
-            self.settings = json.load(fp)
+        self.s3_bucket = os.getenv('BIOINDEX_S3_BUCKET')
+        self.rds_instance = os.getenv('BIOINDEX_RDS_INSTANCE')
 
-            # post-load fix-up
-            for name, index in self.indexes.items():
-                index['s3_bucket'] = index.get('s3_bucket') or self.s3_bucket
-                index['schema'] = Schema(index['schema'])
+        # optional settings with reasonable defaults
+        server_response_limit = int(os.getenv('BIOINDEX_RESPONSE_LIMIT', 1 * 1024 * 1024))
 
-                # use the index name as the table name by default
-                index['table'] = index.get('table', cap_case_str(name))
-
-    @property
-    def s3_bucket(self):
-        return self.settings['s3_bucket']
-
-    @property
-    def rds_instance(self):
-        return self.settings['rds_instance']
-
-    @property
-    def indexes(self):
-        return self.settings['indexes']
-
-    def index(self, name):
-        return types.SimpleNamespace(**self.indexes[name])
-
-
-def cap_case_str(s):
-    """
-    Translate a string like "foo_Bar-baz  whee" and return "FooBarBazWhee".
-    """
-    return re.sub(r'(?:[_\-\s]+|^)(.)', lambda m: m.group(1).upper(), s)
+        # validate settings
+        assert self.s3_bucket
+        assert self.rds_instance

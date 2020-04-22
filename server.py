@@ -1,4 +1,3 @@
-import dotenv
 import fastapi
 
 import api.bio
@@ -7,9 +6,6 @@ import api.portal
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-
-# load dot files and configuration
-dotenv.load_dotenv()
 
 # create web server
 app = fastapi.FastAPI(title='BioIndex', redoc_url=None)

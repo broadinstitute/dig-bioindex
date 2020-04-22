@@ -1,9 +1,9 @@
-import concurrent.futures
 import csv
 import enlighten
-import json
 import logging
+import orjson
 import os
+import os.path
 import sqlalchemy
 import tempfile
 
@@ -32,7 +32,7 @@ def build(engine, index, bucket, s3_objects):
         with progress_mgr.counter(total=len(objects), unit='files', series=' #') as overall_progress:
             for obj in objects:
                 path, size = obj['Key'], obj['Size']
-                logging.info('Processing %s...', path)
+                logging.info('Processing %s...', os.path.basename(path))
 
                 # per-file progress of indexer
                 with progress_mgr.counter(total=size // 1024, unit='KB', series=' #', leave=False) as file_progress:
@@ -58,7 +58,7 @@ def _index_object(engine, bucket, path, table, schema, counter):
 
     # process each line (record)
     for line_num, line in enumerate(content.iter_lines()):
-        row = json.loads(line)
+        row = orjson.loads(line)
         end_offset = start_offset + len(line) + 1  # newline
 
         try:

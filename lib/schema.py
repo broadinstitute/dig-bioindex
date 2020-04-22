@@ -1,6 +1,7 @@
 import abc
+import itertools
 
-from sqlalchemy import Column, Index, Integer, MetaData, String, Table
+from sqlalchemy import Column, Index, Integer, BigInteger, MetaData, String, Table
 from lib.locus import parse_columns
 
 
@@ -78,8 +79,8 @@ class Schema(abc.ABC):
         table_columns = [
             Column('id', Integer, primary_key=True),
             Column('path', String(1024)),
-            Column('start_offset', Integer),
-            Column('end_offset', Integer),
+            Column('start_offset', BigInteger),
+            Column('end_offset', BigInteger),
         ]
 
         return Table(name, MetaData(), *table_columns, *self.index_columns)
@@ -104,13 +105,23 @@ class Schema(abc.ABC):
         A generator of list, where each tuple consists of the value for this
         index. A single row may produce multiple values.
         """
-        keys = tuple(row[k] for k in self.key_columns)
+        keys = (row.get(k) for k in self.key_columns)
+        keys_tuple = tuple(itertools.takewhile(lambda x: x, keys))
 
+        # ensure at least the primary key is present
+        if len(self.key_columns) > 0 and len(keys_tuple) == 0:
+            raise ValueError(f'Invalid record: no primary key value for {self.key_columns[0]}')
+
+        # append the locus to the key
         if self.locus_class:
+            if len(keys_tuple) < len(self.key_columns):
+                raise ValueError(f'Invalid record: missing secondary keys with locus')
+
+            # add loci to the key
             for locus in self.locus_of_row(row).loci():
-                yield keys + locus
+                yield keys_tuple + locus
         else:
-            yield keys
+            yield keys_tuple
 
     def column_values(self, index_key):
         """

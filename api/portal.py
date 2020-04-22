@@ -4,6 +4,7 @@ import lib.config
 import lib.secrets
 
 from lib.profile import profile
+from lib.utils import nonce
 
 
 # load dot files and configuration
@@ -44,6 +45,7 @@ async def api_portal_groups():
         },
         'data': disease_groups,
         'count': len(disease_groups),
+        'nonce': nonce(),
     }
 
 
@@ -93,4 +95,5 @@ async def api_group_phenotypes(q: str = None):
         },
         'data': phenotypes,
         'count': len(phenotypes),
+        'nonce': nonce(),
     }
