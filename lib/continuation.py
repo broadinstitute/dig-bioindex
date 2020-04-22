@@ -1,9 +1,9 @@
 import dataclasses
 import threading
 import time
-import secrets
 
 import lib.reader
+import lib.utils
 
 
 _cont_map = {}
@@ -31,7 +31,7 @@ def make_continuation(**kwargs):
     Create a continuation and return a token to it.
     """
     cont = Cont(**kwargs)
-    token = secrets.token_urlsafe()
+    token = lib.utils.nonce()
 
     # add it to the map
     with _cont_lock:

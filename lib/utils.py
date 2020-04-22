@@ -1,6 +1,5 @@
-import random
 import re
-import string
+import secrets
 
 
 def cap_case_str(s):
@@ -17,4 +16,4 @@ def nonce(length=20):
     for a period of time (e.g. to identify a specific call in a rolling
     log file).
     """
-    return ''.join((random.choice(string.ascii_letters) for i in range(length)))
+    return secrets.token_urlsafe()
