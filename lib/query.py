@@ -66,7 +66,8 @@ def keys(engine, index, q):
         raise ValueError(f'Too many keys for index schema "{index.schema}"')
 
     # ensure the index is built
-    assert index.built, f'Index "{index.name}" is not built'
+    if not index.built:
+        raise ValueError(f'Index "{index.name}" is not built')
 
     # which column will be returned?
     distinct_column = index.schema.key_columns[len(q)]
@@ -98,7 +99,8 @@ def _run_query(engine, bucket, index, q):
     Construct a SQL query to fetch S3 objects and byte offsets. Run it and
     return a RecordReader to the results.
     """
-    assert index.built, f'Index "{index.name}" is not built'
+    if not index.built:
+        raise ValueError(f'Index "{index.name}" is not built')
 
     sql = (
         f'SELECT `path`, MIN(`start_offset`), MAX(`end_offset`) '

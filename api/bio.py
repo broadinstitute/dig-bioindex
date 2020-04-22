@@ -93,8 +93,6 @@ async def api_keys(index: str, q: str = None):
             'data': list(fetched),
             'nonce': nonce(),
         }
-    except AssertionError:
-        raise fastapi.HTTPException(status_code=400, detail=f'Index {index} is not indexed by value')
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
