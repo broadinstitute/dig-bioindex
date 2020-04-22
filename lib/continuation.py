@@ -44,7 +44,7 @@ def next_continuation(cont):
     """
     Create a new continuation from an existing one.
     """
-    token = secrets.token_urlsafe()
+    token = lib.utils.nonce()
 
     # add it to the map
     with _cont_lock:
