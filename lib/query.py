@@ -14,7 +14,7 @@ def fetch(engine, bucket, index, q):
     a RecordReader of all the results.
     """
     if len(q) != index.schema.arity:
-        raise ValueError(f'Arity mismatch of query parameters for index: {index.schema}')
+        raise ValueError(f'Arity mismatch for index schema "{index.schema}"')
 
     # execute the query and fetch the records from s3
     return _run_query(engine, bucket, index, q)
@@ -63,7 +63,10 @@ def keys(engine, index, q):
     no keys will be returned.
     """
     if len(q) >= len(index.schema.key_columns):
-        raise ValueError(f'Too many key parameters for index: {index.schema}')
+        raise ValueError(f'Too many keys for index schema "{index.schema}"')
+
+    # ensure the index is built
+    assert index.built, f'Index "{index.name}" is not built'
 
     # which column will be returned?
     distinct_column = index.schema.key_columns[len(q)]
@@ -95,6 +98,8 @@ def _run_query(engine, bucket, index, q):
     Construct a SQL query to fetch S3 objects and byte offsets. Run it and
     return a RecordReader to the results.
     """
+    assert index.built, f'Index "{index.name}" is not built'
+
     sql = (
         f'SELECT `path`, MIN(`start_offset`), MAX(`end_offset`) '
         f'FROM `{index.table}` '

@@ -19,6 +19,9 @@ def build(engine, index, bucket, s3_objects):
     meta = sqlalchemy.MetaData()
     table = index.schema.build_table(index.table, meta)
 
+    # clear the built flag for the index
+    _set_built_flag(engine, index.name, False)
+
     # create the index table (drop any existing table already there)
     logging.info('Creating %s table...', table.name)
     table.drop(engine, checkfirst=True)
@@ -46,6 +49,9 @@ def build(engine, index, bucket, s3_objects):
 
         # each table knows how to build its own index
         index.schema.build_index(engine, table)
+
+        # set the built flag for the index
+        _set_built_flag(engine, index.name, True)
 
 
 def _index_object(engine, bucket, path, table, schema, counter):
@@ -129,3 +135,10 @@ def _bulk_insert(engine, table, records):
         engine.execute(sql)
     finally:
         os.remove(tmp.name)
+
+
+def _set_built_flag(engine, index, flag=True):
+    """
+
+    """
+    engine.execute('UPDATE `__Indexes` SET `built` = %s WHERE `name` = %s', flag, index.name)

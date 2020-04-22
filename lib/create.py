@@ -6,7 +6,7 @@ import lib.locus
 import lib.s3
 import lib.schema
 
-from sqlalchemy import Column, Integer, String, Table
+from sqlalchemy import Boolean, Column, Integer, String, Table
 from lib.utils import cap_case_str
 
 
@@ -24,6 +24,7 @@ def create_index(engine, index, s3_prefix, schema):
         Column('table', String(200)),
         Column('s3_prefix', String(1024)),
         Column('schema', String(200)),
+        Column('built', Boolean, default=False)
     ]
 
     table = Table('__Indexes', meta, *table_columns)
@@ -40,27 +41,37 @@ def create_index(engine, index, s3_prefix, schema):
         '   `table` = VALUES(`table`), '
         '   `s3_prefix` = VALUES(`s3_prefix`), '
         '   `schema` = VALUES(`schema`) '
+        '   `built` = 0 '
     )
 
     engine.execute(sql, index, cap_case_str(index), s3_prefix, str(schema))
 
 
-def list_indexes(engine):
+def list_indexes(engine, filter_built=True):
     """
     Return an iterator of all the indexes.
     """
-    sql = 'SELECT `name`, `table`, `prefix`, `schema` FROM `__Indexes`'
+    sql = 'SELECT `name`, `table`, `prefix`, `schema`, `built` FROM `__Indexes`'
 
     # convert all rows to an index definition
-    return map(_index_of_row, engine.execute(sql))
+    indexes = map(_index_of_row, engine.execute(sql))
+
+    # remove indexes not built?
+    if filter_built:
+        indexes = filter(lambda i: i.built, indexes)
+
+    return indexes
 
 
-def lookup_index(engine, index):
+def lookup_index(engine, index, assert_if_not_built=True):
     """
     Lookup an index in the database, return its table name, s3 prefix,
     schema, etc.
     """
-    sql = 'SELECT `name`, `table`, `prefix`, `schema` FROM `__Indexes` WHERE `name` = %s'
+    sql = (
+        'SELECT `name`, `table`, `prefix`, `schema`, `built` FROM `__Indexes` '
+        'WHERE `name` = %s '
+    )
 
     # lookup the index
     row = engine.execute(sql, index).fetchone()
@@ -80,4 +91,5 @@ def _index_of_row(row):
         table=row[1],
         s3_prefix=row[2],
         schema=lib.schema.Schema(row[3]),
+        built=row[4] != 0,
     )

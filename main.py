@@ -37,10 +37,11 @@ def cli_create(index, s3_prefix, schema):
 def cli_list():
     config = lib.config.Config()
     engine = lib.secrets.connect_to_mysql(config.rds_instance)
-    indexes = lib.create.list_indexes(engine)
+    indexes = lib.create.list_indexes(engine, False)
 
     for index in indexes:
-        print(index.name)
+        mark = "\u2713" if index.built else "\u2717"
+        print(f'{mark} {index.name}')
 
 
 @click.command(name='index')

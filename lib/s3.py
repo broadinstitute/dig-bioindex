@@ -13,6 +13,14 @@ s3_session = boto3.session.Session()
 s3_client = s3_session.client('s3', config=s3_config)
 
 
+def is_absolute(s3_key):
+    """
+    True if the s3 key points to an absolute bucket location. If it
+    is,
+    """
+    return s3_key.startsWith('s3://')
+
+
 def split_bucket(s3_key):
     """
     Returns the bucket name and the key from an s3 location string.
