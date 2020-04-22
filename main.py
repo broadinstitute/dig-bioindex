@@ -40,7 +40,7 @@ def cli_list():
     indexes = lib.create.list_indexes(engine)
 
     for index in indexes:
-        print(index)
+        print(index.name)
 
 
 @click.command(name='index')
