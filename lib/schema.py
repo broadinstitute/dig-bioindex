@@ -158,7 +158,7 @@ def _index_keys(columns):
                     yield [key, *rest]
 
     # generate a list of all possible key tuples
-    return list(build_keys(keys[0], keys[1:]))
+    return list(build_keys(keys[0], keys[1:])) if len(keys) > 0 else []
 
 
 def _index_builder(index_keys, locus_class=None, locus_columns=None):

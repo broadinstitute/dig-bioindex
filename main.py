@@ -52,7 +52,7 @@ def cli_index(index):
     engine = lib.secrets.connect_to_mysql(config.rds_instance)
 
     # which tables will be indexed? allow "all" with "*"
-    indexes = list(config.indexes.keys()) if index == '*' else index.split(',')
+    indexes = [i.name for i in lib.create.list_indexes(engine)] if index == '*' else index.split(',')
 
     for i in indexes:
         idx = lib.create.lookup_index(engine, i)

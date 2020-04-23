@@ -60,6 +60,7 @@ class RecordReader:
             self.bytes_total += source.length
 
         # start reading the records on-demand
+        self.record_filter = record_filter
         self.records = self._readall()
 
         # if there's a filter, apply it now
@@ -91,10 +92,14 @@ class RecordReader:
 
                 for line in content.iter_lines():
                     self.bytes_read += len(line) + 1  # eol character
-                    self.count += 1
 
-                    # parse the line as a JSON record
-                    yield orjson.loads(line)
+                    # parse the record
+                    record = orjson.loads(line)
+
+                    # optionally filter; and tally filtered records
+                    if self.record_filter is None or self.record_filter(record):
+                        self.count += 1
+                        yield record
 
             # handle database out of sync with S3
             except botocore.exceptions.ClientError:
