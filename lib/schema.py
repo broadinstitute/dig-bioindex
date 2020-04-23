@@ -1,11 +1,8 @@
-import abc
-import itertools
-
 from sqlalchemy import Column, Index, Integer, BigInteger, MetaData, String, Table
 from lib.locus import parse_columns
 
 
-class Schema(abc.ABC):
+class Schema:
     """
     Each table has a particular schema associated with it that defines
     how is is indexed. The two supported schemas are by locus and by
@@ -15,13 +12,14 @@ class Schema(abc.ABC):
     separated by the '|' character. Some example schemas:
 
     "phenotype"
-    "name|dbSNP"
+    "varId|dbSNP"
     "chr:pos"
     "chromosome:start-stop"
     "phenotype,chromosome:start-stop"
+    "consequence,chromosome,gene|transcript"
     """
 
-    def __init__(self, schema):
+    def __init__(self, schema_str):
         """
         Initialize a new schema object from a schema string. The schema
         string is a comma-separated list of columns that act as a compound
@@ -31,8 +29,8 @@ class Schema(abc.ABC):
         It is an error to have a locus column index in any position other
         than the final position in a compound index!
         """
-        self.schema = schema
-        self.schema_columns = schema.split(',')
+        self.schema_str = schema_str
+        self.schema_columns = [s.strip() for s in schema_str.split(',')]
         self.index_columns = []
         self.key_columns = []
 
@@ -43,7 +41,7 @@ class Schema(abc.ABC):
         # add table columns that will be indexed
         for column in self.schema_columns:
             if self.locus_class is not None:
-                raise ValueError(f'Invalid schema (locus must be last): {self.schema}')
+                raise ValueError(f'Invalid schema (locus must be last): {self.schema_str}')
 
             # is this "column" name a locus?
             self.locus_class, self.locus_columns = parse_columns(column)
@@ -58,12 +56,16 @@ class Schema(abc.ABC):
                 self.index_columns.append(Column(column, String(200)))
                 self.key_columns.append(column)
 
-        # convert to tuples
-        self.key_columns = tuple(self.key_columns)
-        self.index_columns = tuple(self.index_columns)
+        # ensure a valid schema exists
+        if len(self.key_columns) == 0 and self.locus_class is None:
+            raise ValueError(f'Invalid schema (no keys or locus specified)')
+
+        # index building helpers
+        self.index_keys = _index_keys(self.key_columns)
+        self.index_builder = _index_builder(self.index_keys, self.locus_class, self.locus_columns)
 
     def __str__(self):
-        return self.schema
+        return self.schema_str
 
     @property
     def has_locus(self):
@@ -95,33 +97,10 @@ class Schema(abc.ABC):
         """
         Returns the locus class of a row in s3 for the columns of this schema.
         """
-        assert self.locus_class is not None, f'Index schema does not have a locus: {self.schema}'
+        assert self.locus_class is not None, f'Index schema does not have a locus: {self.schema_str}'
 
         # instantiate the locus for this row
         return self.locus_class(*(row.get(col) for col in self.locus_columns if col))
-
-    def index_keys(self, row):
-        """
-        A generator of list, where each tuple consists of the value for this
-        index. A single row may produce multiple values.
-        """
-        keys = (row.get(k) for k in self.key_columns)
-        keys_tuple = tuple(itertools.takewhile(lambda x: x, keys))
-
-        # ensure at least the primary key is present
-        if len(self.key_columns) > 0 and len(keys_tuple) == 0:
-            raise ValueError(f'Invalid record: no primary key value for {self.key_columns[0]}')
-
-        # append the locus to the key
-        if self.locus_class:
-            if len(keys_tuple) < len(self.key_columns):
-                raise ValueError(f'Invalid record: missing secondary keys with locus')
-
-            # add loci to the key
-            for locus in self.locus_of_row(row).loci():
-                yield keys_tuple + locus
-        else:
-            yield keys_tuple
 
     def column_values(self, index_key):
         """
@@ -154,3 +133,66 @@ class Schema(abc.ABC):
         Returns the number of expected query arguments.
         """
         return len(self.key_columns) + (1 if self.has_locus else 0)
+
+
+def _index_keys(columns):
+    """
+    Take all the key columns and build a list of possible index
+    tuples that can arise from them.
+
+    For example, given the following schema: "varId|dbSNP,gene"
+    these are the possible index key lists:
+
+    [['varId', 'gene'],
+     ['dbSNP', 'gene']]
+    """
+    keys = [k.split('|') for k in columns]
+
+    # recursively go through the keys
+    def build_keys(primary, secondary):
+        for key in primary:
+            if len(secondary) == 0:
+                yield [key]
+            else:
+                for rest in build_keys(secondary[0], secondary[1:]):
+                    yield [key, *rest]
+
+    # generate a list of all possible key tuples
+    return list(build_keys(keys[0], keys[1:]))
+
+
+def _index_builder(index_keys, locus_class=None, locus_columns=None):
+    """
+    Returns a function that - given a row - returns the key generator.
+
+    For example, with the following schema: "varId|dbSNP,gene", the
+    index keys are [['varId', 'gene'], ['dbSNP', 'gene']]. So, for
+    any row, up to two index records can be generated.
+
+    If this schema also has a locus, then each index record may also
+    contain additional indexed records for the loci as well.
+    """
+    def build_index_key(row):
+        indexed_tuples = list(filter(all, [tuple(row.get(k) for k in keys) for keys in index_keys]))
+        loci = None
+
+        # if there's a locus in the schema, match it
+        if locus_class:
+            loci = locus_class(*(row[col] for col in locus_columns if col)).loci()
+
+        # if no index keys, just yield the loci
+        if len(index_keys) == 0:
+            yield from loci
+        else:
+            if len(indexed_tuples) == 0:
+                raise ValueError(f"Row failed to match schema")
+
+            # if no locus in the schema yield only the indexed keys
+            if locus_class is None:
+                yield from indexed_tuples
+            else:
+                for indexed_tuple in indexed_tuples:
+                    for locus in loci:
+                        yield indexed_tuple + locus
+
+    return build_index_key

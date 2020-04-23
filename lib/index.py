@@ -68,7 +68,7 @@ def _index_object(engine, bucket, path, table, schema, counter):
         end_offset = start_offset + len(line) + 1  # newline
 
         try:
-            for key_tuple in schema.index_keys(row):
+            for key_tuple in schema.index_builder(row):
                 if key_tuple in records:
                     records[key_tuple]['end_offset'] = end_offset
                 else:
