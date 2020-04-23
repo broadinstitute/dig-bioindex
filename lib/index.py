@@ -106,6 +106,7 @@ def _bulk_insert(engine, table, records):
 
     # get the field names from the first record
     fieldnames = list(records[0].keys())
+    quoted_fieldnames = [f'`{field}`' for field in fieldnames]
 
     # create a temporary file to write the CSV to
     tmp = tempfile.NamedTemporaryFile(mode='w+t', delete=False)
@@ -128,7 +129,7 @@ def _bulk_insert(engine, table, records):
             f"FIELDS TERMINATED BY ',' "
             f"LINES TERMINATED BY '\\n' "
             f"IGNORE 1 ROWS "
-            f"({','.join(fieldnames)}) "
+            f"({','.join(quoted_fieldnames)}) "
         )
 
         # bulk load into the database
