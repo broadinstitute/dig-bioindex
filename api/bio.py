@@ -22,8 +22,8 @@ router = fastapi.APIRouter()
 # connect to database
 engine = lib.secrets.connect_to_mysql(config.rds_instance, schema='bio')
 
-# max number of bytes to return per request
-RESPONSE_LIMIT = int(os.getenv('BIOINDEX_RESPONSE_LIMIT', 1 * 1024 * 1024))
+# max number of bytes to read from s3 per request
+RESPONSE_LIMIT = config.response_limit
 
 
 def _load_indexes():
