@@ -1,6 +1,6 @@
 import dotenv
 import fastapi
-import os
+import itertools
 
 import lib.config
 import lib.continuation
@@ -24,6 +24,7 @@ engine = lib.secrets.connect_to_mysql(config.rds_instance, schema='bio')
 
 # max number of bytes to read from s3 per request
 RESPONSE_LIMIT = config.response_limit
+MATCH_LIMIT = config.match_limit
 
 
 def _load_indexes():
@@ -69,26 +70,28 @@ async def api_list_indexes():
     }
 
 
-@router.get('/keys/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_keys(index: str, q: str = None):
+@router.get('/match/{index}', response_class=fastapi.responses.ORJSONResponse)
+async def api_match(index: str, q: str, limit: int = None):
     """
     Return all the unique keys for a value-indexed table.
     """
     try:
         idx = INDEXES[index]
+        limit = limit or MATCH_LIMIT
 
         # get the partial query parameters to apply
         qs = parse_query(q)
 
         # execute the query
-        keys, query_s = profile(lib.query.keys, engine, idx, qs)
-        fetched = list(keys)
+        keys, query_s = profile(lib.query.match, engine, idx, qs)
+        fetched = list(itertools.islice(keys, limit))
 
         return {
             'profile': {
                 'query': query_s,
             },
             'index': index,
+            'limit': limit,
             'count': len(fetched),
             'data': list(fetched),
             'nonce': nonce(),

@@ -121,10 +121,10 @@ def cli_count(index, q):
     print(count)
 
 
-@click.command(name='keys')
+@click.command(name='match')
 @click.argument('index')
 @click.argument('q', nargs=-1)
-def cli_keys(index, q):
+def cli_match(index, q):
     config = lib.config.Config()
 
     # connect to mysql and fetch the results
@@ -133,7 +133,7 @@ def cli_keys(index, q):
 
     # lookup the table class from the schema
     try:
-        for obj in lib.query.keys(engine, idx, q):
+        for obj in lib.query.match(engine, idx, q):
             print(obj)
     except AssertionError:
         logging.error('Index %s is not indexed by value!', index)
@@ -146,7 +146,7 @@ cli.add_command(cli_index)
 cli.add_command(cli_query)
 cli.add_command(cli_all)
 cli.add_command(cli_count)
-cli.add_command(cli_keys)
+cli.add_command(cli_match)
 
 
 if __name__ == '__main__':

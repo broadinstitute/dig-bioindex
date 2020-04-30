@@ -1,4 +1,5 @@
 import logging
+import re
 
 import lib.locus
 import lib.reader
@@ -53,41 +54,47 @@ def count(engine, bucket, index, q):
     return int(reader.count * reader.bytes_total / reader.bytes_read)
 
 
-def keys(engine, index, q):
+def match(engine, index, q):
     """
-    Returns all the unique keys within an index. If it's a compound
-    index, then for every query parameter present, the keys for those
-    parameters will be returned instead.
+    Returns a subset of unique keys that match the query.
 
     If the final column being indexed is a locus, it is an error and
     no keys will be returned.
     """
-    if len(q) >= len(index.schema.key_columns):
-        raise ValueError(f'Too many keys for index schema "{index.schema}"')
+    if not (0 < len(q) <= len(index.schema.key_columns)):
+        raise ValueError(f'Too many/few keys for index schema "{index.schema}"')
 
     # ensure the index is built
     if not index.built:
         raise ValueError(f'Index "{index.name}" is not built')
 
     # which column will be returned?
-    distinct_column = index.schema.key_columns[len(q)]
+    distinct_column = index.schema.key_columns[len(q) - 1]
 
-    # filter query parameters
-    tests = [f'{k} = %s ' for k in index.schema.key_columns[:len(q)]]
+    # exact query parameters and match parameter
+    tests = [f'`{k}` = %s' for k in index.schema.key_columns[:len(q) - 1]]
+
+    # allow for wildcard to match all
+    if q[len(q) - 1] != '*':
+        tests.append(f'`{distinct_column}` LIKE %s')
 
     # build the SQL statement
     sql = f'SELECT DISTINCT `{distinct_column}` FROM `{index.table}` '
 
-    # if there are any keys provided, add the conditionals
+    # add match conditionals
     if len(tests) > 0:
         sql += f'WHERE {"AND".join(tests)} '
 
-    # order the results
-    sql += f'ORDER BY `{distinct_column}` ASC'
+    # query parameters
+    params = list(q[:len(q) - 1])
+
+    # sanitize the last query parameter
+    if len(params) < len(tests):
+        params.append(re.sub(r'_|%|$', lambda m: f'%{m.group(0)}', q[len(q) - 1]))
 
     # fetch all the results
-    cursor, query_ms = profile(engine.execute, sql, *q)
-    logging.info('Query %s (distinct values) took %d ms', index.table, query_ms)
+    cursor, query_ms = profile(engine.execute, sql, *params)
+    logging.info('Match %s.%s took %d ms', index.table, distinct_column, query_ms)
 
     # yield all the results
     for r in cursor:
