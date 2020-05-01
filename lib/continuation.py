@@ -1,6 +1,7 @@
 import dataclasses
 import threading
 import time
+import typing
 
 import lib.reader
 import lib.utils
@@ -12,11 +13,7 @@ _cont_lock = threading.RLock()
 
 @dataclasses.dataclass()
 class Cont:
-    reader: lib.reader.RecordReader
-    idx: str
-    q: str = None
-    fmt: str = 'row'
-    page: int = 1
+    callback: any
     expiration: float = None
 
     def __post_init__(self):
@@ -36,23 +33,6 @@ def make_continuation(**kwargs):
     # add it to the map
     with _cont_lock:
         _cont_map[token] = cont
-
-    return token
-
-
-def next_continuation(cont):
-    """
-    Create a new continuation from an existing one.
-    """
-    token = lib.utils.nonce()
-
-    # add it to the map
-    with _cont_lock:
-        _cont_map[token] = dataclasses.replace(
-            cont,
-            page=cont.page + 1,
-            expiration=time.time() + 60,
-        )
 
     return token
 
