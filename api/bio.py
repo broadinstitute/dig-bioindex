@@ -132,10 +132,6 @@ async def api_all(index: str, fmt: str = 'row'):
     try:
         idx = INDEXES[index]
 
-        # validate query parameters
-        if fmt not in ['r', 'row', 'c', 'col', 'column']:
-            raise ValueError('Invalid output format')
-
         # lookup the schema for this index and perform the query
         reader, query_s = profile(lib.query.fetch_all, config.s3_bucket, idx.s3_prefix)
 
@@ -155,10 +151,6 @@ async def api_query_index(index: str, q: str, fmt='row', limit: int = None):
     """
     try:
         qs = _parse_query(q, required=True)
-
-        # validate query parameters
-        if fmt not in ['r', 'row', 'c', 'col', 'column']:
-            raise ValueError('Invalid output format')
 
         # lookup the schema for this index and perform the query
         idx = INDEXES[index]
@@ -272,6 +264,10 @@ def _fetch_records(reader, index, qs, fmt, page=1, query_s=None):
             # stop if the byte limit was reached
             if reader.bytes_read > bytes_limit:
                 break
+
+    # validate query parameters
+    if fmt not in ['r', 'row', 'c', 'col', 'column']:
+        raise ValueError('Invalid output format')
 
     # profile how long it takes to fetch the records from s3
     fetched_records, fetch_s = profile(list, take())
