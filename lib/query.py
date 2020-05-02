@@ -93,9 +93,6 @@ def match(engine, index, q):
         cursor, query_ms = profile(conn.execution_options(stream_results=True).execute, sql, *q)
         match_string = q[len(q) - 1].lower()
 
-        # output query performance
-        logging.info('Match %s.%s took %d ms', index.table, distinct_column, query_ms)
-
         # yield all the results until no more matches
         for r in cursor:
             if not r[0].lower().startswith(match_string):
