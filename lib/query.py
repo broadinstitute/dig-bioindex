@@ -76,29 +76,34 @@ def match(engine, index, q):
 
     # allow for wildcard to match all
     if q[len(q) - 1] != '*':
-        tests.append(f'`{distinct_column}` LIKE %s')
+        tests.append(f'`{distinct_column}` >= %s')
 
     # build the SQL statement
-    sql = f'SELECT DISTINCT `{distinct_column}` FROM `{index.table}` '
+    sql = (
+        f'SELECT `{distinct_column}` FROM `{index.table}` '
+        f'USE INDEX (`schema_idx`) '
+    )
 
     # add match conditionals
     if len(tests) > 0:
         sql += f'WHERE {"AND".join(tests)} '
 
-    # query parameters
-    params = list(q[:len(q) - 1])
-
-    # sanitize the last query parameter
-    if len(params) < len(tests):
-        params.append(re.sub(r'_|%|$', lambda m: f'%{m.group(0)}', q[len(q) - 1]))
-
     # fetch all the results
-    cursor, query_ms = profile(engine.execute, sql, *params)
-    logging.info('Match %s.%s took %d ms', index.table, distinct_column, query_ms)
+    with engine.connect() as conn:
+        cursor, query_ms = profile(conn.execution_options(stream_results=True).execute, sql, *q)
+        match_string = q[len(q) - 1].lower()
 
-    # yield all the results
-    for r in cursor:
-        yield r[0]
+        # output query performance
+        logging.info('Match %s.%s took %d ms', index.table, distinct_column, query_ms)
+
+        # yield all the results until no more matches
+        for r in cursor:
+            if not r[0].lower().startswith(match_string):
+                break
+            yield r[0]
+
+        # no more matches
+        cursor.close()
 
 
 def _run_query(engine, bucket, index, q):
