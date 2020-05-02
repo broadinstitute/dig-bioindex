@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-select@1.13.9/dist/css/bootstrap-select.min.css">
 
     <!-- title last -->
-    <title>KPN Bio Index</title>
+    <title>HuGe Bio Index</title>
 
     <!-- don't show vue app until compiled, don't let alleles overflow -->
     <style>
@@ -32,13 +32,12 @@
     <center>
         <div id="app" v-cloak>
             <div class="mt-5 mb-4">
-                <h1 style="font-family: 'Lato', sans-serif">KPN Bio-Index</h1>
+                <h1 style="font-family: 'Lato', sans-serif">HuGe Bio-Index</h1>
                 <div>
                     <a href="/docs" target="_blank">REST API Documentation</a>
                 </div>
             </div>
 
-            <!-- each query is a new card -->
             <div class="w-75">
                 <!-- search field -->
                 <div class="input-group mb-4 bg-white rounded">
@@ -55,17 +54,22 @@
                             </a>
                         </div>
                     </div>
-                    <input v-model="$store.state.q" class="form-control"
-                           aria-describedby="q"
-                           :placeholder="selectedIndexSchema"
-                           @change="$store.dispatch('search')"
-                           type="text">
+                    <input class="form-control"
+                           type="text"
+                           v-model="$store.state.q"
+                           :placeholder="selectedIndexSchema">
                     <div class="input-group-append">
-                        <button class="btn btn-primary"
-                                type="button"
-                                @click="$store.dispatch('search')">
-                            Query
+                        <button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown">
+                            Run
                         </button>
+                        <div class="dropdown-menu">
+                            <a class="dropdown-item" href="#" @click="$store.dispatch('search', 'query')">
+                                Query
+                            </a>
+                            <a class="dropdown-item" href="#" @click="$store.dispatch('search', 'match')">
+                                Match
+                            </a>
+                        </div>
                     </div>
                 </div>
 
@@ -198,14 +202,14 @@
                 },
 
                 // perform the search
-                async search(context) {
+                async search(context, action) {
                     let q = context.state.q;
                     let p = encodeURIComponent(q);
                     let i = context.state.index.index;
 
                     // don't url encode the query parameter for the example call
-                    let href = `/api/bio/query/${i}?q=${p}`;
-                    let link = `/api/bio/query/${i}?q=${q}`;
+                    let href = `/api/bio/${action}/${i}?q=${p}`;
+                    let link = `/api/bio/${action}/${i}?q=${q}`;
 
                     context.commit('setCall', {href, link});
                     context.commit('startLoading');
