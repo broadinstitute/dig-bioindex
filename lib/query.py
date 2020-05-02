@@ -6,8 +6,6 @@ import lib.reader
 import lib.s3
 import lib.schema
 
-from lib.profile import profile
-
 
 def fetch(engine, bucket, index, q):
     """
@@ -74,9 +72,8 @@ def match(engine, index, q):
     # exact query parameters and match parameter
     tests = [f'`{k}` = %s' for k in index.schema.key_columns[:len(q) - 1]]
 
-    # allow for wildcard to match all
-    if q[len(q) - 1] != '*':
-        tests.append(f'`{distinct_column}` >= %s')
+    # append the matching query
+    tests.append(f'`{distinct_column}` LIKE %s')
 
     # build the SQL statement
     sql = (
@@ -86,21 +83,18 @@ def match(engine, index, q):
 
     # add match conditionals
     if len(tests) > 0:
-        sql += f'WHERE {"AND".join(tests)} '
+        sql += f'WHERE {" AND ".join(tests)} '
+
+    # create the match pattern
+    pattern = re.sub(r'_|%|$', lambda m: f'%{m.group(0)}', q[-1])
 
     # fetch all the results
     with engine.connect() as conn:
-        cursor, query_ms = profile(conn.execution_options(stream_results=True).execute, sql, *q)
-        match_string = q[len(q) - 1].lower()
+        cursor = conn.execution_options(stream_results=True).execute(sql, *q[:-1], pattern)
 
         # yield all the results until no more matches
         for r in cursor:
-            if not r[0].lower().startswith(match_string):
-                break
             yield r[0]
-
-        # no more matches
-        cursor.close()
 
 
 def _run_query(engine, bucket, index, q):
