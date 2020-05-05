@@ -97,3 +97,27 @@ async def api_group_phenotypes(q: str = None):
         'count': len(phenotypes),
         'nonce': nonce(),
     }
+
+
+@router.get('/documentation', response_class=fastapi.responses.ORJSONResponse)
+async def api_documentation(q: str):
+    """
+    Returns all available phenotypes or just those for a given
+    portal group.
+    """
+    sql = 'SELECT `text` FROM Documentation WHERE `name` = %s'
+
+    # run the query
+    resp, query_s = profile(engine.execute, sql, q)
+
+    # transform results
+    data = [{'text': r[0]} for r in resp.fetchall()]
+
+    return {
+        'profile': {
+            'query': query_s,
+        },
+        'data': data,
+        'count': len(data),
+        'nonce': nonce(),
+    }
