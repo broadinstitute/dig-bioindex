@@ -10,7 +10,7 @@ from lib.utils import nonce
 # load dot files and configuration
 config = lib.config.Config()
 
-# create flask app; this will load .env
+# create web server
 router = fastapi.APIRouter()
 
 # connect to database
@@ -100,18 +100,24 @@ async def api_group_phenotypes(q: str = None):
 
 
 @router.get('/documentation', response_class=fastapi.responses.ORJSONResponse)
-async def api_documentation(q: str):
+async def api_documentation(q: str, group: str = None):
     """
     Returns all available phenotypes or just those for a given
     portal group.
     """
-    sql = 'SELECT `text` FROM Documentation WHERE `name` = %s'
+    sql = 'SELECT `group`, `content` FROM Documentation WHERE `name` = %s '
+    params = [q]
+
+    # additionally get the the group
+    if group is not None:
+        sql += 'AND `group` = %s '
+        params.append(group)
 
     # run the query
-    resp, query_s = profile(engine.execute, sql, q)
+    resp, query_s = profile(engine.execute, sql, *params)
 
     # transform results
-    data = [{'text': r[0]} for r in resp.fetchall()]
+    data = [{'group': group, 'content': content} for group, content in resp.fetchall()]
 
     return {
         'profile': {
