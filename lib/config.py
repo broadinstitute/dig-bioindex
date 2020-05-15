@@ -17,6 +17,8 @@ class Config:
         # default settings
         s3_bucket = None
         rds_instance = None
+        bio_schema = 'bio'
+        portal_schema = 'portal'
         response_limit = 1 * 1024 * 1024
         match_limit = 1000
 
@@ -29,16 +31,21 @@ class Config:
             rds_instance = secret.get('BIOINDEX_RDS_INSTANCE', rds_instance)
             response_limit = secret.get('BIOINDEX_RESPONSE_LIMIT', response_limit)
             match_limit = secret.get('BIOINDEX_MATCH_LIMIT', match_limit)
+            bio_schema = secret.get('BIOINDEX_BIO_SCHEMA', bio_schema)
+            portal_schema = secret.get('BIOINDEX_PORTAL_SCHEMA', portal_schema)
 
         # the local environment overrides the secret
         self.s3_bucket = os.getenv('BIOINDEX_S3_BUCKET', s3_bucket)
         self.rds_instance = os.getenv('BIOINDEX_RDS_INSTANCE', rds_instance)
         self.response_limit = os.getenv('BIOINDEX_RESPONSE_LIMIT', response_limit)
         self.match_limit = os.getenv('BIOINDEX_RESPONSE_LIMIT', match_limit)
+        self.bio_schema = os.getenv('BIOINDEX_BIO_SCHEMA', bio_schema)
+        self.portal_schema = os.getenv('BIOINDEX_PORTAL_SCHEMA', portal_schema)
 
         # validate required settings
         assert self.s3_bucket
         assert self.rds_instance
+        assert self.bio_schema
 
         # post-init
         self.response_limit = int(response_limit)

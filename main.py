@@ -24,7 +24,7 @@ def cli():
 @click.confirmation_option(prompt='This will create a new index; continue? [y/N]')
 def cli_create(index, s3_prefix, schema):
     config = lib.config.Config()
-    engine = lib.secrets.connect_to_mysql(config.rds_instance)
+    engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)
 
     # parse the schema to ensure validity; create the index
     lib.create.create_index(engine, index, s3_prefix, lib.schema.Schema(schema))
@@ -36,7 +36,7 @@ def cli_create(index, s3_prefix, schema):
 @click.command(name='list')
 def cli_list():
     config = lib.config.Config()
-    engine = lib.secrets.connect_to_mysql(config.rds_instance)
+    engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)
     indexes = lib.create.list_indexes(engine, False)
 
     for index in indexes:
@@ -49,7 +49,7 @@ def cli_list():
 @click.confirmation_option(prompt='This will rebuild the index; continue? [y/N] ')
 def cli_index(index):
     config = lib.config.Config()
-    engine = lib.secrets.connect_to_mysql(config.rds_instance)
+    engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)
 
     # which tables will be indexed? allow "all" with "*"
     indexes = [i.name for i in lib.create.list_indexes(engine)] if index == '*' else index.split(',')
@@ -78,7 +78,7 @@ def cli_query(index, q):
     config = lib.config.Config()
 
     # connect to mysql and fetch the results
-    engine = lib.secrets.connect_to_mysql(config.rds_instance)
+    engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)
     idx = lib.create.lookup_index(engine, index)
 
     # query the index
@@ -95,7 +95,7 @@ def cli_all(index):
     config = lib.config.Config()
 
     # connect to mysql and lookup the index
-    engine = lib.secrets.connect_to_mysql(config.rds_instance)
+    engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)
     idx = lib.create.lookup_index(engine, index)
 
     # read all records
@@ -113,7 +113,7 @@ def cli_count(index, q):
     config = lib.config.Config()
 
     # connect to mysql and fetch the results
-    engine = lib.secrets.connect_to_mysql(config.rds_instance)
+    engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)
     idx = lib.create.lookup_index(engine, index)
 
     # query the index
@@ -128,7 +128,7 @@ def cli_match(index, q):
     config = lib.config.Config()
 
     # connect to mysql and fetch the results
-    engine = lib.secrets.connect_to_mysql(config.rds_instance)
+    engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)
     idx = lib.create.lookup_index(engine, index)
 
     # lookup the table class from the schema

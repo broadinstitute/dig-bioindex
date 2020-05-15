@@ -14,7 +14,7 @@ config = lib.config.Config()
 router = fastapi.APIRouter()
 
 # connect to database
-engine = lib.secrets.connect_to_mysql(config.rds_instance, schema='portal')
+engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.portal_schema)
 
 
 @router.get('/groups', response_class=fastapi.responses.ORJSONResponse)
