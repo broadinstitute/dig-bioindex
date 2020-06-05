@@ -21,7 +21,7 @@ def cli():
 @click.argument('index')
 @click.argument('s3_prefix')
 @click.argument('schema')
-@click.confirmation_option(prompt='This will create a new index; continue? [y/N]')
+@click.confirmation_option(prompt='This will create a new index; continue?')
 def cli_create(index, s3_prefix, schema):
     config = lib.config.Config()
     engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)
@@ -46,7 +46,7 @@ def cli_list():
 
 @click.command(name='index')
 @click.argument('index')
-@click.confirmation_option(prompt='This will rebuild the index; continue? [y/N] ')
+@click.confirmation_option(prompt='This will rebuild the index; continue? ')
 def cli_index(index):
     config = lib.config.Config()
     engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)

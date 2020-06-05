@@ -59,8 +59,8 @@ def match(engine, index, q):
     If the final column being indexed is a locus, it is an error and
     no keys will be returned.
     """
-    if not (0 < len(q) <= len(index.schema.key_columns)):
-        raise ValueError(f'Too many/few keys for index schema "{index.schema}"')
+    if not 0 < len(q) <= len(index.schema.key_columns):
+        raise ValueError(f'Too few/many keys for index schema "{index.schema}"')
 
     # ensure the index is built
     if not index.built:
@@ -86,7 +86,8 @@ def match(engine, index, q):
         sql += f'WHERE {" AND ".join(tests)} '
 
     # create the match pattern
-    pattern = re.sub(r'_|%|$', lambda m: f'%{m.group(0)}', q[-1])
+    pattern = '%' if q[-1] in ['_', '*'] else  re.sub(r'_|%|$', lambda m: f'%{m.group(0)}', q[-1])
+    prev_key = None
 
     # fetch all the results
     with engine.connect() as conn:
@@ -94,7 +95,11 @@ def match(engine, index, q):
 
         # yield all the results until no more matches
         for r in cursor:
-            yield r[0]
+            if r[0] != prev_key:
+                yield r[0]
+            
+            # don't return this key again
+            prev_key = r[0]
 
 
 def _run_query(engine, bucket, index, q):

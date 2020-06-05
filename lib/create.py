@@ -22,7 +22,7 @@ def create_index(engine, index, s3_prefix, schema):
         Column('id', Integer, primary_key=True),
         Column('name', String(200), index=True),
         Column('table', String(200)),
-        Column('s3_prefix', String(1024)),
+        Column('prefix', String(1024)),
         Column('schema', String(200)),
         Column('built', Boolean, default=False)
     ]
@@ -30,17 +30,17 @@ def create_index(engine, index, s3_prefix, schema):
     table = Table('__Indexes', meta, *table_columns)
 
     # create the index table (drop any existing table already there)
-    logging.info('Creating __Indexes table...', table.name)
+    logging.info('Creating __Indexes table...')
     table.create(engine, checkfirst=True)
 
     # add the new index to the table
     sql = (
-        'INSERT INTO `__Indexes` (`name`, `table`, `s3_prefix`, `schema`) '
-        'VALUES (?, ?, ?, ?) '
+        'INSERT INTO `__Indexes` (`name`, `table`, `prefix`, `schema`) '
+        'VALUES (%s, %s, %s, %s) '
         'ON DUPLICATE KEY UPDATE '
         '   `table` = VALUES(`table`), '
-        '   `s3_prefix` = VALUES(`s3_prefix`), '
-        '   `schema` = VALUES(`schema`) '
+        '   `prefix` = VALUES(`prefix`), '
+        '   `schema` = VALUES(`schema`), '
         '   `built` = 0 '
     )
 
