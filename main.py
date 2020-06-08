@@ -27,10 +27,13 @@ def cli_create(index, s3_prefix, schema):
     engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)
 
     # parse the schema to ensure validity; create the index
-    lib.create.create_index(engine, index, s3_prefix, lib.schema.Schema(schema))
+    try:
+        lib.create.create_index(engine, index, s3_prefix, lib.schema.Schema(schema))
 
-    # successfully completed
-    logging.info('Done; build with `index %s`', index)
+        # successfully completed
+        logging.info('Done; build with `index %s`', index)
+    except AssertionError as e:
+        logging.error('Failed to create index %s: %s', index, e)
 
 
 @click.command(name='list')
@@ -60,15 +63,18 @@ def cli_index(index):
         if not idx:
             raise KeyError(f'Unknown index: {i}')
 
-        # connect to mysql and get an s3 object listing
-        s3_objects = lib.s3.list_objects(config.s3_bucket, idx.s3_prefix, exclude='_SUCCESS')
-
-        # build the index
-        lib.index.build(engine, idx, config.s3_bucket, s3_objects)
-        logging.info('Successfully built index.')
+        try:
+            # get an s3 object listing
+            s3_objects = lib.s3.list_objects(config.s3_bucket, idx.s3_prefix, exclude='_SUCCESS')
+    
+            # build the index
+            lib.index.build(engine, idx, config.s3_bucket, s3_objects)
+            logging.info('Successfully built index.')
+        except AssertionError as e:
+            logging.error('Failed to build index %s: %s', i, e)
 
     # finished building all indexes
-    logging.info('Done; query with `query <index> [key] [key] [...] [gene/locus/region]')
+    logging.info('Done; query with `query <index>`')
 
 
 @click.command(name='query')

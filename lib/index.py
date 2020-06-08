@@ -29,6 +29,9 @@ def build(engine, index, bucket, s3_objects):
 
     # collect all the s3 objects into a list so the size is known
     objects = list(s3_objects)
+    
+    # make sure that there is data to index
+    assert len(objects) > 0, 'No files found in S3 to index'
 
     # as each job finishes...
     with enlighten.get_manager() as progress_mgr:

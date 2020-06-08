@@ -15,7 +15,7 @@ def create_index(engine, index, s3_prefix, schema):
     Creates the __Indexes table if it doesn't exist and adds an entry
     for this new index (or overwrites the existing one).
     """
-    meta = sqlalchemy.MetaData()
+    assert s3_prefix.endswith('/'), "S3 prefix must be a common prefix ending with '/'"
 
     # definition of the __Indexes table
     table_columns = [
@@ -27,7 +27,7 @@ def create_index(engine, index, s3_prefix, schema):
         Column('built', Boolean, default=False)
     ]
 
-    table = Table('__Indexes', meta, *table_columns)
+    table = Table('__Indexes', sqlalchemy.MetaData(), *table_columns)
 
     # create the index table (drop any existing table already there)
     logging.info('Creating __Indexes table...')
