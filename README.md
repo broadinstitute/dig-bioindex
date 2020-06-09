@@ -4,109 +4,149 @@ Bio-Index is a tool that indexes genomic data stored in [AWS S3][s3] "tables" (t
 
 The Bio-Index has two entry points: a CLI used for basic CRUD operations and a simple HTTP server and REST API for pure querying.
 
-### Dot Environment
+## Configuring the BioIndex
 
-The bio-index uses [python-dotenv][dotenv] (environment variables) for configuration. There are two environment files of importance: `.env` and `.flaskenv`.
+The bio-index uses [python-dotenv][dotenv] (environment variables) for configuration. There are two environment files of importance: `.bioindex` and `.env`. The `.bioindex` file contains environment variables for connecting to AWS if they need to differ from those in the AWS credentials file.
 
-The `.env` file contains environment variables for connecting to AWS (if they need to differ from those in the AWS credentials file) and where the `BIOINDEX_CONFIG` file is located, which defaults to `config.json`.
+The following are the environment variables that can be set in the `.bioindex` file:
 
-The `.flaskenv` file holds any Flask, server-specific settings (e.g. app module and port number).
+```ini
+BIOINDEX_S3_BUCKET       # S3 bucket to index/read from
+BIOINDEX_RDS_INSTANCE    # RDS MySQL instance indexes are written to/read from
+BIOINDEX_BIO_SCHEMA      # RDS MySQL schema for the bio index (default=bio)
+BIOINDEX_PORTAL_SCHEMA   # RDS MySQL schema for the portal (default=portal)
+BIOINDEX_RESPONSE_LIMIT  # number of bytes to read from S3 per request (default = 1MB)
+BIOINDEX_MATCH_LIMIT     # number of matches to return per request (default = 1000)
+```
 
-### Testing Setup
+Additionally, one can set a single environment variable (`BIOINDEX_ENVIRONMENT`), which should be the name of an AWS secret. If set, the BioIndex will read that secret as JSON and expects it to contain the rest of the environment setup.
 
-Once you think you have everything setup, you can test it with the CLI:
+Likewise, the environment can be overridden. The priority of values is as such:
+
+```
+secret < .bioindex < envrionment
+```
+
+For example, consider the following setup:
+
+* `BIOINDEX_ENVIRONMENT` contains "bio-index-secret", which sets `BIOINDEX_S3_BUCKET` to "bio-index"
+* `BIOINDEX_S3_BUCKET` is set in `.bioindex` to "bio-index-dev"
+
+When run, the S3 bucket will be set to "bio-index-dev". Likewise, if the command line is run like so:
 
 ```bash
-$ python3 -m main test
+$ BIOINDEX_S3_BUCKET=bio-test python3 -m main query gene SLC30A8
 ```
 
-### Preparing Tables
+The S3 bucket used will be "bio-test".
 
-Once everything is setup, you can begin creating or preparing the "table" files in [S3][s3] to be indexed. Each table is expected to be in [JSON-lines][json-lines] format. 
+## Creating Indexes
 
-This format is output natively by [Spark][spark] to folders in [S3][s3] when used to process data. For example (using [PySpark][pyspark] on an [AWS EMR][emr] cluster):
+To create a new index, use the `create` command. Example:
 
-```python
-df.write.json('s3://my-bucket/folder')
+```bash
+$ python3 -m main create my-index prefix/key/to/files/ phenotype,chrom:pos
 ```
 
-The above code would write out many part files to the bucket/path that can now be indexed using the `index` CLI command (details below). However, they will not be well suited for high-performance reading. It is best to always order the output by locus before writing them. This will _dramatically_ improve the performance of Bio-Index:
+The above would create a new (or overwrite the existing) index named `my-index`. It indicates that all the files to index in the S3 bucket are located in `prefix/key/to/files/` recursively, and that the schema used to index the files should be done by `phenotype` first and then by locus: `chrom:pos`.
 
-```python
-sorted_snp_df = df.orderBy(['chromosome', 'pos'])
-sorted_trait_df = df.orderBy(['phenotype'])
-```
+The "prefix" to the files should always be a directory name and end with `/`. Every object in S3 under it will be indexed, no matter how deeply nested.
 
-### Configuring Indexes
-
-One of the `.env` variables specified is `BIOINDEX_CONFIG` filename. It defaults to `config.json`. This is a JSON file the [MySQL][mysql] RDS instance to use for the indexes, which [S3][s3] bucket will be indexed (and queried) , and all the indexes: the resulting table, sources, and schema. For example:
+The "schema" parameter for the index controls how each record is indexed. Every schema follows the same the same general format: `keys,...,locus`. Consider the following JSON record:
 
 ```json
 {
-    "s3_bucket": "my-bucket",
-    "rds_instance": "my-mysql-instance",
-    "indexes": {
-        "genes": {
-            "path": "path/to/genes",
-            "schema": "chromosome:start-end"
-        }
-    }
+    "varId": "8:117962623:C:T",
+    "dbSNP": "rs769898168",
+    "chromosome": "8",
+    "position": 117962623,
+    "phenotype": "T2D",
+    "pValue": 0.39,
+    "beta": 0.3,
+    "consequence": "splice_region_variant",
+    "gene": "SLC30A8",
+    "impact": "LOW"
 }
 ```
 
-The above configuration would result in a table named `genes` being created in the [MySQL][mysql] database `my-mysql-instance`, which contains the indexed records for all the files found in `s3://my-bucket/path/to/genes/`.
+This record, may be indexed many different ways. For example:
 
-The "schema" parameter for the index controls how each record is indexed. It can be in one of three possible formats:
+* By variant ID: `varId`
+* By dbSNP: `dbSNP`
+* By variant ID or dbSNP: `varId|dbSNP`
+* By position: `chromosome:position`
+* By phenotype, then position: `phenotype,chromosome:position`
+* By gene, then phenotype: `gene,phenotype`
+* ...
 
-* SNP locus: `chromosome:position`
-* Region locus: `chromosome:start-end`
-* Value: `column`
+The rules of indexing are as follows:
 
-The SNP and region locus schemas are the names of the columns of the JSON objects read from each file. For example, if this is your record:
+* Key columns can only be cardinal values and are matched exactly.
+* Interchangeable keys may be separated with `|`.
+* Locus must be last.
+* Locus must be a position (`chr:pos`) or region (`chr:start-stop`).
 
-```json
-{"snp":"rs3834932", "chr": "12", "pos": 104152227}
-``` 
+## Preparing S3 Objects
 
-Then your schema would be `chr:pos`, indicating that the chromosome column name is `chr` and the position column name is `pos`.
+Once everything is setup, you can begin creating or preparing the objects in [S3][s3] to be indexed. Each objects is expected to be in [JSON-lines][json-lines] format, and _must be sorted in order they are to be indexed!_ The only exception to this would be if the index is always a 1:1 mapping with a single record (e.g. indexing by ID).
 
-A value locus schema is an enumeration of possible values to index by. This can be any one key in the JSON object.
+For example, if the the schema `phenotype,chromosome:position` is used, then the objects in [S3][s3] are expected to be written (using [Spark][pyspark]) like so:
 
-### Indexing
-
-Once your configuration has been made, you can run the indexing code for any of the tables using the CLI `index` command along with a comma-separated list of table names. For example, using the example configuration above:
-
-```bash
-$ python3 -m main index genes
+```python
+df.orderBy(['phenotype','chromosome','position']) \
+    .write \
+    .json('s3://my-bucket/folder')
 ```
 
-_NOTE: You can also pass `*` as the table name to force indexing of all tables!_
+The above code would write out many part files to the bucket/path, each perfectly sorted and ready to be indexed using the `index` CLI command.
 
-### Querying
+## Indexing
 
-Once you've built an index, you can then query the key space and retrieve all the records that overlap a given locus. For example, to query all records in the `genes` key space that overlap a given region:
+Once an index has been created, simply use the `index` command and pass long a comma-separated list of indexes to build.
 
 ```bash
-$ python3 -m main query genes chr8:100000-101000
-{"name": "AC131281.2", "chromosome": "8", "start": 100584, "end": 100728, "ensemblId": "ENSG00000254193", "type": "processed_pseudogene"}
+$ python3 -m main index my-index,another-index
 ```
 
-The query parameter for the index should always be either a SNP/region locus for a table indexed by locus, or a single value for a table indexed by value.
+_NOTE: You can also pass `*` as to build all indexes!_
+
+## Querying Indexes
+
+Once you've built an index, you can then query it and retrieve all the records that match various input keys and/or overlap the given region. For example, to query all records in the `genes` key space that overlap a given region:
 
 ```bash
-$ python3 -m main query phewas rs3834932
-{"alt":"CGGGT","beta":-0.0024,"chromosome":"12","n":191764,"pValue":0.8816,"phenotype":"T2D","position":104152227,"reference":"C","stdErr":0.0159,"top":false,"id":"rs3834932","zScore":-0.149}
+$ python3 -m main query genes chr3:983248-1180000
+{'chromosome': '3', 'end': 1445901, 'name': 'CNTN6', 'source': 'symbol', 'start': 1134260, 'type': 'protein_coding'}
 ```
 
 _NOTE: If you'd like to limit the output, just pipe it to `head -n`._
 
-In addition to querying, there are also commands `count` records, fetch `all` records, and to return the enumeration `keys` of a value-schema table.
+In addition to querying, there are also commands to `count` records, fetch `all` records, and `match` keys. Examples:
 
-## Index REST Server
+```bash
+$ python3 -m main count genes 8:100000000-200000000
+1587
 
-In addition to a CLI, Bio-Index is also a [Flask][flask] server that allows you to query records via REST calls.
+$ python3 -m main match gene SLC30A
+SLC30A1
+SLC30A10
+SLC30A2
+SLC30A3
+SLC30A4
+SLC30A5
+SLC30A6
+SLC30A7
+SLC30A8
+SLC30A9
+```
 
-### Starting the Server
+_NOTE: The `count` command is an approximation. It reads the first 500 records and divides the total number of bytes to read from S3 by the average byte size per record._
+
+# Index REST Server
+
+In addition to a CLI, Bio-Index is also a [FastAPI][fastapi] server that allows you to query records via REST calls.
+
+## Starting the Server
 
 You can run using either the `run-server.sh` (or `run-server.cmd` on Windows) script or yourself manually:
 
@@ -116,7 +156,7 @@ $ uvicorn server:app --port 5000
 
 _Note: this assumes `uvicorn` is installed via `pip`._
 
-### REST Queries
+## REST Queries
 
 The entire REST API can be explored both via the [demo page](http://localhost:5000/) and via the REST API [documentation page](http://localhost:5000/docs).
 
@@ -125,6 +165,7 @@ Each request results in a JSON response that looks like so:
 ```json
 {
     "continuation": null,
+    "nonce": "Ox4YfcJapxGYST_siDYjFtp150BZEMqC5JdyTuyTMUQ",
     "count": 1,
     "page": 1,
     "data": [
@@ -155,7 +196,7 @@ Each request results in a JSON response that looks like so:
 
 The `count` is the total number of records returned by this request.
 
-The `data` is the array of records (if `format=row`) or a dictionary of columns (if `format=column`). 
+The `data` is the array of records (if `format=row`) or a dictionary of columns (if `format=column`).
 
 The `profile` shows how long the index query took vs. how much time was spent fetching the records from [S3][s3].
 
@@ -165,7 +206,7 @@ If the `continutation` value is non-null, then it is a string, which is a token 
 
 If the `continuation` is followed to download more records, then the `page` count is increased each subsequent call.
 
-### Dependencies
+# Dependencies
 
 * [Python 3.6+][python]
 * [setuptools][setuptools]
@@ -199,3 +240,4 @@ If the `continuation` is followed to download more records, then the `page` coun
 [spark]: https://spark.apache.org/
 [pyspark]: https://spark.apache.org/docs/latest/api/python/pyspark.html
 [json-lines]: http://jsonlines.org/examples/
+[aiofiles]: https://pypi.org/project/aiofiles/
