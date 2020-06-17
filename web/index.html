@@ -94,11 +94,6 @@
                         </button>
                     </div>
 
-                    <!-- results error -->
-                    <div v-if="$store.state.error" class="card-body">
-                        <div v-html="$store.state.error"></div>
-                    </div>
-
                     <!-- response here -->
                     <div v-show="dataLoaded">
                         <div class="card-body p-0" style="height: 20em">
@@ -181,9 +176,10 @@
                     state.jsTime = Math.trunc(Date.now() - state.t0 - bioIndexTime);
                 },
 
-                setError(state, err) {
+                setError(state, json) {
                     state.loading = null;
-                    state.error = err;
+                    state.error = json;
+                    state.results = json;
                 },
 
                 startLoading(state) {
@@ -222,7 +218,7 @@
                         context.commit('setResults', await resp.json());
                     } else {
                         $('#api-call').removeClass('alert-success').addClass('alert-danger');
-                        context.commit('setError', await resp.text());
+                        context.commit('setError', await resp.json());
                     }
                 },
 
@@ -239,7 +235,7 @@
                         context.commit('setResults', await resp.json());
                     } else {
                         $('#api-call').removeClass('alert-success').addClass('alert-danger');
-                        context.commit('setError', await resp.text());
+                        context.commit('setError', await resp.json());
                     }
                 },
             },

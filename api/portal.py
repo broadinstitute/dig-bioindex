@@ -22,9 +22,7 @@ async def api_portal_groups():
     """
     Returns the list of portals available.
     """
-    sql = (
-        'SELECT DISTINCT `name`, `description`, `default`, `memberCMD` FROM DiseaseGroups'
-    )
+    sql = 'SELECT `name`, `description`, `default`, `memberCMD` FROM DiseaseGroups'
 
     # run the query
     resp, query_s = profile(engine.execute, sql)

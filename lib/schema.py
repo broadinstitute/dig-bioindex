@@ -80,7 +80,7 @@ class Schema:
         """
         table_columns = [
             Column('id', Integer, primary_key=True),
-            Column('path', String(1024)),
+            Column('path', String(1024), index=True),
             Column('start_offset', BigInteger),
             Column('end_offset', BigInteger),
         ]

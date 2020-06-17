@@ -53,7 +53,7 @@ async def api_list_indexes():
     data = []
 
     # add each index to the response data
-    for index in INDEXES.values():
+    for index in sorted(INDEXES.values(), key=lambda i: i.name):
         data.append({
             'index': index.name,
             'schema': str(index.schema),
