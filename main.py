@@ -1,6 +1,7 @@
 import click
 import colorama
 import dotenv
+import json
 import logging
 
 import lib.config
@@ -66,7 +67,7 @@ def cli_index(index):
         try:
             # get an s3 object listing
             s3_objects = lib.s3.list_objects(config.s3_bucket, idx.s3_prefix, exclude='_SUCCESS')
-    
+
             # build the index
             lib.index.build(engine, idx, config.s3_bucket, s3_objects)
             logging.info('Successfully built index.')
@@ -92,7 +93,7 @@ def cli_query(index, q):
 
     # dump all the records
     for record in reader.records:
-        print(record)
+        print(json.dumps(record))
 
 
 @click.command(name='all')
