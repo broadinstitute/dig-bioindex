@@ -146,7 +146,9 @@ async def api_all(index: str, fmt: str = 'row'):
 @router.head('/all/{index}', response_class=fastapi.responses.ORJSONResponse)
 async def api_test_all(index: str):
     """
-    Query the database and return ALL records for a given index.
+    Query the database fetch ALL records for a given index. Don't read
+    the records from S3, but instead set the Content-Length to the total
+    number of bytes what would be read.
     """
     try:
         idx = INDEXES[index]
