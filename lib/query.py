@@ -1,4 +1,3 @@
-import logging
 import re
 
 import lib.locus
@@ -38,7 +37,7 @@ def count(engine, bucket, index, q):
     """
     Estimate the number of records that will be returned by a query.
     """
-    reader = _run_query(engine, bucket, index, q)
+    reader = fetch_all(bucket, index.s3_prefix) if len(q) == 0 else _run_query(engine, bucket, index, q)
 
     # read a couple hundred records to get the total bytes read
     for _ in zip(range(500), reader.records):
@@ -97,7 +96,7 @@ def match(engine, index, q):
         for r in cursor:
             if r[0] != prev_key:
                 yield r[0]
-            
+
             # don't return this key again
             prev_key = r[0]
 

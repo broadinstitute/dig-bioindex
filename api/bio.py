@@ -98,7 +98,7 @@ async def api_match(index: str, q: str, limit: int = None):
 
 
 @router.get('/count/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_count_index(index: str, q: str):
+async def api_count_index(index: str, q: str=None):
     """
     Query the database and estimate how many records will be returned.
     """
@@ -137,6 +137,25 @@ async def api_all(index: str, fmt: str = 'row'):
 
         # fetch records from the reader
         return _fetch_records(reader, index, None, fmt, query_s=query_s)
+    except KeyError:
+        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
+
+
+@router.head('/all/{index}', response_class=fastapi.responses.ORJSONResponse)
+async def api_test_all(index: str):
+    """
+    Query the database and return ALL records for a given index.
+    """
+    try:
+        idx = INDEXES[index]
+
+        # lookup the schema for this index and perform the query
+        reader, query_s = profile(lib.query.fetch_all, config.s3_bucket, idx.s3_prefix)
+
+        # return the total number of bytes that need to be read
+        return fastapi.Response(headers={'Content-Length': str(reader.bytes_total)})
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
