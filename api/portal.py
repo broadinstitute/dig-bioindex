@@ -109,6 +109,7 @@ async def api_portal_datasets(q: str = None):
     sql = (
         'SELECT `name`, '
         '       `description`, '
+        '       `community`, '
         '       `phenotypes`, '
         '       `ancestry`, '
         '       `tech`, '
@@ -125,19 +126,20 @@ async def api_portal_datasets(q: str = None):
 
     # filter all the datasets
     for r in resp:
-        ps = [p for p in r[2].split(',') if p in phenotypes]
+        ps = [p for p in r[3].split(',') if p in phenotypes]
 
         if len(ps) > 0:
             datasets.append({
                 'name': r[0],
                 'description': r[1],
+                'community': r[2],
                 'phenotypes': ps,
-                'ancestry': r[3],
-                'tech': r[4],
-                'cases': r[5],
-                'controls': r[6],
-                'subjects': r[7],
-                'access': r[8],
+                'ancestry': r[4],
+                'tech': r[5],
+                'cases': r[6],
+                'controls': r[7],
+                'subjects': r[8],
+                'access': r[9],
             })
 
     return {
