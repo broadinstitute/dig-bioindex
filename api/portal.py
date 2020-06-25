@@ -137,7 +137,7 @@ async def api_portal_datasets(q: str = None):
                 'tech': r[5],
                 'subjects': r[6],
                 'access': r[7],
-                'new': r[8],
+                'new': r[8] != 0,
             })
 
     return {
