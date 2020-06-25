@@ -113,10 +113,9 @@ async def api_portal_datasets(q: str = None):
         '       `phenotypes`, '
         '       `ancestry`, '
         '       `tech`, '
-        '       `cases`, '
-        '       `controls`, '
         '       `subjects`, '
-        '       `access` '
+        '       `access`, ',
+        '       `new` '
         'FROM Datasets'
     )
 
@@ -136,10 +135,9 @@ async def api_portal_datasets(q: str = None):
                 'phenotypes': ps,
                 'ancestry': r[4],
                 'tech': r[5],
-                'cases': r[6],
-                'controls': r[7],
-                'subjects': r[8],
-                'access': r[9],
+                'subjects': r[6],
+                'access': r[7],
+                'new': r[8],
             })
 
     return {
