@@ -48,7 +48,7 @@ async def api_portal_groups():
 
 
 @router.get('/phenotypes', response_class=fastapi.responses.ORJSONResponse)
-async def api_group_phenotypes(q: str = None):
+async def api_portal_phenotypes(q: str = None):
     """
     Returns all available phenotypes or just those for a given
     disease group.
@@ -94,8 +94,64 @@ async def api_group_phenotypes(q: str = None):
     }
 
 
+@router.get('/datasets', response_class=fastapi.responses.ORJSONResponse)
+async def api_portal_datasets(q: str):
+    """
+    Returns all available datasets for a given disease group.
+    """
+    resp = await api_portal_phenotypes(q)
+
+    # map all the phenotypes for this portal group
+    phenotypes = set(p['name'] for p in resp['data'])
+    query_p = resp['profile']['query']
+
+    # query for datasets
+    sql = (
+        'SELECT `name`, '
+        '       `description`, '
+        '       `phenotypes`, '
+        '       `ancestry`, '
+        '       `tech`, '
+        '       `cases`, '
+        '       `controls`, '
+        '       `subjects`, '
+        '       `access` '
+        'FROM Datasets'
+    )
+
+    # get all datasets
+    resp, query_s = profile(engine.execute, sql)
+    datasets = []
+
+    # filter all the datasets
+    for r in resp:
+        ps = [p for p in r[2].split(',') if p in phenotypes]
+
+        if len(ps) > 0:
+            datasets.append({
+                'name': r[0],
+                'description': r[1],
+                'phenotypes': ps,
+                'ancestry': r[3],
+                'tech': r[4],
+                'cases': r[5],
+                'controls': r[6],
+                'subjects': r[7],
+                'access': r[8],
+            })
+
+    return {
+        'profile': {
+            'query': query_p + query_s,
+        },
+        'data': datasets,
+        'count': len(datasets),
+        'nonce': nonce(),
+    }
+
+
 @router.get('/documentation', response_class=fastapi.responses.ORJSONResponse)
-async def api_documentation(q: str, group: str = None):
+async def api_portal_documentation(q: str, group: str = None):
     """
     Returns all available phenotypes or just those for a given
     portal group.
