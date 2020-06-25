@@ -114,7 +114,7 @@ async def api_portal_datasets(q: str = None):
         '       `ancestry`, '
         '       `tech`, '
         '       `subjects`, '
-        '       `access`, ',
+        '       `access`, '
         '       `new` '
         'FROM Datasets'
     )
