@@ -95,7 +95,7 @@ async def api_portal_phenotypes(q: str = None):
 
 
 @router.get('/datasets', response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_datasets(q: str):
+async def api_portal_datasets(q: str = None):
     """
     Returns all available datasets for a given disease group.
     """
