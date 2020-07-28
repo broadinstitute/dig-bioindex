@@ -1,4 +1,6 @@
+import concurrent.futures
 import csv
+import functools
 import logging
 import orjson
 import os
@@ -10,6 +12,8 @@ import tempfile
 import lib.locus
 import lib.s3
 import lib.schema
+
+from lib.utils import relative_key
 
 
 def build(engine, index, bucket, s3_objects, console=None):
@@ -36,25 +40,24 @@ def build(engine, index, bucket, s3_objects, console=None):
     # make sure that there is data to index
     assert len(objects) > 0, 'No files found in S3 to index'
 
+    # calculate the total size of all the objects
+    total_size = functools.reduce(lambda a, b: a + b['Size'], objects, 0)
+
     # as each job finishes...
-    with rich.progress.Progress(console=console) as progress_mgr:
-        overall_progress = progress_mgr.add_task('[green]Overall[/]', total=len(objects))
+    with rich.progress.Progress(console=console) as progress:
+        overall = progress.add_task('[green]Overall[/]', total=total_size)
 
-        for obj in objects:
-            key, size = obj['Key'], obj['Size']
-            logging.info('Processing %s...', os.path.basename(key))
+        # read several files in parallel
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=3)
+        jobs = [pool.submit(_index_object, bucket, obj, table, index, progress, overall) for obj in objects]
 
-            # TODO: check if this key is already indexed, if so, skip it
+        # as each job finishes, insert the records into the table
+        for job in concurrent.futures.as_completed(jobs):
+            if job.exception() is not None:
+                raise job.exception()
 
-            # per-file progress bar
-            file_progress = progress_mgr.add_task('[cyan]File[/]', total=size // 1024)
-
-            # index the entire file
-            _index_object(engine, bucket, key, table, index.schema, progress_mgr, file_progress)
-
-            # done with this file; tick the overall progress
-            progress_mgr.remove_task(file_progress)
-            progress_mgr.advance(overall_progress)
+            # perform the insert serially, so jobs don't block each other
+            _bulk_insert(engine, table, job.result())
 
         # finally, build the index after all inserts are done
         logging.info('Building table index...')
@@ -66,13 +69,20 @@ def build(engine, index, bucket, s3_objects, console=None):
         _set_built_flag(engine, index, True)
 
 
-def _index_object(engine, bucket, key, table, schema, progress_mgr, task):
+def _index_object(bucket, obj, table, index, progress, overall):
     """
     Read a file in S3, index it, and insert records into the table.
     """
+    key, size = obj['Key'], obj['Size']
+    rel_pathname = relative_key(key, index.s3_prefix)
+
+    # read the file from s3
     content = lib.s3.read_object(bucket, key)
     start_offset = 0
     records = {}
+
+    # per-file progress bar
+    file_progress = progress.add_task(f'[cyan]{rel_pathname}[/]', total=size)
 
     # process each line (record)
     for line_num, line in enumerate(content.iter_lines()):
@@ -80,7 +90,7 @@ def _index_object(engine, bucket, key, table, schema, progress_mgr, task):
         end_offset = start_offset + len(line) + 1  # newline
 
         try:
-            for key_tuple in schema.index_builder(row):
+            for key_tuple in index.schema.index_builder(row):
                 if key_tuple in records:
                     records[key_tuple]['end_offset'] = end_offset
                 else:
@@ -89,21 +99,21 @@ def _index_object(engine, bucket, key, table, schema, progress_mgr, task):
                         'start_offset': start_offset,
                         'end_offset': end_offset,
                     }
-
         except (KeyError, ValueError) as e:
             logging.warning('%s; skipping...', e)
 
         # update progress
-        progress_mgr.update(task, completed=end_offset // 1024)
+        progress.update(file_progress, completed=end_offset)
 
         # track current file offset
         start_offset = end_offset
 
-    # transform all the records and collect them all into an insert batch
-    batch = [{**schema.column_values(k), **r} for k, r in records.items()]
+    # done with this object; tick the overall progress
+    progress.remove_task(file_progress)
+    progress.advance(overall, advance=size)
 
-    # perform the insert in batches
-    _bulk_insert(engine, table, batch)
+    # transform all the records and collect them all into an insert batch
+    return [{**index.schema.column_values(k), **r} for k, r in records.items()]
 
 
 def _bulk_insert(engine, table, records):
@@ -152,6 +162,6 @@ def _bulk_insert(engine, table, records):
 
 def _set_built_flag(engine, index, flag=True):
     """
-
+    Update the index table to indicate the index has been built.
     """
     engine.execute('UPDATE `__Indexes` SET `built` = %s WHERE `name` = %s', flag, index.name)
