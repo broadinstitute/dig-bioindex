@@ -43,8 +43,17 @@ def build(engine, index, bucket, s3_objects, console=None):
     # calculate the total size of all the objects
     total_size = functools.reduce(lambda a, b: a + b['Size'], objects, 0)
 
+    # progress format
+    p_fmt = [
+        "[progress.description]{task.description}",
+        rich.progress.BarColumn(),
+        rich.progress.FileSizeColumn(),
+        rich.progress.TransferSpeedColumn(),
+        "[progress.percentage]{task.percentage:>3.0f}%"
+    ]
+
     # as each job finishes...
-    with rich.progress.Progress(console=console) as progress:
+    with rich.progress.Progress(p_fmt, console=console) as progress:
         overall = progress.add_task('[green]Overall[/]', total=total_size)
 
         # read several files in parallel
@@ -82,7 +91,7 @@ def _index_object(bucket, obj, table, index, progress, overall):
     records = {}
 
     # per-file progress bar
-    file_progress = progress.add_task(f'[cyan]{rel_pathname}[/]', total=size)
+    file_progress = progress.add_task(f'[yellow]{rel_pathname}[/]', total=size)
 
     # process each line (record)
     for line_num, line in enumerate(content.iter_lines()):
