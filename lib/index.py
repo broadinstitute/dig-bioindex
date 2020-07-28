@@ -54,7 +54,7 @@ def build(engine, index, bucket, s3_objects, console=None):
     ]
 
     # as each job finishes...
-    with rich.progress.Progress(p_fmt, console=console) as progress:
+    with rich.progress.Progress(*p_fmt, console=console) as progress:
         overall = progress.add_task('[green]Overall[/]', total=total_size)
 
         # read several files in parallel
