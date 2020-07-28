@@ -49,7 +49,6 @@ def build(engine, index, bucket, s3_objects, console=None):
         "[progress.description]{task.description}",
         rich.progress.BarColumn(),
         rich.progress.FileSizeColumn(),
-        rich.progress.TransferSpeedColumn(),
         "[progress.percentage]{task.percentage:>3.0f}%"
     ]
 
@@ -67,7 +66,7 @@ def build(engine, index, bucket, s3_objects, console=None):
                 raise job.exception()
 
             # perform the insert serially, so jobs don't block each other
-            _bulk_insert(engine, table, job.result())
+            _bulk_insert(engine, table, list(job.result()))
 
         # finally, build the index after all inserts are done
         logging.info('Building table index...')
@@ -122,8 +121,8 @@ def _index_object(bucket, obj, table, index, progress, overall):
     progress.remove_task(file_progress)
     progress.advance(overall, advance=size)
 
-    # transform all the records and collect them all into an insert batch
-    return [{**index.schema.column_values(k), **r} for k, r in records.items()]
+    # transform all the records into a dictionary
+    return ({**index.schema.column_values(k), **r} for k, r in records.items())
 
 
 def _bulk_insert(engine, table, records):
@@ -168,9 +167,6 @@ def _bulk_insert(engine, table, records):
         logging.info(f'Wrote {len(records):,} records')
     finally:
         os.remove(tmp.name)
-
-    # force memory cleanup
-    gc.collect()
 
 
 def _set_built_flag(engine, index, flag=True):
