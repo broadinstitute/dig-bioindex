@@ -1,6 +1,7 @@
 import concurrent.futures
 import csv
 import functools
+import gc
 import logging
 import orjson
 import os
@@ -167,6 +168,9 @@ def _bulk_insert(engine, table, records):
         logging.info(f'Wrote {len(records):,} records')
     finally:
         os.remove(tmp.name)
+
+    # force memory cleanup
+    gc.collect()
 
 
 def _set_built_flag(engine, index, flag=True):
