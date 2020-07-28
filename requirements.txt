@@ -2,13 +2,12 @@ aiofiles
 botocore
 boto3
 click
-colorama
 python-dotenv
-enlighten
 fastapi
 orjson
 pydantic
 uvicorn
 mysqlclient
 requests
+rich
 sqlalchemy

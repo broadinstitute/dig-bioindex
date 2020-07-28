@@ -122,7 +122,10 @@ def read_object(bucket, path, offset=None, length=None):
         kwargs['Range'] = f'bytes=-{length}'
 
     # download the object
-    return s3_client.get_object(**kwargs).get('Body')
+    try:
+        return s3_client.get_object(**kwargs).get('Body')
+    except s3_client.exceptions.NoSuchKey:
+        return None
 
 
 def test_object(bucket, s3_obj):

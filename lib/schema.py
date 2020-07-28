@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Index, Integer, BigInteger, MetaData, String, Table
+
 from lib.locus import parse_columns
 
 
@@ -80,7 +81,7 @@ class Schema:
         """
         table_columns = [
             Column('id', Integer, primary_key=True),
-            Column('path', String(1024), index=True),
+            Column('key', String(1024), index=True),
             Column('start_offset', BigInteger),
             Column('end_offset', BigInteger),
         ]

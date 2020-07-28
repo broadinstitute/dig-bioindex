@@ -2,6 +2,7 @@ import fastapi
 
 import api.bio
 import api.portal
+import api.raw
 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -13,6 +14,7 @@ app = fastapi.FastAPI(title='BioIndex', redoc_url=None)
 # all the various routers for each api
 app.include_router(api.bio.router, prefix='/api/bio', tags=['bio'])
 app.include_router(api.portal.router, prefix='/api/portal', tags=['portal'])
+app.include_router(api.raw.router, prefix='/api/raw', tags=['raw'])
 
 # enable cross-origin resource sharing
 app.add_middleware(

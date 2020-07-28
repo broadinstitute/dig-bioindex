@@ -110,11 +110,11 @@ def _run_query(engine, bucket, index, q):
         raise ValueError(f'Index "{index.name}" is not built')
 
     sql = (
-        f'SELECT `path`, MIN(`start_offset`), MAX(`end_offset`) '
+        f'SELECT `key`, MIN(`start_offset`), MAX(`end_offset`) '
         f'FROM `{index.table}` '
         f'WHERE {index.schema.sql_filters} '
-        f'GROUP BY `path` '
-        f'ORDER BY `path` ASC'
+        f'GROUP BY `key` '
+        f'ORDER BY `key` ASC'
     )
 
     record_filter = None

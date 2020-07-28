@@ -1,9 +1,9 @@
 import csv
-import enlighten
 import logging
 import orjson
 import os
 import os.path
+import rich.progress
 import sqlalchemy
 import tempfile
 
@@ -12,7 +12,7 @@ import lib.s3
 import lib.schema
 
 
-def build(engine, index, bucket, s3_objects):
+def build(engine, index, bucket, s3_objects, console=None):
     """
     Builds the index table for objects in S3.
     """
@@ -27,25 +27,34 @@ def build(engine, index, bucket, s3_objects):
     table.drop(engine, checkfirst=True)
     table.create(engine)
 
+    # TODO: Instead of nuking the table and starting over, delete records
+    #       with keys that are deleted/out of date.
+
     # collect all the s3 objects into a list so the size is known
     objects = list(s3_objects)
-    
+
     # make sure that there is data to index
     assert len(objects) > 0, 'No files found in S3 to index'
 
     # as each job finishes...
-    with enlighten.get_manager() as progress_mgr:
-        with progress_mgr.counter(total=len(objects), unit='files', series=' #') as overall_progress:
-            for obj in objects:
-                path, size = obj['Key'], obj['Size']
-                logging.info('Processing %s...', os.path.basename(path))
+    with rich.progress.Progress(console=console) as progress_mgr:
+        overall_progress = progress_mgr.add_task('[green]Overall[/]', total=len(objects))
 
-                # per-file progress of indexer
-                with progress_mgr.counter(total=size // 1024, unit='KB', series=' #', leave=False) as file_progress:
-                    _index_object(engine, bucket, path, table, index.schema, file_progress)
+        for obj in objects:
+            key, size = obj['Key'], obj['Size']
+            logging.info('Processing %s...', os.path.basename(key))
 
-                # tick the overall progress
-                overall_progress.update()
+            # TODO: check if this key is already indexed, if so, skip it
+
+            # per-file progress bar
+            file_progress = progress_mgr.add_task('[cyan]File[/]', total=size // 1024)
+
+            # index the entire file
+            _index_object(engine, bucket, key, table, index.schema, progress_mgr, file_progress)
+
+            # done with this file; tick the overall progress
+            progress_mgr.remove_task(file_progress)
+            progress_mgr.advance(overall_progress)
 
         # finally, build the index after all inserts are done
         logging.info('Building table index...')
@@ -57,11 +66,11 @@ def build(engine, index, bucket, s3_objects):
         _set_built_flag(engine, index, True)
 
 
-def _index_object(engine, bucket, path, table, schema, counter):
+def _index_object(engine, bucket, key, table, schema, progress_mgr, task):
     """
     Read a file in S3, index it, and insert records into the table.
     """
-    content = lib.s3.read_object(bucket, path)
+    content = lib.s3.read_object(bucket, key)
     start_offset = 0
     records = {}
 
@@ -76,7 +85,7 @@ def _index_object(engine, bucket, path, table, schema, counter):
                     records[key_tuple]['end_offset'] = end_offset
                 else:
                     records[key_tuple] = {
-                        'path': path,
+                        'key': key,
                         'start_offset': start_offset,
                         'end_offset': end_offset,
                     }
@@ -85,7 +94,7 @@ def _index_object(engine, bucket, path, table, schema, counter):
             logging.warning('%s; skipping...', e)
 
         # update progress
-        counter.update(incr=(end_offset // 1024) - counter.count)
+        progress_mgr.update(task, completed=end_offset // 1024)
 
         # track current file offset
         start_offset = end_offset

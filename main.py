@@ -1,8 +1,9 @@
 import click
-import colorama
 import dotenv
 import json
 import logging
+import rich.console
+import rich.logging
 
 import lib.config
 import lib.create
@@ -30,6 +31,7 @@ def cli_create(index, s3_prefix, schema):
     # parse the schema to ensure validity; create the index
     try:
         lib.create.create_index(engine, index, s3_prefix, lib.schema.Schema(schema))
+        #lib.create.create_keys(engine)
 
         # successfully completed
         logging.info('Done; build with `index %s`', index)
@@ -44,8 +46,8 @@ def cli_list():
     indexes = lib.create.list_indexes(engine, False)
 
     for index in indexes:
-        mark = "\u2713" if index.built else "\u2717"
-        print(f'{mark} {index.name}')
+        mark = "[green]\u2713[/]" if index.built else "[red]\u2717[/]"
+        console.print(f'{mark} {index.name}')
 
 
 @click.command(name='index')
@@ -69,13 +71,13 @@ def cli_index(index):
             s3_objects = lib.s3.list_objects(config.s3_bucket, idx.s3_prefix, exclude='_SUCCESS')
 
             # build the index
-            lib.index.build(engine, idx, config.s3_bucket, s3_objects)
+            lib.index.build(engine, idx, config.s3_bucket, s3_objects, console=console)
             logging.info('Successfully built index.')
         except AssertionError as e:
-            logging.error('Failed to build index %s: %s', i, e)
+            logging.error(f'Failed to build index %s: %s', i, e)
 
     # finished building all indexes
-    logging.info('Done; query with `query <index>`')
+    logging.info('Done')
 
 
 @click.command(name='query')
@@ -93,7 +95,7 @@ def cli_query(index, q):
 
     # dump all the records
     for record in reader.records:
-        print(json.dumps(record))
+        console.print(json.dumps(record))
 
 
 @click.command(name='all')
@@ -110,7 +112,7 @@ def cli_all(index):
 
     # lookup the table class from the schema
     for obj in reader.records:
-        print(obj)
+        console.print(obj)
 
 
 @click.command(name='count')
@@ -125,7 +127,7 @@ def cli_count(index, q):
 
     # query the index
     count = lib.query.count(engine, config.s3_bucket, idx, q)
-    print(count)
+    console.print(count)
 
 
 @click.command(name='match')
@@ -141,9 +143,9 @@ def cli_match(index, q):
     # lookup the table class from the schema
     try:
         for obj in lib.query.match(engine, idx, q):
-            print(obj)
+            console.print(obj)
     except AssertionError:
-        logging.error('Index %s is not indexed by value!', index)
+        console.log(f'Index {index} is not indexed by value!')
 
 
 # initialize the cli
@@ -157,7 +159,14 @@ cli.add_command(cli_match)
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format='%(levelname)-5s - %(message)s')
+    console = rich.console.Console()
+
+    # initialize logging, route logging to the console
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(levelname)-5s - %(message)s',
+        handlers=[rich.logging.RichHandler(console=console)]
+    )
 
     # disable info logging for 3rd party modules
     logging.getLogger('botocore').setLevel(logging.CRITICAL)
@@ -167,10 +176,5 @@ if __name__ == '__main__':
     dotenv.load_dotenv()
     dotenv.load_dotenv('.bioindex')
 
-    # initialize ansi terminal
-    colorama.init()
-
-    try:
-        cli()
-    finally:
-        colorama.deinit()
+    # run the CLI
+    cli()

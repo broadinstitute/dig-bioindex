@@ -1,7 +1,6 @@
 import dataclasses
 import threading
 import time
-import typing
 
 import lib.reader
 import lib.utils

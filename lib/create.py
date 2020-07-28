@@ -7,7 +7,27 @@ import lib.s3
 import lib.schema
 
 from sqlalchemy import Boolean, Column, Integer, String, Table
+
 from lib.utils import cap_case_str
+
+
+def create_keys(engine):
+    """
+    Create the __Keys table, which has every S3 object key and MD5.
+    """
+    table_columns = [
+        Column('id', Integer, primary_key=True),
+        Column('key', String(1024), index=True, unique=True),
+        Column('version', String(32)),
+        Column('size', Integer),
+        Column('indexed', Boolean, default=False)
+    ]
+
+    table = Table('__Keys', sqlalchemy.MetaData(), *table_columns)
+
+    # create the index table (drop any existing table already there)
+    logging.info('Creating __Keys table...')
+    table.create(engine, checkfirst=True)
 
 
 def create_index(engine, index, s3_prefix, schema):
