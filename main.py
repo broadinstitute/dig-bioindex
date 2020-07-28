@@ -46,7 +46,7 @@ def cli_list():
     indexes = lib.create.list_indexes(engine, False)
 
     for index in sorted(indexes, key=lambda i: i.name):
-        mark = '[green]+[/]'if index.built else '[red]-[/]'
+        mark = '[green]\u2713[/]' if index.built else '[red]\u2717[/]'
         console.print(f'{mark} {index.name}')
 
 
