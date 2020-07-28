@@ -123,9 +123,6 @@ def _bulk_insert(engine, table, records):
     if len(records) == 0:
         return
 
-    # output number of records
-    logging.info(f'Writing {len(records):,} records...')
-
     # get the field names from the first record
     fieldnames = list(records[0].keys())
     quoted_fieldnames = [f'`{field}`' for field in fieldnames]
@@ -156,6 +153,9 @@ def _bulk_insert(engine, table, records):
 
         # bulk load into the database
         engine.execute(sql)
+
+        # output number of records
+        logging.info(f'Wrote {len(records):,} records')
     finally:
         os.remove(tmp.name)
 
