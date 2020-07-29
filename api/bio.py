@@ -56,8 +56,8 @@ async def api_list_indexes():
     for index in sorted(INDEXES.values(), key=lambda i: i.name):
         data.append({
             'index': index.name,
+            'built': index.built,
             'schema': str(index.schema),
-            'built': bool(index.built),
             'query': {
                 'keys': index.schema.key_columns,
                 'locus': index.schema.has_locus,

@@ -37,7 +37,7 @@ def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, console=
             return
 
         # clean up stale keys and determine objects left to index
-        objects = _delete_stale_keys(engine, index, table, objects, last_built)
+        objects = _delete_stale_keys(engine, index, table, objects, last_built, console)
     else:
         assert objects, 'No files found in S3 to index'
 
@@ -60,16 +60,13 @@ def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, console=
         "[progress.percentage]{task.percentage:>3.0f}%"
     ]
 
-    # start indexing process
-    logging.info('Indexing...' if objects else 'Index is up to date')
-
     # make sure the schema index doesn't exist while inserting
     if objects:
         index.schema.drop_index(engine, table)
 
         # as each job finishes...
         with rich.progress.Progress(*p_fmt, console=console) as progress:
-            overall = progress.add_task('[green]Overall[/]', total=total_size)
+            overall = progress.add_task('[green]Indexing...[/]', total=total_size)
 
             # read several files in parallel
             pool = concurrent.futures.ThreadPoolExecutor(max_workers=3)
@@ -92,6 +89,9 @@ def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, console=
     # set the built flag for the index
     _set_built_flag(engine, index, True)
 
+    # done indexing
+    logging.info('Index is up to date')
+
 
 def _last_built(engine, index):
     """
@@ -106,7 +106,7 @@ def _last_built(engine, index):
     return row[0].replace(tzinfo=datetime.timezone.utc) if row[0] else None
 
 
-def _delete_stale_keys(engine, index, table, objects, last_built):
+def _delete_stale_keys(engine, index, table, objects, last_built, console):
     """
     Deletes all records indexed where the key...
 
@@ -117,18 +117,30 @@ def _delete_stale_keys(engine, index, table, objects, last_built):
     indexed_keys = set()
 
     # loop over the objects and discover the "stale" keys
-    for obj in objects:
-        key, size, date = obj['Key'], obj['Size'], obj['LastModified']
-        logging.info('Checking %s...', lib.s3.relative_key(key, index.s3_prefix))
+    with rich.progress.Progress(console=console) as progress:
+        task = progress.add_task('[green]Checking...[/]', total=len(objects))
 
-        # was this file previously indexed?
-        if last_built > date:
-            sql = f'SELECT MAX(end_offset) FROM `{table.name}` WHERE `key` = %s'
-            row = engine.execute(sql, key).fetchone()
+        for obj in objects:
+            key, size, date = obj['Key'], obj['Size'], obj['LastModified']
+            new_or_updated = True
 
-            # does the size match?
-            if row and row[0] == size:
+            # was this file previously indexed?
+            if last_built > date:
+                sql = f'SELECT MAX(end_offset) FROM `{table.name}` WHERE `key` = %s'
+                row = engine.execute(sql, key).fetchone()
+
+                # if the entire key was indexed, then it's not new
+                if row and row[0] == size:
+                    new_or_updated = False
+
+            # output new/updated keys that will be indexed
+            if new_or_updated:
+                logging.info('%s is new/updated', lib.s3.relative_key(key))
+            else:
                 indexed_keys.add(key)
+
+            # update progress
+            progress.advance(task)
 
     # if there are no valid indexed keys, just drop the table
     if not indexed_keys:
@@ -138,7 +150,8 @@ def _delete_stale_keys(engine, index, table, objects, last_built):
     else:
         logging.info('Deleting stale keys...')
         sql = f'DELETE FROM `{table.name}` WHERE `key` NOT IN (%s)'
-        engine.execute(sql, indexed_keys)
+        resp = engine.execute(sql, indexed_keys)
+        logging.info(f'Deleted {resp.rowcount:,} keys')
 
     # return a list of objects that still need indexed
     return [o for o in objects if o['Key'] not in indexed_keys]
