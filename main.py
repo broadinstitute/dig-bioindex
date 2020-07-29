@@ -54,8 +54,9 @@ def cli_list():
 @click.argument('index')
 @click.option('--cont', '-c', is_flag=True)
 @click.option('--rebuild', '-r', is_flag=True)
+@click.option('--workers', '-w', type=int, default=3)
 @click.confirmation_option(prompt='This will build the index; continue? ')
-def cli_index(index, cont, rebuild):
+def cli_index(index, cont, rebuild, workers):
     config = lib.config.Config()
     engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)
 
@@ -87,6 +88,7 @@ def cli_index(index, cont, rebuild):
                 s3_objects,
                 rebuild=rebuild,
                 cont=cont,
+                workers=workers,
                 console=console,
             )
         except AssertionError as e:

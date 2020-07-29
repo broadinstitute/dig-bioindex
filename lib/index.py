@@ -16,7 +16,7 @@ import lib.s3
 import lib.schema
 
 
-def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, console=None):
+def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, workers=3, console=None):
     """
     Builds the index table for objects in S3.
     """
@@ -71,7 +71,7 @@ def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, console=
             overall = progress.add_task('[green]Indexing...[/]', total=total_size)
 
             # read several files in parallel
-            pool = concurrent.futures.ThreadPoolExecutor(max_workers=3)
+            pool = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
             jobs = [pool.submit(_index_object, engine, bucket, obj, table, index, progress, overall) for obj in objects]
 
             # as each job finishes, insert the records into the table
