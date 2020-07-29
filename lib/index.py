@@ -119,6 +119,7 @@ def _delete_stale_keys(engine, table, objects, last_built):
     # loop over the objects and discover the "stale" keys
     for obj in objects:
         key, size, date = obj['Key'], obj['Size'], obj['LastModified']
+        logging.info('Checking %s...', key)
 
         # was this file previously indexed?
         if last_built > date:
