@@ -52,10 +52,17 @@ def cli_list():
 
 @click.command(name='index')
 @click.argument('index')
-@click.confirmation_option(prompt='This will rebuild the index; continue? ')
-def cli_index(index):
+@click.option('--cont', '-c', is_flag=True)
+@click.option('--rebuild', '-r', is_flag=True)
+@click.confirmation_option(prompt='This will build the index; continue? ')
+def cli_index(index, cont, rebuild):
     config = lib.config.Config()
     engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)
+
+    # handle mutually exclusive options
+    if rebuild and cont:
+        logging.error('Cannot supply both --rebuild and --cont')
+        return
 
     # which tables will be indexed? allow "all" with "*"
     indexes = [i.name for i in lib.create.list_indexes(engine)] if index == '*' else index.split(',')
@@ -67,12 +74,21 @@ def cli_index(index):
             raise KeyError(f'Unknown index: {i}')
 
         try:
+            logging.info(f'{"Rebuilding" if rebuild else "Updating"} index {i}')
+
             # get an s3 object listing
             s3_objects = lib.s3.list_objects(config.s3_bucket, idx.s3_prefix, exclude='_SUCCESS')
 
             # build the index
-            lib.index.build(engine, idx, config.s3_bucket, s3_objects, console=console)
-            logging.info('Successfully built index.')
+            lib.index.build(
+                engine,
+                idx,
+                config.s3_bucket,
+                s3_objects,
+                rebuild=rebuild,
+                cont=cont,
+                console=console,
+            )
         except AssertionError as e:
             logging.error(f'Failed to build index %s: %s', i, e)
 
@@ -164,7 +180,7 @@ if __name__ == '__main__':
     # initialize logging, route logging to the console
     logging.basicConfig(
         level=logging.INFO,
-        format='%(levelname)-5s - %(message)s',
+        format='%(message)s',
         handlers=[rich.logging.RichHandler(console=console)]
     )
 

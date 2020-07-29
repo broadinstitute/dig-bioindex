@@ -1,4 +1,5 @@
 import logging
+import re
 import sqlalchemy
 import types
 
@@ -6,28 +7,9 @@ import lib.locus
 import lib.s3
 import lib.schema
 
-from sqlalchemy import Boolean, Column, Integer, String, Table
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Table
 
 from lib.utils import cap_case_str
-
-
-def create_keys(engine):
-    """
-    Create the __Keys table, which has every S3 object key and MD5.
-    """
-    table_columns = [
-        Column('id', Integer, primary_key=True),
-        Column('key', String(1024), index=True, unique=True),
-        Column('version', String(32)),
-        Column('size', Integer),
-        Column('indexed', Boolean, default=False)
-    ]
-
-    table = Table('__Keys', sqlalchemy.MetaData(), *table_columns)
-
-    # create the index table (drop any existing table already there)
-    logging.info('Creating __Keys table...')
-    table.create(engine, checkfirst=True)
 
 
 def create_index(engine, index, s3_prefix, schema):
@@ -37,21 +19,8 @@ def create_index(engine, index, s3_prefix, schema):
     """
     assert s3_prefix.endswith('/'), "S3 prefix must be a common prefix ending with '/'"
 
-    # definition of the __Indexes table
-    table_columns = [
-        Column('id', Integer, primary_key=True),
-        Column('name', String(200), index=True),
-        Column('table', String(200)),
-        Column('prefix', String(1024)),
-        Column('schema', String(200)),
-        Column('built', Boolean, default=False)
-    ]
-
-    table = Table('__Indexes', sqlalchemy.MetaData(), *table_columns)
-
-    # create the index table (drop any existing table already there)
-    logging.info('Creating __Indexes table...')
-    table.create(engine, checkfirst=True)
+    # create the __Indexes and __Keys tables
+    create_index_table(engine)
 
     # add the new index to the table
     sql = (
@@ -65,6 +34,26 @@ def create_index(engine, index, s3_prefix, schema):
     )
 
     engine.execute(sql, index, cap_case_str(index), s3_prefix, str(schema))
+
+
+def create_index_table(engine):
+    """
+    Create the __Indexes table if it doesn't already exist.
+    """
+    table_columns = [
+        Column('id', Integer, primary_key=True),
+        Column('name', String(200), index=True),
+        Column('table', String(200)),
+        Column('prefix', String(1024)),
+        Column('schema', String(200)),
+        Column('built', DateTime, nullable=True),
+    ]
+
+    table = Table('__Indexes', sqlalchemy.MetaData(), *table_columns)
+
+    # create the index table (drop any existing table already there)
+    logging.info('Creating __Indexes table...')
+    table.create(engine, checkfirst=True)
 
 
 def list_indexes(engine, filter_built=True):
@@ -89,7 +78,8 @@ def lookup_index(engine, index, assert_if_not_built=True):
     schema, etc.
     """
     sql = (
-        'SELECT `name`, `table`, `prefix`, `schema`, `built` FROM `__Indexes` '
+        'SELECT `name`, `table`, `prefix`, `schema`, `built` '
+        'FROM `__Indexes` '
         'WHERE `name` = %s '
     )
 

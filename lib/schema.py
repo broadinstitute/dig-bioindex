@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Index, Integer, BigInteger, MetaData, String, Table
+from sqlalchemy.exc import OperationalError
 
 from lib.locus import parse_columns
 
@@ -88,11 +89,20 @@ class Schema:
 
         return Table(name, MetaData(), *table_columns, *self.index_columns)
 
-    def build_index(self, engine, table):
+    def create_index(self, engine, table):
         """
         Construct the compound index for this table.
         """
         Index('schema_idx', *self.index_columns).create(engine)
+
+    def drop_index(self, engine, table):
+        """
+        Removes the index. This can help performance when updating.
+        """
+        try:
+            engine.execute(f'ALTER TABLE `{table.name}` DROP INDEX schema_idx')
+        except OperationalError:
+            pass
 
     def locus_of_row(self, row):
         """
