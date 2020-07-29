@@ -37,7 +37,7 @@ def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, console=
             return
 
         # clean up stale keys and determine objects left to index
-        objects = _delete_stale_keys(engine, table, objects, last_built)
+        objects = _delete_stale_keys(engine, index, table, objects, last_built)
     else:
         assert objects, 'No files found in S3 to index'
 
@@ -106,7 +106,7 @@ def _last_built(engine, index):
     return row[0].replace(tzinfo=datetime.timezone.utc) if row[0] else None
 
 
-def _delete_stale_keys(engine, table, objects, last_built):
+def _delete_stale_keys(engine, index, table, objects, last_built):
     """
     Deletes all records indexed where the key...
 
@@ -119,7 +119,7 @@ def _delete_stale_keys(engine, table, objects, last_built):
     # loop over the objects and discover the "stale" keys
     for obj in objects:
         key, size, date = obj['Key'], obj['Size'], obj['LastModified']
-        logging.info('Checking %s...', key)
+        logging.info('Checking %s...', lib.s3.relative_key(key, index.s3_prefix))
 
         # was this file previously indexed?
         if last_built > date:
