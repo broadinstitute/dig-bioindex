@@ -20,8 +20,11 @@ def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, console=
     """
     Builds the index table for objects in S3.
     """
+    lib.create.create_keys_table(engine)
+
+    # build the index table definition
     meta = sqlalchemy.MetaData()
-    table = index.schema.build_table(index.table, meta)
+    table = index.schema.table_def(index.table, meta)
 
     # if continuing a build, use the current time
     now = datetime.datetime.now(tz=datetime.timezone.utc)
@@ -47,7 +50,7 @@ def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, console=
         table.create(engine)
 
     # clear the built flag
-    _set_built_flag(engine, index, False)
+    _set_index_built_flag(engine, index, False)
 
     # calculate the total size of all the objects
     total_size = functools.reduce(lambda a, b: a + b['Size'], objects, 0)
@@ -60,7 +63,6 @@ def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, console=
         "[progress.percentage]{task.percentage:>3.0f}%"
     ]
 
-    # make sure the schema index doesn't exist while inserting
     if objects:
         index.schema.drop_index(engine, table)
 
@@ -70,15 +72,19 @@ def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, console=
 
             # read several files in parallel
             pool = concurrent.futures.ThreadPoolExecutor(max_workers=3)
-            jobs = [pool.submit(_index_object, bucket, obj, table, index, progress, overall) for obj in objects]
+            jobs = [pool.submit(_index_object, engine, bucket, obj, table, index, progress, overall) for obj in objects]
 
             # as each job finishes, insert the records into the table
             for job in concurrent.futures.as_completed(jobs):
                 if job.exception() is not None:
                     raise job.exception()
 
+                # get the key and the record iterator returned
+                key, records = job.result()
+
                 # perform the insert serially, so jobs don't block each other
-                _bulk_insert(engine, table, list(job.result()))
+                _bulk_insert(engine, table, list(records))
+                _set_key_built_flag(engine, index, key)
 
             # finally, build the index after all inserts are done
             logging.info('Building table index...')
@@ -87,7 +93,7 @@ def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, console=
         index.schema.create_index(engine, table)
 
     # set the built flag for the index
-    _set_built_flag(engine, index, True)
+    _set_index_built_flag(engine, index, True)
 
     # done indexing
     logging.info('Index is up to date')
@@ -114,54 +120,55 @@ def _delete_stale_keys(engine, index, table, objects, last_built, console):
      - is newer than the last built timestamp of the index
      - hasn't been completely indexed
     """
+    logging.info('Finding stale keys...')
+    keys = lib.create.lookup_keys(engine, index.name)
+
+    # all keys are considered stale initially
+    stale_ids = set(map(lambda k: k['id'], keys.values()))
     indexed_keys = set()
 
-    # loop over the objects and discover the "stale" keys
-    with rich.progress.Progress(console=console) as progress:
-        task = progress.add_task('[green]Checking...[/]', total=len(objects))
+    # loop over all the valid objects to be indexed
+    for obj in objects:
+        key, version = obj['Key'], obj['ETag'].strip('"')
+        k = keys.get(key)
 
-        for obj in objects:
-            key, size, date = obj['Key'], obj['Size'], obj['LastModified']
-            new_or_updated = True
+        # is this key already built and match versions?
+        if k and k['version'] == version:
+            stale_ids.remove(k['id'])
+            indexed_keys.add(key)
 
-            # was this file previously indexed?
-            if last_built > date:
-                sql = f'SELECT MAX(end_offset) FROM `{table.name}` WHERE `key` = %s'
-                row = engine.execute(sql, key).fetchone()
+    # delete stale keys
+    if stale_ids:
+        # TODO: if all the keys are stale, just drop the table
 
-                # if the entire key was indexed, then it's not new
-                if row and row[0] == size:
-                    new_or_updated = False
+        with rich.progress.Progress(console=console) as progress:
+            task = progress.add_task('[red]Deleting...[/]', total=len(stale_ids))
+            n = 0
 
-            # output new/updated keys that will be indexed
-            if new_or_updated:
-                logging.info('%s is new/updated', lib.s3.relative_key(key))
-            else:
-                indexed_keys.add(key)
+            # delete all the keys from the table
+            for kid in stale_ids:
+                sql = f'DELETE FROM {table.name} WHERE `key` = %s'
+                n += engine.execute(sql, kid).rowcount
 
-            # update progress
-            progress.advance(task)
+                # remove the key from the __Keys table
+                lib.create.delete_key(engine, index.name, key)
+                progress.advance(task)
 
-    # if there are no valid indexed keys, just drop the table
-    if not indexed_keys:
-        logging.info('All keys are stale; rebuilding table')
-        table.drop(engine, checkfirst=True)
-        table.create(engine)
+        # show what was done
+        logging.info(f'Deleted {n:,} records')
     else:
-        logging.info('Deleting stale keys...')
-        sql = f'DELETE FROM `{table.name}` WHERE `key` NOT IN (%s)'
-        resp = engine.execute(sql, indexed_keys)
-        logging.info(f'Deleted {resp.rowcount:,} keys')
+        logging.info('No stale keys; delete skipped')
 
-    # return a list of objects that still need indexed
+    # filter the objects that still need to be indexed
     return [o for o in objects if o['Key'] not in indexed_keys]
 
 
-def _index_object(bucket, obj, table, index, progress, overall):
+def _index_object(engine, bucket, obj, table, index, progress, overall):
     """
     Read a file in S3, index it, and insert records into the table.
     """
-    key, size = obj['Key'], obj['Size']
+    key, version, size = obj['Key'], obj['ETag'].strip('"'), obj['Size']
+    key_id = lib.create.insert_key(engine, index.name, key, version)
 
     # read the file from s3
     content = lib.s3.read_object(bucket, key)
@@ -183,7 +190,7 @@ def _index_object(bucket, obj, table, index, progress, overall):
                     records[key_tuple]['end_offset'] = end_offset
                 else:
                     records[key_tuple] = {
-                        'key': key,
+                        'key': key_id,
                         'start_offset': start_offset,
                         'end_offset': end_offset,
                     }
@@ -203,7 +210,7 @@ def _index_object(bucket, obj, table, index, progress, overall):
     # NOTE: Because this is called as a job, be sure and return a iterator
     #       and not the records as this is memory that is kept around for
     #       the entire duration of indexing.
-    return ({**index.schema.column_values(k), **r} for k, r in records.items())
+    return key, ({**index.schema.column_values(k), **r} for k, r in records.items())
 
 
 def _bulk_insert(engine, table, records):
@@ -250,7 +257,17 @@ def _bulk_insert(engine, table, records):
         os.remove(tmp.name)
 
 
-def _set_built_flag(engine, index, flag=True):
+def _set_key_built_flag(engine, index, key):
+    """
+    Update the keys table to indicate the key has been built.
+    """
+    sql = 'UPDATE `__Keys` SET `built` = %s WHERE `index` = %s AND `key` = %s'
+
+    now = datetime.datetime.utcnow()
+    engine.execute(sql, now, index.name, key)
+
+
+def _set_index_built_flag(engine, index, flag=True):
     """
     Update the index table to indicate the index has been built.
     """

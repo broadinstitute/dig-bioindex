@@ -76,13 +76,13 @@ class Schema:
         """
         return self.locus_class is not None
 
-    def build_table(self, name, meta):
+    def table_def(self, name, meta):
         """
         Returns the table definition for this schema.
         """
         table_columns = [
             Column('id', Integer, primary_key=True),
-            Column('key', String(1024), index=True),
+            Column('key', Integer, index=True),
             Column('start_offset', BigInteger),
             Column('end_offset', BigInteger),
         ]

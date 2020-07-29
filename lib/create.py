@@ -7,7 +7,8 @@ import lib.s3
 import lib.schema
 import lib.utils
 
-from sqlalchemy import Column, DateTime, Integer, String, Table
+from sqlalchemy import Column, DateTime, Index, Integer, String, Table
+from sqlalchemy.exc import OperationalError
 
 
 def create_index(engine, index, s3_prefix, schema):
@@ -40,10 +41,10 @@ def create_index_table(engine):
     """
     table_columns = [
         Column('id', Integer, primary_key=True),
-        Column('name', String(200), index=True),
-        Column('table', String(200)),
-        Column('prefix', String(1024)),
-        Column('schema', String(200)),
+        Column('name', String(200, collation='ascii_bin'), index=True),
+        Column('table', String(200, collation='ascii_bin')),
+        Column('prefix', String(1024, collation='ascii_bin')),
+        Column('schema', String(200, collation='utf8_bin')),
         Column('built', DateTime, nullable=True),
     ]
 
@@ -52,6 +53,32 @@ def create_index_table(engine):
     # create the index table (drop any existing table already there)
     logging.info('Creating __Indexes table...')
     table.create(engine, checkfirst=True)
+
+
+def create_keys_table(engine):
+    """
+    Create the __Keys table if it doesn't already exist.
+    """
+    table_columns = [
+        Column('id', Integer, primary_key=True),
+        Column('index', String(200, collation='ascii_bin'), nullable=False),
+        Column('key', String(1024, collation='ascii_bin'), nullable=False),
+        Column('version', String(32, collation='ascii_bin'), nullable=False),
+        Column('built', DateTime, nullable=True),
+    ]
+
+    table = Table('__Keys', sqlalchemy.MetaData(), *table_columns)
+
+    # create the keys table (drop any existing table already there)
+    logging.info('Creating __Keys table...')
+    table.create(engine, checkfirst=True)
+
+    # create the compound index for the table
+    rows = engine.execute('SHOW INDEXES FROM `__Keys`').fetchall()
+
+    # build the index if not present
+    if not any(map(lambda r: r[2] == 'key_idx', rows)):
+        Index('key_idx', *table_columns[1:3], unique=True).create(engine)
 
 
 def list_indexes(engine, filter_built=True):
@@ -88,6 +115,51 @@ def lookup_index(engine, index, assert_if_not_built=True):
         raise KeyError(f'No such index: {index}')
 
     return _index_of_row(row)
+
+
+def lookup_keys(engine, index):
+    """
+    Look up all the keys and versions for a given index. Returns
+    a dictionary of key -> {id, version}. The version will be None
+    if the key hasn't been completely indexed.
+    """
+    sql = 'SELECT `id`, `key`, `version`, `built` FROM `__Keys` WHERE `index` = %s '
+    rows = engine.execute(sql, index).fetchall()
+
+    return {key: {'id': id, 'version': built and ver} for id, key, ver, built in rows}
+
+
+def insert_key(engine, index, key, version):
+    """
+    Adds a key to the __Keys table for an index. If the key already
+    exists and the versions match, just return the ID for it. If the
+    versions don't match, delete the existing record and create a
+    new one with a new ID.
+    """
+    sql = 'SELECT `id`, `version` FROM `__Keys` WHERE `index` = %s and `key` = %s'
+    row = engine.execute(sql, index, key).fetchone()
+
+    if row is not None:
+        if row[1] == version:
+            return row[0]
+
+        # delete the existing key entry
+        engine.execute('DELETE FROM `__Keys` WHERE `id` = %s', row[0])
+
+    # add a new entry
+    sql = 'INSERT INTO `__Keys` (`index`, `key`, `version`) VALUES (%s, %s, %s)'
+    row = engine.execute(sql, index, key, version)
+
+    return row.lastrowid
+
+
+def delete_key(engine, index, key):
+    """
+    Removes all records from the index and the key from the __Keys
+    table for a paritcular index/key pair.
+    """
+    sql = 'DELETE FROM `__Keys` WHERE `index` = %s and `key` = %s'
+    engine.execute(sql, index, key)
 
 
 def _index_of_row(row):
