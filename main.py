@@ -4,6 +4,7 @@ import json
 import logging
 import rich.console
 import rich.logging
+import rich.table
 
 import lib.config
 import lib.create
@@ -45,9 +46,17 @@ def cli_list():
     engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)
     indexes = lib.create.list_indexes(engine, False)
 
+    table = rich.table.Table(title='Indexes')
+    table.add_column('Last Built')
+    table.add_column('Index')
+    table.add_column('S3 Prefix')
+    table.add_column('Schema')
+
     for index in sorted(indexes, key=lambda i: i.name):
-        mark = '[green]\u2713[/]' if index.built else '[red]\u2717[/]'
-        console.print(f'{mark} {index.name}')
+        built = f'[green]{index.built}[/]' if index.built else '[red]Not built[/]'
+        table.add_row(built, index.name, index.s3_prefix, str(index.schema))
+
+    console.print(table)
 
 
 @click.command(name='index')
