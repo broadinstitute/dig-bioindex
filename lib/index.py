@@ -116,9 +116,9 @@ def _delete_stale_keys(engine, index, table, objects, last_built, console):
     """
     Deletes all records indexed where the key...
 
-     - no longer exists (not in the list of objects)
-     - is newer than the last built timestamp of the index
-     - hasn't been completely indexed
+     - no longer exists
+     - has the wrong version
+     - hasn't been fully indexed
     """
     logging.info('Finding stale keys...')
     keys = lib.create.lookup_keys(engine, index.name)
