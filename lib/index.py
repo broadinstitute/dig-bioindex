@@ -31,6 +31,7 @@ def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, workers=
     last_built = now if cont else _last_built(engine, index)
 
     # collect all the s3 objects into a list so the size is known
+    logging.info('Finding keys in s3://%s/%s...', bucket, index.s3_prefix)
     objects = list(s3_objects)
 
     # force rebuild if never built or allow continue?
