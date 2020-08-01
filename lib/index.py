@@ -46,7 +46,7 @@ def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, workers=
         assert objects, 'No files found in S3 to index'
 
         # remove all __Keys indexed already since starting clean
-        lib.create.delete_keys(index.name)
+        lib.create.delete_keys(engine, index.name)
 
         # delete existing and create a new index
         logging.info('Creating %s table...', table.name)
