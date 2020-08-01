@@ -8,7 +8,6 @@ import lib.schema
 import lib.utils
 
 from sqlalchemy import Column, DateTime, Index, Integer, String, Table
-from sqlalchemy.exc import OperationalError
 
 
 def create_index(engine, index, s3_prefix, schema):
@@ -160,6 +159,13 @@ def delete_key(engine, index, key):
     """
     sql = 'DELETE FROM `__Keys` WHERE `index` = %s and `key` = %s'
     engine.execute(sql, index, key)
+
+
+def delete_keys(engine, index):
+    """
+    Removes all records from the __Keys table for a paritcular index.
+    """
+    engine.execute('DELETE FROM `__Keys` WHERE `index` = %s', index)
 
 
 def _index_of_row(row):

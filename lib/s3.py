@@ -84,7 +84,6 @@ def list_objects(bucket, prefix, only=None, exclude=None):
     """
     kwargs = {
         'Bucket': bucket,
-        'Delimiter': '/',
         'Prefix': prefix.strip('/') + '/',
     }
 

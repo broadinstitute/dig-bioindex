@@ -31,7 +31,7 @@ def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, workers=
     last_built = now if cont else _last_built(engine, index)
 
     # collect all the s3 objects into a list so the size is known
-    logging.info('Finding keys in s3://%s/%s...', bucket, index.s3_prefix)
+    logging.info('Finding keys in %s...', index.s3_prefix)
     objects = list(s3_objects)
 
     # force rebuild if never built or allow continue?
@@ -44,6 +44,9 @@ def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, workers=
         objects = _delete_stale_keys(engine, index, table, objects, last_built, console)
     else:
         assert objects, 'No files found in S3 to index'
+
+        # remove all __Keys indexed already since starting clean
+        lib.create.delete_keys(index.name)
 
         # delete existing and create a new index
         logging.info('Creating %s table...', table.name)
