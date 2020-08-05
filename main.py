@@ -7,12 +7,12 @@ import rich.logging
 import rich.table
 
 import lib.config
-import lib.create
 import lib.index
 import lib.query
 import lib.s3
 import lib.schema
 import lib.secrets
+import lib.tables
 
 
 @click.group()
@@ -31,8 +31,8 @@ def cli_create(index, s3_prefix, schema):
 
     # parse the schema to ensure validity; create the index
     try:
-        lib.create.create_index(engine, index, s3_prefix, lib.schema.Schema(schema))
-        #lib.create.create_keys(engine)
+        lib.tables.create_index(engine, index, s3_prefix, lib.schema.Schema(schema))
+        #lib.tables.create_keys(engine)
 
         # successfully completed
         logging.info('Done; build with `index %s`', index)
@@ -44,7 +44,7 @@ def cli_create(index, s3_prefix, schema):
 def cli_list():
     config = lib.config.Config()
     engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)
-    indexes = lib.create.list_indexes(engine, False)
+    indexes = lib.tables.list_indexes(engine, False)
 
     table = rich.table.Table(title='Indexes')
     table.add_column('Last Built')
@@ -75,10 +75,10 @@ def cli_index(index, cont, rebuild, workers):
         return
 
     # which tables will be indexed? allow "all" with "*"
-    indexes = [i.name for i in lib.create.list_indexes(engine)] if index == '*' else index.split(',')
+    indexes = [i.name for i in lib.tables.list_indexes(engine)] if index == '*' else index.split(',')
 
     for i in indexes:
-        idx = lib.create.lookup_index(engine, i)
+        idx = lib.tables.lookup_index(engine, i)
 
         if not idx:
             raise KeyError(f'Unknown index: {i}')
@@ -115,7 +115,7 @@ def cli_query(index, q):
 
     # connect to mysql and fetch the results
     engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)
-    idx = lib.create.lookup_index(engine, index)
+    idx = lib.tables.lookup_index(engine, index)
 
     # query the index
     reader = lib.query.fetch(engine, config.s3_bucket, idx, q)
@@ -132,7 +132,7 @@ def cli_all(index):
 
     # connect to mysql and lookup the index
     engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)
-    idx = lib.create.lookup_index(engine, index)
+    idx = lib.tables.lookup_index(engine, index)
 
     # read all records
     reader = lib.query.fetch_all(config.s3_bucket, idx.s3_prefix)
@@ -150,7 +150,7 @@ def cli_count(index, q):
 
     # connect to mysql and fetch the results
     engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)
-    idx = lib.create.lookup_index(engine, index)
+    idx = lib.tables.lookup_index(engine, index)
 
     # query the index
     count = lib.query.count(engine, config.s3_bucket, idx, q)
@@ -165,7 +165,7 @@ def cli_match(index, q):
 
     # connect to mysql and fetch the results
     engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)
-    idx = lib.create.lookup_index(engine, index)
+    idx = lib.tables.lookup_index(engine, index)
 
     # lookup the table class from the schema
     try:

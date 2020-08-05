@@ -10,17 +10,17 @@ import rich.progress
 import sqlalchemy
 import tempfile
 
-import lib.create
 import lib.locus
 import lib.s3
 import lib.schema
+import lib.tables
 
 
 def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, workers=3, console=None):
     """
     Builds the index table for objects in S3.
     """
-    lib.create.create_keys_table(engine)
+    lib.tables.create_keys_table(engine)
 
     # build the index table definition
     meta = sqlalchemy.MetaData()
@@ -46,7 +46,7 @@ def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, workers=
         assert objects, 'No files found in S3 to index'
 
         # remove all __Keys indexed already since starting clean
-        lib.create.delete_keys(engine, index.name)
+        lib.tables.delete_keys(engine, index.name)
 
         # delete existing and create a new index
         logging.info('Creating %s table...', table.name)
@@ -125,7 +125,7 @@ def _delete_stale_keys(engine, index, table, objects, last_built, console):
      - hasn't been fully indexed
     """
     logging.info('Finding stale keys...')
-    keys = lib.create.lookup_keys(engine, index.name)
+    keys = lib.tables.lookup_keys(engine, index.name)
 
     # all keys are considered stale initially
     stale_ids = set(map(lambda k: k['id'], keys.values()))
@@ -155,7 +155,7 @@ def _delete_stale_keys(engine, index, table, objects, last_built, console):
                 n += engine.execute(sql, kid).rowcount
 
                 # remove the key from the __Keys table
-                lib.create.delete_key(engine, index.name, key)
+                lib.tables.delete_key(engine, index.name, key)
                 progress.advance(task)
 
         # show what was done
@@ -172,7 +172,7 @@ def _index_object(engine, bucket, obj, table, index, progress, overall):
     Read a file in S3, index it, and insert records into the table.
     """
     key, version, size = obj['Key'], obj['ETag'].strip('"'), obj['Size']
-    key_id = lib.create.insert_key(engine, index.name, key, version)
+    key_id = lib.tables.insert_key(engine, index.name, key, version)
 
     # read the file from s3
     content = lib.s3.read_object(bucket, key)

@@ -4,10 +4,10 @@ import itertools
 
 import lib.config
 import lib.continuation
-import lib.create
 import lib.query
 import lib.reader
 import lib.secrets
+import lib.tables
 
 from lib.profile import profile
 from lib.utils import nonce
@@ -32,7 +32,7 @@ def _load_indexes():
     """
     Create a cache of the indexes in the database.
     """
-    return dict((i.name, i) for i in lib.create.list_indexes(engine, filter_built=False))
+    return dict((i.name, i) for i in lib.tables.list_indexes(engine, filter_built=False))
 
 
 # initialize with all the indexes, get them all, whether built or not
