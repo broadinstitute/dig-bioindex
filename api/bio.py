@@ -14,7 +14,6 @@ from lib.utils import nonce
 
 
 # load dot files and configuration
-dotenv.load_dotenv()
 config = lib.config.Config()
 
 # create flask app; this will load .env

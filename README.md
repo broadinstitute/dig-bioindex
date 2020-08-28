@@ -4,6 +4,22 @@ Bio-Index is a tool that indexes genomic data stored in [AWS S3][s3] "tables" (t
 
 The Bio-Index has two entry points: a CLI used for basic CRUD operations and a simple HTTP server and REST API for pure querying.
 
+## Setup
+
+First clone the git repository:
+
+```bash
+$ git clone https://github.com/broadinstitute/dig-bioindex.git
+```
+
+Then, `cd` into the directory created and install it using setup tools:
+
+```bash
+$ python ./setup.py install
+```
+
+At this point, the BioIndex is installed on your system and you can run it with the `bioindex` command.
+
 ## Configuring the BioIndex
 
 The bio-index uses [python-dotenv][dotenv] (environment variables) for configuration. There are two environment files of importance: `.bioindex` and `.env`. The `.bioindex` file contains environment variables for connecting to AWS if they need to differ from those in the AWS credentials file.
@@ -35,7 +51,7 @@ For example, consider the following setup:
 When run, the S3 bucket will be set to "bio-index-dev". Likewise, if the command line is run like so:
 
 ```bash
-$ BIOINDEX_S3_BUCKET=bio-test python3 -m main query gene SLC30A8
+$ BIOINDEX_S3_BUCKET=bio-test bioindex query gene SLC30A8
 ```
 
 The S3 bucket used will be "bio-test".
@@ -45,7 +61,7 @@ The S3 bucket used will be "bio-test".
 To create a new index, use the `create` command. Example:
 
 ```bash
-$ python3 -m main create my-index prefix/key/to/files/ phenotype,chrom:pos
+$ bioindex create my-index prefix/key/to/files/ phenotype,chrom:pos
 ```
 
 The above would create a new (or overwrite the existing) index named `my-index`. It indicates that all the files to index in the S3 bucket are located in `prefix/key/to/files/` recursively, and that the schema used to index the files should be done by `phenotype` first and then by locus: `chrom:pos`.
@@ -105,7 +121,7 @@ The above code would write out many part files to the bucket/path, each perfectl
 Once an index has been created, simply use the `index` command and pass long a comma-separated list of indexes to build.
 
 ```bash
-$ python3 -m main index my-index,another-index
+$ bioindex index my-index,another-index
 ```
 
 _NOTE: You can also pass `*` as to build all indexes!_
@@ -115,7 +131,7 @@ _NOTE: You can also pass `*` as to build all indexes!_
 Once you've built an index, you can then query it and retrieve all the records that match various input keys and/or overlap the given region. For example, to query all records in the `genes` key space that overlap a given region:
 
 ```bash
-$ python3 -m main query genes chr3:983248-1180000
+$ bioindex query genes chr3:983248-1180000
 {'chromosome': '3', 'end': 1445901, 'name': 'CNTN6', 'source': 'symbol', 'start': 1134260, 'type': 'protein_coding'}
 ```
 
@@ -124,10 +140,10 @@ _NOTE: If you'd like to limit the output, just pipe it to `head -n`._
 In addition to querying, there are also commands to `count` records, fetch `all` records, and `match` keys. Examples:
 
 ```bash
-$ python3 -m main count genes 8:100000000-200000000
+$ bioindex count genes 8:100000000-200000000
 1587
 
-$ python3 -m main match gene SLC30A
+$ bioindex match gene SLC30A
 SLC30A1
 SLC30A10
 SLC30A2
@@ -148,13 +164,13 @@ In addition to a CLI, Bio-Index is also a [FastAPI][fastapi] server that allows 
 
 ## Starting the Server
 
-You can run using either the `run-server.sh` (or `run-server.cmd` on Windows) script or yourself manually:
+The server is started using the `serve` command:
 
 ```bash
-$ uvicorn server:app --port 5000
+$ bioindex serve --port 5000 --env .my-bioindex-env-overrides
 ```
 
-_Note: this assumes `uvicorn` is installed via `pip`._
+The default port is 5000 `.env` is the default environment file.
 
 ## REST Queries
 
@@ -219,7 +235,7 @@ If the `continuation` is followed to download more records, then the `page` coun
 * [boto3][boto3]
 * [sqlalchemy][sqlalchemy]
 * [mysqlclient][mysqlclient]
-* [enlighten][enlighten]
+* [rich][rich]
 
 # fin.
 
@@ -230,7 +246,7 @@ If the `continuation` is followed to download more records, then the `page` coun
 [s3]: https://docs.aws.amazon.com/AmazonS3/latest/dev/Welcome.html
 [emr]: https://aws.amazon.com/emr/
 [click]: https://click.palletsprojects.com/en/7.x/quickstart/
-[enlighten]: https://python-enlighten.readthedocs.io/en/stable/
+[rich]: https://rich.readthedocs.io/en/latest/
 [fastapi]: https://fastapi.tiangolo.com/
 [uvicorn]: https://www.uvicorn.org/
 [pydantic]: https://pydantic-docs.helpmanual.io/

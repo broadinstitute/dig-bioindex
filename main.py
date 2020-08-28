@@ -5,6 +5,7 @@ import logging
 import rich.console
 import rich.logging
 import rich.table
+import uvicorn
 
 import lib.config
 import lib.index
@@ -15,9 +16,26 @@ import lib.secrets
 import lib.tables
 
 
+# create the global console
+console = rich.console.Console()
+
+
 @click.group()
 def cli():
     pass
+
+
+@click.command(name='serve')
+@click.option('--port', '-p', type=int, default=5000)
+@click.option('--env', '-e', type=str, default='.env')
+def cli_serve(port, env):
+    uvicorn.run(
+        'server:app',
+        host='0.0.0.0',
+        port=port,
+        env_file=env,
+        log_level='info',
+    )
 
 
 @click.command(name='create')
@@ -32,7 +50,6 @@ def cli_create(index, s3_prefix, schema):
     # parse the schema to ensure validity; create the index
     try:
         lib.tables.create_index(engine, index, s3_prefix, lib.schema.Schema(schema))
-        #lib.tables.create_keys(engine)
 
         # successfully completed
         logging.info('Done; build with `index %s`', index)
@@ -176,6 +193,7 @@ def cli_match(index, q):
 
 
 # initialize the cli
+cli.add_command(cli_serve)
 cli.add_command(cli_create)
 cli.add_command(cli_list)
 cli.add_command(cli_index)
@@ -185,10 +203,10 @@ cli.add_command(cli_count)
 cli.add_command(cli_match)
 
 
-if __name__ == '__main__':
-    console = rich.console.Console()
-
-    # initialize logging, route logging to the console
+def main():
+    """
+    Entry point.
+    """
     logging.basicConfig(
         level=logging.INFO,
         format='%(message)s',
@@ -200,8 +218,12 @@ if __name__ == '__main__':
     logging.getLogger('boto3').setLevel(logging.CRITICAL)
 
     # load dot files
-    dotenv.load_dotenv()
+    dotenv.load_dotenv('.env')
     dotenv.load_dotenv('.bioindex')
 
     # run the CLI
     cli()
+
+
+if __name__ == '__main__':
+    main()
