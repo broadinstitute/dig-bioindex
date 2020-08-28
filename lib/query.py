@@ -123,7 +123,7 @@ def _run_query(engine, bucket, index, q):
 
     # if the schema has a locus, parse the query parameter
     if index.schema.has_locus:
-        chromosome, start, stop = lib.locus.parse(q[-1], allow_ens_lookup=True)
+        chromosome, start, stop = lib.locus.parse(q[-1], gene_lookup_engine=engine)
 
         # positions are stepped, and need to be between stepped ranges
         step_start = (start // lib.locus.Locus.LOCUS_STEP) * lib.locus.Locus.LOCUS_STEP

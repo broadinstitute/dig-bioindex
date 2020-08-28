@@ -146,16 +146,16 @@ def parse_columns(s):
     return (RegionLocus if cols[2] else SNPLocus), cols
 
 
-def parse(s, allow_ens_lookup=False):
+def parse(s, gene_lookup_engine=False):
     """
     Parse a locus string and return the chromosome, start, stop.
     """
     match = re.fullmatch(r'(?:chr)?(\d{1,2}|x|y|xy|mt):([\d,]+)(?:([+/-])([\d,]+))?', s, re.IGNORECASE)
 
     if not match:
-        if not allow_ens_lookup:
+        if not gene_lookup_engine:
             raise ValueError(f'Failed to match locus against {s}')
-        return request_ens_locus(s)
+        return request_gene_locus(gene_lookup_engine, s)
 
     chromosome, start, adjust, end = match.groups()
     cur_locale = locale.getlocale()
@@ -187,33 +187,14 @@ def parse(s, allow_ens_lookup=False):
         locale.setlocale(locale.LC_ALL, cur_locale)
 
 
-def request_ens_locus(q):
+def request_gene_locus(engine, q):
     """
-    Use the ENS REST API to try and find a given locus that may be
-    identified by name.
+    Use the __Genes table to lookup the region of a gene.
     """
-    req = 'https://grch37.rest.ensembl.org/lookup'
+    sql = 'SELECT `chromosome`, `start`, `end` FROM `__Genes` WHERE `name` = %s'
+    gene = engine.execute(sql, q).fetchone()
 
-    # lookup the gene by ENS ID or canonical name
-    if q.upper().startswith('ENSG'):
-        req += f'/id/{q}'
-    else:
-        req += f'/symbol/homo_sapiens/{q}'
-
-    # make the request
-    resp = requests.get(req, headers={'Content-Type': 'application/json'})
-
-    # not found or otherwise invalid
-    if resp.ok:
-        body = resp.json()
-
-        # fetch the chromosome, start, and stop positions
-        chromosome = body.get('seq_region_name')
-        start = body.get('start')
-        stop = body.get('end')
-
-        # must have a valid chromosome and start position
-        if chromosome and start and stop:
-            return chromosome, start, stop
+    if gene:
+        return gene[0], gene[1], gene[2]
 
     raise ValueError(f'Invalid locus or gene name: {q}')
