@@ -121,7 +121,7 @@ def parse_chromosome(s):
     """
     Parse and normalize a chromosome string, which may be prefixed with 'chr'.
     """
-    match = re.fullmatch(r'(?:chr)?(\d{1,2}|x|y|xy|m|mt)', s, re.IGNORECASE)
+    match = re.fullmatch(r'(?:chr)?([1-9]|1\d|2[0-2]|x|y|xy|m)', s, re.IGNORECASE)
 
     if not match:
         raise ValueError(f'Failed to match chromosome against {s}')
@@ -150,7 +150,7 @@ def parse(s, gene_lookup_engine=False):
     """
     Parse a locus string and return the chromosome, start, stop.
     """
-    match = re.fullmatch(r'(?:chr)?(\d{1,2}|x|y|xy|mt):([\d,]+)(?:([+/-])([\d,]+))?', s, re.IGNORECASE)
+    match = re.fullmatch(r'(?:chr)?([1-9]|1\d|2[0-2]|x|y|xy|m):([\d,]+)(?:([+/-])([\d,]+))?', s, re.IGNORECASE)
 
     if not match:
         if not gene_lookup_engine:
