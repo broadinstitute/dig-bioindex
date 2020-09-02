@@ -167,7 +167,7 @@ In addition to a CLI, Bio-Index is also a [FastAPI][fastapi] server that allows 
 The server is started using the `serve` command:
 
 ```bash
-$ bioindex serve --port 5000 --env .my-bioindex-env-overrides
+$ bioindex serve --port 5000 --env-file .my-bioindex-env-overrides
 ```
 
 The default port is 5000 `.env` is the default environment file.
