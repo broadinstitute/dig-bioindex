@@ -28,12 +28,12 @@ def cli():
 @click.command(name='serve')
 @click.option('--port', '-p', type=int, default=5000)
 @click.option('--env-file', '-e', type=str, default='.env')
-def cli_serve(port, env):
+def cli_serve(port, env_file):
     uvicorn.run(
         'server:app',
         host='0.0.0.0',
         port=port,
-        env_file=env,
+        env_file=env_file,
         log_level='info',
     )
 
