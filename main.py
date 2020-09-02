@@ -27,7 +27,7 @@ def cli():
 
 @click.command(name='serve')
 @click.option('--port', '-p', type=int, default=5000)
-@click.option('--env', '-e', type=str, default='.env')
+@click.option('--env-file', '-e', type=str, default='.env')
 def cli_serve(port, env):
     uvicorn.run(
         'server:app',
