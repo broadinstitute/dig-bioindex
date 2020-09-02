@@ -4,7 +4,7 @@ setup(
     name='bioindex',
     version='0.1',
     packages=find_packages(),
-    py_modules=['main'],
+    py_modules=['main', 'server'],
     install_requires=[
         'aiofiles>=0.4',
         'botocore>=1.13',
