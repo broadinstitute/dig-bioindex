@@ -20,6 +20,12 @@ $ python ./setup.py install
 
 At this point, the BioIndex is installed on your system and you can run it with the `bioindex` command.
 
+Alternately, if you do not want to install BioIndex, you can just run it locally with `python -m main`:
+
+```bash
+$ python -m main <command> [args]
+```
+
 ## Configuring the BioIndex
 
 The bio-index uses [python-dotenv][dotenv] (environment variables) for configuration. There are two environment files of importance: `.bioindex` and `.env`. The `.bioindex` file contains environment variables for connecting to AWS if they need to differ from those in the AWS credentials file.
@@ -170,7 +176,7 @@ The server is started using the `serve` command:
 $ bioindex serve --port 5000 --env-file .my-bioindex-env-overrides
 ```
 
-The default port is 5000 `.env` is the default environment file.
+The default port is 5000 and `.env` is the default environment file.
 
 ## REST Queries
 
