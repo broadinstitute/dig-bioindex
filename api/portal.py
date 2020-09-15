@@ -3,6 +3,7 @@ import fastapi
 import lib.config
 import lib.secrets
 
+from lib.auth import restrictions
 from lib.profile import profile
 from lib.utils import nonce
 
@@ -14,7 +15,7 @@ config = lib.config.Config()
 router = fastapi.APIRouter()
 
 # connect to database
-engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.portal_schema)
+portal = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.portal_schema)
 
 
 @router.get('/groups', response_class=fastapi.responses.ORJSONResponse)
@@ -25,7 +26,7 @@ async def api_portal_groups():
     sql = 'SELECT `name`, `description`, `default`, `memberCMD` FROM DiseaseGroups'
 
     # run the query
-    resp, query_s = profile(engine.execute, sql)
+    resp, query_s = profile(portal.execute, sql)
     disease_groups = []
 
     # transform response
@@ -47,6 +48,23 @@ async def api_portal_groups():
     }
 
 
+@router.get('/restrictions', response_class=fastapi.responses.ORJSONResponse)
+async def api_portal_restrictions(req: fastapi.Request):
+    """
+    Returns all restrictions for the current user.
+    """
+    keyword_restrictions, query_s = profile(restrictions, portal, req)
+
+    return {
+        'profile': {
+            'query': query_s,
+        },
+        'data': keyword_restrictions,
+        'nonce': nonce(),
+    }
+
+
+
 @router.get('/phenotypes', response_class=fastapi.responses.ORJSONResponse)
 async def api_portal_phenotypes(q: str = None):
     """
@@ -60,7 +78,7 @@ async def api_portal_phenotypes(q: str = None):
 
     # optionally filter by disease group
     if q and q != '':
-        resp = engine.execute('SELECT `groups` FROM DiseaseGroups WHERE `name` = %s', q)
+        resp = portal.execute('SELECT `groups` FROM DiseaseGroups WHERE `name` = %s', q)
         groups = resp.fetchone()
 
         # groups are a comma-separated set
@@ -72,7 +90,7 @@ async def api_portal_phenotypes(q: str = None):
         sql = ' UNION '.join(f'({sql} WHERE FIND_IN_SET(%s, Phenotypes.`group`))' for _ in groups)
 
     # run the query
-    resp, query_s = profile(engine.execute, sql, *groups) if groups else profile(engine.execute, sql)
+    resp, query_s = profile(portal.execute, sql, *groups) if groups else profile(portal.execute, sql)
     phenotypes = []
 
     # transform response
@@ -95,7 +113,7 @@ async def api_portal_phenotypes(q: str = None):
 
 
 @router.get('/datasets', response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_datasets(q: str = None):
+async def api_portal_datasets(req: fastapi.Request, q: str=None):
     """
     Returns all available datasets for a given disease group.
     """
@@ -120,25 +138,27 @@ async def api_portal_datasets(q: str = None):
     )
 
     # get all datasets
-    resp, query_s = profile(engine.execute, sql)
+    resp, query_s = profile(portal.execute, sql)
     datasets = []
 
     # filter all the datasets
     for r in resp:
         ps = [p for p in r[3].split(',') if p in phenotypes]
 
+        dataset = {
+            'name': r[0],
+            'description': r[1],
+            'community': r[2],
+            'phenotypes': ps,
+            'ancestry': r[4],
+            'tech': r[5],
+            'subjects': r[6],
+            'access': r[7],
+            'new': r[8] != 0,
+        }
+
         if len(ps) > 0:
-            datasets.append({
-                'name': r[0],
-                'description': r[1],
-                'community': r[2],
-                'phenotypes': ps,
-                'ancestry': r[4],
-                'tech': r[5],
-                'subjects': r[6],
-                'access': r[7],
-                'new': r[8] != 0,
-            })
+            datasets.append(dataset)
 
     return {
         'profile': {
@@ -165,7 +185,7 @@ async def api_portal_documentation(q: str, group: str = None):
         params.append(group)
 
     # run the query
-    resp, query_s = profile(engine.execute, sql, *params)
+    resp, query_s = profile(portal.execute, sql, *params)
 
     # transform results
     data = [{'group': group, 'content': content} for group, content in resp.fetchall()]

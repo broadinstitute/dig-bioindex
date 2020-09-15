@@ -6,7 +6,7 @@ import lib.s3
 import lib.schema
 
 
-def fetch(engine, bucket, index, q):
+def fetch(engine, bucket, index, q, restricted=None):
     """
     Use the table schema to determine the type of query to execute. Returns
     a RecordReader of all the results.
@@ -15,10 +15,10 @@ def fetch(engine, bucket, index, q):
         raise ValueError(f'Arity mismatch for index schema "{index.schema}"')
 
     # execute the query and fetch the records from s3
-    return _run_query(engine, bucket, index, q)
+    return _run_query(engine, bucket, index, q, restricted)
 
 
-def fetch_all(bucket, s3_prefix):
+def fetch_all(bucket, s3_prefix, restricted=None):
     """
     Scans for all the S3 files in the schema and creates a dummy cursor
     to read all the records from all the files. Returns a RecordReader
@@ -30,7 +30,7 @@ def fetch_all(bucket, s3_prefix):
     sources = [lib.reader.RecordSource.from_s3_object(obj) for obj in s3_objects]
 
     # create the reader object, begin reading the records
-    return lib.reader.RecordReader(bucket, sources)
+    return lib.reader.RecordReader(bucket, sources, restricted=restricted)
 
 
 def count(engine, bucket, index, q):
@@ -101,7 +101,7 @@ def match(engine, index, q):
             prev_key = r[0]
 
 
-def _run_query(engine, bucket, index, q):
+def _run_query(engine, bucket, index, q, restricted):
     """
     Construct a SQL query to fetch S3 objects and byte offsets. Run it and
     return a RecordReader to the results.
@@ -147,4 +147,9 @@ def _run_query(engine, bucket, index, q):
     sources = [lib.reader.RecordSource(*row) for row in rows]
 
     # create the reader
-    return lib.reader.RecordReader(bucket, sources, record_filter=record_filter)
+    return lib.reader.RecordReader(
+        bucket,
+        sources,
+        record_filter=record_filter,
+        restricted=restricted,
+    )

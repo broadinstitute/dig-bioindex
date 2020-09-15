@@ -1,4 +1,3 @@
-import dotenv
 import fastapi
 import itertools
 
@@ -9,6 +8,7 @@ import lib.reader
 import lib.secrets
 import lib.tables
 
+from lib.auth import restricted_keywords
 from lib.profile import profile
 from lib.utils import nonce
 
@@ -21,6 +21,7 @@ router = fastapi.APIRouter()
 
 # connect to database
 engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)
+portal = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.portal_schema)
 
 # max number of bytes to read from s3 per request
 RESPONSE_LIMIT = config.response_limit
@@ -71,14 +72,12 @@ async def api_list_indexes():
 
 
 @router.get('/match/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_match(index: str, q: str, limit: int = None):
+async def api_match(index: str, req: fastapi.Request, q: str, limit: int = None):
     """
     Return all the unique keys for a value-indexed table.
     """
     try:
         idx = INDEXES[index]
-
-        # get the partial query parameters to apply
         qs = _parse_query(q)
 
         # execute the query
@@ -97,15 +96,15 @@ async def api_match(index: str, q: str, limit: int = None):
 
 
 @router.get('/count/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_count_index(index: str, q: str=None):
+async def api_count_index(index: str, req: fastapi.Request, q: str=None):
     """
     Query the database and estimate how many records will be returned.
     """
     try:
+        idx = INDEXES[index]
         qs = _parse_query(q)
 
         # lookup the schema for this index and perform the query
-        idx = INDEXES[index]
         count, query_s = profile(lib.query.count, engine, config.s3_bucket, idx, qs)
 
         return {
@@ -124,18 +123,21 @@ async def api_count_index(index: str, q: str=None):
 
 
 @router.get('/all/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_all(index: str, fmt: str = 'row'):
+async def api_all(index: str, req: fastapi.Request, fmt: str='row'):
     """
     Query the database and return ALL records for a given index.
     """
     try:
         idx = INDEXES[index]
 
+        # discover what the user doesn't have access to see
+        restricted, auth_s = profile(restricted_keywords, portal, req)
+
         # lookup the schema for this index and perform the query
-        reader, query_s = profile(lib.query.fetch_all, config.s3_bucket, idx.s3_prefix)
+        reader, query_s = profile(lib.query.fetch_all, config.s3_bucket, idx.s3_prefix, restricted=restricted)
 
         # fetch records from the reader
-        return _fetch_records(reader, index, None, fmt, query_s=query_s)
+        return _fetch_records(reader, index, None, fmt, query_s=auth_s+query_s)
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
@@ -143,7 +145,7 @@ async def api_all(index: str, fmt: str = 'row'):
 
 
 @router.head('/all/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_test_all(index: str):
+async def api_test_all(index: str, req: fastapi.Request):
     """
     Query the database fetch ALL records for a given index. Don't read
     the records from S3, but instead set the Content-Length to the total
@@ -164,24 +166,34 @@ async def api_test_all(index: str):
 
 
 @router.get('/query/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_query_index(index: str, q: str, fmt='row', limit: int = None):
+async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', limit: int=None):
     """
     Query the database for records matching the query parameter and
     read the records from s3.
     """
     try:
+        idx = INDEXES[index]
         qs = _parse_query(q, required=True)
 
+        # discover what the user doesn't have access to see
+        restricted, auth_s = profile(restricted_keywords, portal, req)
+
         # lookup the schema for this index and perform the query
-        idx = INDEXES[index]
-        reader, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, qs)
+        reader, query_s = profile(
+            lib.query.fetch,
+            engine,
+            config.s3_bucket,
+            idx,
+            qs,
+            restricted=restricted,
+        )
 
         # use a zip to limit the total number of records that will be read
         if limit is not None:
             reader.set_limit(limit)
 
         # the results of the query
-        return _fetch_records(reader, index, qs, fmt, query_s=query_s)
+        return _fetch_records(reader, index, qs, fmt, query_s=auth_s+query_s)
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
@@ -189,17 +201,17 @@ async def api_query_index(index: str, q: str, fmt='row', limit: int = None):
 
 
 @router.head('/query/{index}')
-async def api_test_index(index: str, q: str):
+async def api_test_index(index: str, q: str, req: fastapi.Request):
     """
     Query the database for records matching the query parameter. Don't
     read the records from S3, but instead set the Content-Length to the
     total number of bytes what would be read.
     """
     try:
+        idx = INDEXES[index]
         qs = _parse_query(q, required=True)
 
         # lookup the schema for this index and perform the query
-        idx = INDEXES[index]
         reader, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, qs)
 
         return fastapi.Response(headers={'Content-Length': str(reader.bytes_total)})
@@ -275,6 +287,7 @@ def _fetch_records(reader, index, qs, fmt, page=1, query_s=None):
     and then return a JSON response object with the records.
     """
     bytes_limit = reader.bytes_read + RESPONSE_LIMIT
+    restricted_count = reader.restricted_count
 
     # similar to itertools.takewhile, but keeps the final record
     def take():
@@ -294,7 +307,7 @@ def _fetch_records(reader, index, qs, fmt, page=1, query_s=None):
     count = len(fetched_records)
 
     # transform a list of dictionaries into a dictionary of lists
-    if fmt in ['c', 'col', 'column']:
+    if fmt[0] == 'c':
         fetched_records = {k: [r.get(k) for r in fetched_records] for k in fetched_records[0].keys()}
 
     # create a continuation if there is more data
@@ -311,6 +324,7 @@ def _fetch_records(reader, index, qs, fmt, page=1, query_s=None):
         'index': index,
         'q': qs,
         'count': count,
+        'restricted': reader.restricted_count - restricted_count,
         'progress': {
             'bytes_read': reader.bytes_read,
             'bytes_total': reader.bytes_total,

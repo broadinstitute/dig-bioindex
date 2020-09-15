@@ -4,6 +4,7 @@ import itertools
 import logging
 import orjson
 
+import lib.auth
 import lib.locus
 import lib.s3
 import lib.schema
@@ -44,15 +45,17 @@ class RecordReader:
     from a list of RecordSource objects for a given S3 bucket.
     """
 
-    def __init__(self, bucket, sources, record_filter=None):
+    def __init__(self, bucket, sources, record_filter=None, restricted=None):
         """
         Initialize the RecordReader with a list of RecordSource objects.
         """
         self.bucket = bucket
         self.sources = sources
+        self.restricted = restricted
         self.bytes_total = 0
         self.bytes_read = 0
         self.count = 0
+        self.restricted_count = 0
         self.limit = None
 
         # sum the total number of bytes to read
@@ -95,6 +98,11 @@ class RecordReader:
 
                     # parse the record
                     record = orjson.loads(line)
+
+                    # are there any restrictions on this record?
+                    if not lib.auth.verify_record(record, self.restricted):
+                        self.restricted_count += 1
+                        continue
 
                     # optionally filter; and tally filtered records
                     if self.record_filter is None or self.record_filter(record):
