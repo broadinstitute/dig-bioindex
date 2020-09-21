@@ -114,8 +114,8 @@ def cli_index(cfg, index_name, use_lambda, cont, rebuild, workers):
             # build the index
             index.build(
                 engine,
-                idx,
                 cfg,
+                idx,
                 s3_objects,
                 use_lambda=use_lambda,
                 rebuild=rebuild,
@@ -219,11 +219,8 @@ def main():
     dotenv.load_dotenv('.env')
     dotenv.load_dotenv('.bioindex')
 
-    try:
-        cli(obj=config.Config())
-    except Exception as e:
-        logging.error(e)
-        sys.exit(-1)
+    # run
+    cli(obj=config.Config())
 
 
 if __name__ == '__main__':
