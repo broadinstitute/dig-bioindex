@@ -71,7 +71,7 @@ def invoke_lambda(function_name, payload):
     )
 
     # parse the response payload
-    payload = orjson.loads(response['Payload']).decode('utf-8')
+    payload = orjson.loads(response['Payload'].read())
 
     # if a failure, then raise an exception
     if response.get('FunctionError'):
