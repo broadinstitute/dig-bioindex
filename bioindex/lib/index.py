@@ -78,7 +78,7 @@ def build(engine, cfg, index, s3_objects, use_lambda=False, rebuild=False, cont=
 
             # index the objects remotely using lambda or locally
             if use_lambda:
-                _index_objects_remote(engine, cfg, pool, objects, index, use_lambda)
+                _index_objects_remote(engine, cfg, pool, objects, index, cfg.lambda_function)
             else:
                 _index_objects_local(engine, cfg, pool, objects, index, progress, overall)
 
@@ -182,10 +182,13 @@ def _index_objects_remote(engine, cfg, pool, objects, index, function_name):
 
         result = job.result()
         key = result['key']
-        # records = result['records']
+        record_count = result['records']
 
         # the insert was done remotely, simply set the built flag now
         _set_key_built_flag(engine, index, key)
+
+        # output number of records
+        logging.info(f'Wrote {record_count:,} records')
 
 
 def _index_objects_local(engine, cfg, pool, objects, index, progress, overall):

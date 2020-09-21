@@ -97,7 +97,7 @@ def cli_index(cfg, index_name, use_lambda, cont, rebuild, workers):
         assert cfg.lambda_function, 'BIOINDEX_LAMBDA_FUNCTION not set; cannot use --use-lambda'
 
     # discover which indexes will be indexes
-    indexes = tables.list_indexes(engine)
+    indexes = tables.list_indexes(engine, filter_built=False)
     index_names = index_name.split(',')
 
     # which tables will be indexed? allow all with "*"

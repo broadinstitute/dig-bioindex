@@ -1,7 +1,7 @@
 import base64
 import boto3
 import botocore.config
-import json
+import orjson
 import sqlalchemy.engine
 
 
@@ -27,40 +27,53 @@ def secret_lookup(secret_id):
         secret = base64.b64decode(response['SecretBinary'])
 
     # parse it as json
-    return json.loads(secret)
+    return orjson.loads(secret)
+
+
+def connect_to_db(**kwargs):
+    """
+    Connect to a MySQL database using keyword arguments.
+    """
+    uri = '{engine}://{username}:{password}@{host}/{dbname}?local_infile=1'.format(kwargs)
+
+    # create the connection pool
+    return sqlalchemy.create_engine(uri, pool_recycle=3600)
 
 
 def connect_to_rds(secret_id, schema=None):
     """
-    Create and return a connection to a MySQL server.
+    Create and return a connection to a RDS server using an AWS secret.
     """
     secret = secret_lookup(secret_id)
 
-    # extract connection settings
-    host = secret['host']
-    user = secret['username']
-    password = secret['password']
-    db = schema or secret['dbname']
-
-    # mysql connection url
-    connection_string = 'mysql://{login}:{password}@{host}/{db}?local_infile=1'.format(
-        login=user,
-        password=password,
-        host=host,
-        db=db,
+    return connect_to_db(
+        engine = secret['engine'],
+        host = secret['host'],
+        username = secret['username'],
+        password = secret['password'],
+        dbname = schema or secret['dbname'],
     )
-
-    # create the connection pool
-    return sqlalchemy.create_engine(connection_string, pool_recycle=3600)
 
 
 def invoke_lambda(function_name, payload):
     """
     Invokes an AWS lambda function and waits for it to complete.
     """
-    return lambda_client.invoke(
+    payload = orjson.dumps(payload).decode('utf-8')
+
+    # invoke and wait for response
+    response = lambda_client.invoke(
         FunctionName=function_name,
-        InvocationType='Event',
+        InvocationType='RequestResponse',
         LogType='Tail',
-        Payload=json.dumps(payload),
+        Payload=payload,
     )
+
+    # parse the response payload
+    payload = orjson.loads(response['Payload']).decode('utf-8')
+
+    # if a failure, then raise an exception
+    if response.get('FunctionError'):
+        raise RuntimeError(payload)
+
+    return payload
