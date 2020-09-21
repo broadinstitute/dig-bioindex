@@ -1,6 +1,6 @@
 import os
 
-from lib.secrets import secret_lookup
+from .secrets import secret_lookup
 
 
 class Config:
@@ -43,9 +43,9 @@ class Config:
         self.portal_schema = os.getenv('BIOINDEX_PORTAL_SCHEMA', portal_schema)
 
         # validate required settings
-        assert self.s3_bucket
-        assert self.rds_instance
-        assert self.bio_schema
+        assert self.s3_bucket, 'BIOINDEX_S3_BUCKET not set in the environment'
+        assert self.rds_instance, 'BIOINDEX_RDS_INSTANCE not set in the environment'
+        assert self.bio_schema, 'BIOINDEX_BIO_SCHEMA not set in the environment'
 
         # post-init
         self.response_limit = int(response_limit)

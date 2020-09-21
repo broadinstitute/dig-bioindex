@@ -1,19 +1,20 @@
 import fastapi
 
-import lib.config
-import lib.s3
+from ..lib import config
+from ..lib import s3
+from ..lib import secrets
 
-from lib.auth import verify_permissions
+from ..lib.auth import verify_permissions
 
 
 # load dot files and configuration
-config = lib.config.Config()
+CONFIG = config.Config()
 
 # create web server
 router = fastapi.APIRouter()
 
 # connect to database
-engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.portal_schema)
+engine = secrets.connect_to_mysql(CONFIG.rds_instance, schema=CONFIG.portal_schema)
 
 
 @router.get('/plot/dataset/{dataset}/{file:path}')
@@ -25,7 +26,7 @@ async def api_raw_plot_dataset(dataset: str, file: str, req: fastapi.Request):
         raise fastapi.HTTPException(status_code=401)
 
     # load the object from s3
-    content = lib.s3.read_object(config.s3_bucket, f'plot/dataset/{dataset}/{file}')
+    content = s3.read_object(CONFIG.s3_bucket, f'plot/dataset/{dataset}/{file}')
     if content is None:
         raise fastapi.HTTPException(status_code=404)
 
@@ -41,7 +42,7 @@ async def api_raw_plot_phenotype(phenotype: str, file: str, req: fastapi.Request
         raise fastapi.HTTPException(status_code=401)
 
     # load the object from s3
-    content = lib.s3.read_object(config.s3_bucket, f'plot/phenotype/{phenotype}/{file}')
+    content = s3.read_object(CONFIG.s3_bucket, f'plot/phenotype/{phenotype}/{file}')
     if content is None:
         raise fastapi.HTTPException(status_code=404)
 

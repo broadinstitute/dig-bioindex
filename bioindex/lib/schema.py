@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Index, Integer, BigInteger, MetaData, String, Table
 from sqlalchemy.exc import OperationalError
 
-from lib.locus import parse_columns
+from .locus import parse_columns
 
 
 class Schema:

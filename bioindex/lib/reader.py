@@ -4,10 +4,8 @@ import itertools
 import logging
 import orjson
 
-import lib.auth
-import lib.locus
-import lib.s3
-import lib.schema
+from .auth import verify_record
+from .s3 import read_object
 
 
 @dataclasses.dataclass(frozen=True)
@@ -86,7 +84,7 @@ class RecordReader:
                 continue
 
             try:
-                content = lib.s3.read_object(
+                content = read_object(
                     self.bucket,
                     source.key,
                     offset=source.start,
@@ -100,7 +98,7 @@ class RecordReader:
                     record = orjson.loads(line)
 
                     # are there any restrictions on this record?
-                    if not lib.auth.verify_record(record, self.restricted):
+                    if not verify_record(record, self.restricted):
                         self.restricted_count += 1
                         continue
 

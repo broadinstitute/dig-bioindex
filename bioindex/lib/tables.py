@@ -2,12 +2,10 @@ import logging
 import sqlalchemy
 import types
 
-import lib.locus
-import lib.s3
-import lib.schema
-import lib.utils
-
 from sqlalchemy import Column, DateTime, Index, Integer, String, Table
+
+from .schema import Schema
+from .utils import cap_case_str
 
 
 def create_index(engine, index, s3_prefix, schema):
@@ -31,7 +29,7 @@ def create_index(engine, index, s3_prefix, schema):
         '   `built` = 0 '
     )
 
-    engine.execute(sql, index, lib.utils.cap_case_str(index), s3_prefix, str(schema))
+    engine.execute(sql, index, cap_case_str(index), s3_prefix, str(schema))
 
 
 def create_index_table(engine):
@@ -176,6 +174,6 @@ def _index_of_row(row):
         name=row[0],
         table=row[1],
         s3_prefix=row[2],
-        schema=lib.schema.Schema(row[3]),
+        schema=Schema(row[3]),
         built=row[4],
     )

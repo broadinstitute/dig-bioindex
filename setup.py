@@ -1,10 +1,17 @@
-from setuptools import setup, find_packages
+from setuptools import setup
 
 setup(
     name='bioindex',
     version='0.1',
-    packages=find_packages(),
-    py_modules=['main', 'server'],
+    packages=[
+        'bioindex',
+        'bioindex.api',
+        'bioindex.lib',
+    ],
+    py_modules=[
+        'bioindex.main',
+        'bioindex.server',
+    ],
     install_requires=[
         'aiofiles>=0.4',
         'botocore>=1.13',
@@ -21,7 +28,7 @@ setup(
         'uvicorn>=0.10',
     ],
     entry_points={
-        'console_scripts': ['bioindex=main:main'],
+        'console_scripts': ['bioindex=bioindex.main:main'],
     },
     author='Jeffrey Massung',
     author_email='jmassung@broadinstitute.org',
@@ -34,4 +41,3 @@ setup(
     },
     license='BSD3',
 )
-

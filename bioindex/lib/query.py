@@ -1,9 +1,8 @@
 import re
 
-import lib.locus
-import lib.reader
-import lib.s3
-import lib.schema
+from .locus import Locus, parse_locus
+from .reader import RecordReader, RecordSource
+from .s3 import list_objects
 
 
 def fetch(engine, bucket, index, q, restricted=None):
@@ -24,31 +23,30 @@ def fetch_all(bucket, s3_prefix, restricted=None):
     to read all the records from all the files. Returns a RecordReader
     of the results.
     """
-    s3_objects = lib.s3.list_objects(bucket, s3_prefix)
+    s3_objects = list_objects(bucket, s3_prefix)
 
     # create a RecordSource for each object
-    sources = [lib.reader.RecordSource.from_s3_object(obj) for obj in s3_objects]
+    sources = [RecordSource.from_s3_object(obj) for obj in s3_objects]
 
     # create the reader object, begin reading the records
-    return lib.reader.RecordReader(bucket, sources, restricted=restricted)
+    return RecordReader(bucket, sources, restricted=restricted)
 
 
 def count(engine, bucket, index, q):
     """
     Estimate the number of records that will be returned by a query.
     """
-    reader = fetch_all(bucket, index.s3_prefix) if len(q) == 0 else _run_query(engine, bucket, index, q)
+    reader = fetch_all(bucket, index.s3_prefix) if len(q) == 0 else _run_query(engine, bucket, index, q, None)
 
     # read a couple hundred records to get the total bytes read
-    for _ in zip(range(500), reader.records):
-        pass
+    records = list(zip(range(500), reader.records))
 
     # if less than N records read, that's how many there are exactly
     if reader.at_end:
         return reader.count
 
     # get the % of bytes read to estimate the total number of records
-    return int(reader.count * reader.bytes_total / reader.bytes_read)
+    return int(len(records) * reader.bytes_total / reader.bytes_read)
 
 
 def match(engine, index, q):
@@ -123,11 +121,11 @@ def _run_query(engine, bucket, index, q, restricted):
 
     # if the schema has a locus, parse the query parameter
     if index.schema.has_locus:
-        chromosome, start, stop = lib.locus.parse(q[-1], gene_lookup_engine=engine)
+        chromosome, start, stop = parse_locus(q[-1], gene_lookup_engine=engine)
 
         # positions are stepped, and need to be between stepped ranges
-        step_start = (start // lib.locus.Locus.LOCUS_STEP) * lib.locus.Locus.LOCUS_STEP
-        step_stop = (stop // lib.locus.Locus.LOCUS_STEP) * lib.locus.Locus.LOCUS_STEP
+        step_start = (start // Locus.LOCUS_STEP) * Locus.LOCUS_STEP
+        step_stop = (stop // Locus.LOCUS_STEP) * Locus.LOCUS_STEP
 
         # replace the last query parameter with the locus
         q = [*q[:-1], chromosome, step_start, step_stop]
@@ -144,10 +142,10 @@ def _run_query(engine, bucket, index, q, restricted):
     rows = cursor.fetchall()
 
     # create a RecordSource for each entry in the database
-    sources = [lib.reader.RecordSource(*row) for row in rows]
+    sources = [RecordSource(*row) for row in rows]
 
     # create the reader
-    return lib.reader.RecordReader(
+    return RecordReader(
         bucket,
         sources,
         record_filter=record_filter,

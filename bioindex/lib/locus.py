@@ -2,7 +2,6 @@ import abc
 import itertools
 import locale
 import re
-import requests
 
 
 class Locus(abc.ABC):
@@ -146,7 +145,7 @@ def parse_columns(s):
     return (RegionLocus if cols[2] else SNPLocus), cols
 
 
-def parse(s, gene_lookup_engine=False):
+def parse_locus(s, gene_lookup_engine=False):
     """
     Parse a locus string and return the chromosome, start, stop.
     """

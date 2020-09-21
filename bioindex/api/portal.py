@@ -1,21 +1,21 @@
 import fastapi
 
-import lib.config
-import lib.secrets
+from ..lib import config
+from ..lib import secrets
 
-from lib.auth import restrictions
-from lib.profile import profile
-from lib.utils import nonce
+from ..lib.auth import restrictions
+from ..lib.profile import profile
+from ..lib.utils import nonce
 
 
 # load dot files and configuration
-config = lib.config.Config()
+CONFIG = config.Config()
 
 # create web server
 router = fastapi.APIRouter()
 
 # connect to database
-portal = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.portal_schema)
+portal = secrets.connect_to_mysql(CONFIG.rds_instance, schema=CONFIG.portal_schema)
 
 
 @router.get('/groups', response_class=fastapi.responses.ORJSONResponse)

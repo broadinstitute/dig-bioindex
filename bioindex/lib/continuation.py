@@ -2,8 +2,7 @@ import dataclasses
 import threading
 import time
 
-import lib.reader
-import lib.utils
+from .utils import nonce
 
 
 _cont_map = {}
@@ -27,7 +26,7 @@ def make_continuation(**kwargs):
     Create a continuation and return a token to it.
     """
     cont = Cont(**kwargs)
-    token = lib.utils.nonce()
+    token = nonce()
 
     # add it to the map
     with _cont_lock:

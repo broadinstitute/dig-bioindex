@@ -1,38 +1,37 @@
 import fastapi
 import itertools
 
-import lib.config
-import lib.continuation
-import lib.query
-import lib.reader
-import lib.secrets
-import lib.tables
+from ..lib import config
+from ..lib import continuation
+from ..lib import query
+from ..lib import secrets
+from ..lib import tables
 
-from lib.auth import restricted_keywords
-from lib.profile import profile
-from lib.utils import nonce
-
+from ..lib.auth import restricted_keywords
+from ..lib.profile import profile
+from ..lib.utils import nonce
 
 # load dot files and configuration
-config = lib.config.Config()
+CONFIG = config.Config()
 
 # create flask app; this will load .env
 router = fastapi.APIRouter()
 
 # connect to database
-engine = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.bio_schema)
-portal = lib.secrets.connect_to_mysql(config.rds_instance, schema=config.portal_schema)
+engine = secrets.connect_to_mysql(CONFIG.rds_instance, schema=CONFIG.bio_schema)
+portal = secrets.connect_to_mysql(CONFIG.rds_instance, schema=CONFIG.portal_schema)
 
 # max number of bytes to read from s3 per request
-RESPONSE_LIMIT = config.response_limit
-MATCH_LIMIT = config.match_limit
+RESPONSE_LIMIT = CONFIG.response_limit
+MATCH_LIMIT = CONFIG.match_limit
 
 
 def _load_indexes():
     """
     Create a cache of the indexes in the database.
     """
-    return dict((i.name, i) for i in lib.tables.list_indexes(engine, filter_built=False))
+    indexes = tables.list_indexes(engine, filter_built=False)
+    return dict((i.name, i) for i in indexes)
 
 
 # initialize with all the indexes, get them all, whether built or not
@@ -72,7 +71,10 @@ async def api_list_indexes():
 
 
 @router.get('/match/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_match(index: str, req: fastapi.Request, q: str, limit: int = None):
+async def api_match(index: str,
+                    req: fastapi.Request,
+                    q: str,
+                    limit: int = None):
     """
     Return all the unique keys for a value-indexed table.
     """
@@ -81,7 +83,7 @@ async def api_match(index: str, req: fastapi.Request, q: str, limit: int = None)
         qs = _parse_query(q)
 
         # execute the query
-        keys, query_s = profile(lib.query.match, engine, idx, qs)
+        keys, query_s = profile(query.match, engine, idx, qs)
 
         # allow an upper limit on the total number of keys returned
         if limit is not None:
@@ -90,13 +92,14 @@ async def api_match(index: str, req: fastapi.Request, q: str, limit: int = None)
         # read the matched keys
         return _match_keys(keys, index, qs, limit, query_s=query_s)
     except KeyError:
-        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
+        raise fastapi.HTTPException(
+            status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
 @router.get('/count/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_count_index(index: str, req: fastapi.Request, q: str=None):
+async def api_count_index(index: str, req: fastapi.Request, q: str = None):
     """
     Query the database and estimate how many records will be returned.
     """
@@ -105,7 +108,7 @@ async def api_count_index(index: str, req: fastapi.Request, q: str=None):
         qs = _parse_query(q)
 
         # lookup the schema for this index and perform the query
-        count, query_s = profile(lib.query.count, engine, config.s3_bucket, idx, qs)
+        count, query_s = profile(query.count, engine, CONFIG.s3_bucket, idx, qs)
 
         return {
             'profile': {
@@ -117,13 +120,14 @@ async def api_count_index(index: str, req: fastapi.Request, q: str=None):
             'nonce': nonce(),
         }
     except KeyError:
-        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
+        raise fastapi.HTTPException(
+            status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
 @router.get('/all/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_all(index: str, req: fastapi.Request, fmt: str='row'):
+async def api_all(index: str, req: fastapi.Request, fmt: str = 'row'):
     """
     Query the database and return ALL records for a given index.
     """
@@ -134,12 +138,19 @@ async def api_all(index: str, req: fastapi.Request, fmt: str='row'):
         restricted, auth_s = profile(restricted_keywords, portal, req)
 
         # lookup the schema for this index and perform the query
-        reader, query_s = profile(lib.query.fetch_all, config.s3_bucket, idx.s3_prefix, restricted=restricted)
+        reader, query_s = profile(
+            query.fetch_all,
+            CONFIG.s3_bucket,
+            idx.s3_prefix,
+            restricted=restricted,
+        )
 
         # fetch records from the reader
-        return _fetch_records(reader, index, None, fmt, query_s=auth_s+query_s)
+        return _fetch_records(
+            reader, index, None, fmt, query_s=auth_s + query_s)
     except KeyError:
-        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
+        raise fastapi.HTTPException(
+            status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
@@ -155,18 +166,28 @@ async def api_test_all(index: str, req: fastapi.Request):
         idx = INDEXES[index]
 
         # lookup the schema for this index and perform the query
-        reader, query_s = profile(lib.query.fetch_all, config.s3_bucket, idx.s3_prefix)
+        reader, query_s = profile(
+            query.fetch_all,
+            CONFIG.s3_bucket,
+            idx.s3_prefix,
+        )
 
         # return the total number of bytes that need to be read
-        return fastapi.Response(headers={'Content-Length': str(reader.bytes_total)})
+        return fastapi.Response(
+            headers={'Content-Length': str(reader.bytes_total)})
     except KeyError:
-        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
+        raise fastapi.HTTPException(
+            status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
 @router.get('/query/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', limit: int=None):
+async def api_query_index(index: str,
+                          q: str,
+                          req: fastapi.Request,
+                          fmt='row',
+                          limit: int = None):
     """
     Query the database for records matching the query parameter and
     read the records from s3.
@@ -180,9 +201,9 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
 
         # lookup the schema for this index and perform the query
         reader, query_s = profile(
-            lib.query.fetch,
+            query.fetch,
             engine,
-            config.s3_bucket,
+            CONFIG.s3_bucket,
             idx,
             qs,
             restricted=restricted,
@@ -193,9 +214,10 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
             reader.set_limit(limit)
 
         # the results of the query
-        return _fetch_records(reader, index, qs, fmt, query_s=auth_s+query_s)
+        return _fetch_records(reader, index, qs, fmt, query_s=auth_s + query_s)
     except KeyError:
-        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
+        raise fastapi.HTTPException(
+            status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
@@ -212,11 +234,13 @@ async def api_test_index(index: str, q: str, req: fastapi.Request):
         qs = _parse_query(q, required=True)
 
         # lookup the schema for this index and perform the query
-        reader, query_s = profile(lib.query.fetch, engine, config.s3_bucket, idx, qs)
+        reader, query_s = profile(query.fetch, engine, CONFIG.s3_bucket, idx, qs)
 
-        return fastapi.Response(headers={'Content-Length': str(reader.bytes_total)})
+        return fastapi.Response(
+            headers={'Content-Length': str(reader.bytes_total)})
     except KeyError:
-        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
+        raise fastapi.HTTPException(
+            status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
@@ -227,16 +251,18 @@ async def api_cont(token: str):
     Lookup a continuation token and get the next set of records.
     """
     try:
-        cont = lib.continuation.lookup_continuation(token)
+        cont = continuation.lookup_continuation(token)
 
         # the token is no longer valid
-        lib.continuation.remove_continuation(token)
+        continuation.remove_continuation(token)
 
         # execute the continuation callback
         return cont.callback(cont)
 
     except KeyError:
-        raise fastapi.HTTPException(status_code=400, detail='Invalid, expired, or missing continuation token')
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Invalid, expired, or missing continuation token')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
@@ -261,9 +287,10 @@ def _match_keys(keys, index, qs, limit, page=1, query_s=None):
     fetched, fetch_s = profile(list, itertools.islice(keys, MATCH_LIMIT))
 
     # create a continuation if there is more data
-    token = None if len(fetched) < MATCH_LIMIT else lib.continuation.make_continuation(
-        callback=lambda cont: _match_keys(keys, index, limit, qs, page=page+1),
-    )
+    token = None if len(
+        fetched) < MATCH_LIMIT else continuation.make_continuation(
+            callback=
+            lambda cont: _match_keys(keys, index, limit, qs, page=page + 1), )
 
     return {
         'profile': {
@@ -308,12 +335,15 @@ def _fetch_records(reader, index, qs, fmt, page=1, query_s=None):
 
     # transform a list of dictionaries into a dictionary of lists
     if fmt[0] == 'c':
-        fetched_records = {k: [r.get(k) for r in fetched_records] for k in fetched_records[0].keys()}
+        fetched_records = {
+            k: [r.get(k) for r in fetched_records]
+            for k in fetched_records[0].keys()
+        }
 
     # create a continuation if there is more data
-    token = None if reader.at_end else lib.continuation.make_continuation(
-        callback=lambda cont: _fetch_records(reader, index, qs, fmt, page=page+1),
-    )
+    token = None if reader.at_end else continuation.make_continuation(
+        callback=
+        lambda cont: _fetch_records(reader, index, qs, fmt, page=page + 1), )
 
     # build JSON response
     return {
