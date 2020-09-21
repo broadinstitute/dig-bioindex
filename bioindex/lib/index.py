@@ -10,11 +10,12 @@ import rich.progress
 import sqlalchemy
 import tempfile
 
+from .aws import invoke_lambda
 from .s3 import read_object, relative_key
 from .tables import create_keys_table, delete_key, delete_keys, insert_key, lookup_keys
 
 
-def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, workers=3, console=None):
+def build(engine, cfg, index, s3_objects, use_lambda=False, rebuild=False, cont=False, workers=3, console=None):
     """
     Builds the index table for objects in S3.
     """
@@ -74,19 +75,12 @@ def build(engine, index, bucket, s3_objects, rebuild=False, cont=False, workers=
 
             # read several files in parallel
             pool = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
-            jobs = [pool.submit(_index_object, engine, bucket, obj, table, index, progress, overall) for obj in objects]
 
-            # as each job finishes, insert the records into the table
-            for job in concurrent.futures.as_completed(jobs):
-                if job.exception() is not None:
-                    raise job.exception()
-
-                # get the key and the record iterator returned
-                key, records = job.result()
-
-                # perform the insert serially, so jobs don't block each other
-                _bulk_insert(engine, table, list(records))
-                _set_key_built_flag(engine, index, key)
+            # index the objects remotely using lambda or locally
+            if use_lambda:
+                _index_objects_remote(engine, cfg, pool, objects, index, use_lambda)
+            else:
+                _index_objects_local(engine, cfg, pool, objects, index, progress, overall)
 
             # finally, build the index after all inserts are done
             logging.info('Building table index...')
@@ -165,7 +159,57 @@ def _delete_stale_keys(engine, index, table, objects, last_built, console):
     return [o for o in objects if o['Key'] not in indexed_keys]
 
 
-def _index_object(engine, bucket, obj, table, index, progress, overall):
+def _index_objects_remote(engine, cfg, pool, objects, index, function_name):
+    """
+    Index the objects using a lambda.
+    """
+    def make_payload(obj):
+        return {
+            'index': index.name,
+            'rds_instance': cfg.rds_instance,
+            'rds_schema': cfg.bio_schema,
+            's3_bucket': cfg.s3_bucket,
+            's3_obj': obj,
+        }
+
+    # create a job per object
+    jobs = [pool.submit(invoke_lambda, function_name, make_payload(obj)) for obj in objects]
+
+    # as each job finishes, set the built flag for that key
+    for job in concurrent.futures.as_completed(jobs):
+        if job.exception() is not None:
+            raise job.exception()
+
+        result = job.result()
+        key = result['key']
+        # records = result['records']
+
+        # the insert was done remotely, simply set the built flag now
+        _set_key_built_flag(engine, index, key)
+
+
+def _index_objects_local(engine, cfg, pool, objects, index, progress, overall):
+    """
+    Index the objects locally.
+    """
+    jobs = [pool.submit(_index_object, engine, cfg.s3_bucket, obj, index, progress, overall) for obj in objects]
+
+    # as each job finishes, insert the records into the table
+    for job in concurrent.futures.as_completed(jobs):
+        if job.exception() is not None:
+            raise job.exception()
+
+        # get the key and the record iterator returned
+        key, records = job.result()
+
+        # perform the insert serially, so jobs don't block each other
+        _bulk_insert(engine, index.table, list(records))
+
+        # after inserting, set the key as being built
+        _set_key_built_flag(engine, index, key)
+
+
+def _index_object(engine, bucket, obj, index, progress=None, overall=None):
     """
     Read a file in S3, index it, and insert records into the table.
     """
@@ -179,7 +223,7 @@ def _index_object(engine, bucket, obj, table, index, progress, overall):
 
     # per-file progress bar
     rel_key = relative_key(key, index.s3_prefix)
-    file_progress = progress.add_task(f'[yellow]{rel_key}[/]', total=size)
+    file_progress = progress and progress.add_task(f'[yellow]{rel_key}[/]', total=size)
 
     # process each line (record)
     for line_num, line in enumerate(content.iter_lines()):
@@ -200,14 +244,16 @@ def _index_object(engine, bucket, obj, table, index, progress, overall):
             logging.warning('%s; skipping...', e)
 
         # update progress
-        progress.update(file_progress, completed=end_offset)
+        if progress:
+            progress.update(file_progress, completed=end_offset)
 
         # track current file offset
         start_offset = end_offset
 
     # done with this object; tick the overall progress
-    progress.remove_task(file_progress)
-    progress.advance(overall, advance=size)
+    if progress:
+        progress.remove_task(file_progress)
+        progress.advance(overall, advance=size)
 
     # NOTE: Because this is called as a job, be sure and return a iterator
     #       and not the records as this is memory that is kept around for
@@ -215,7 +261,7 @@ def _index_object(engine, bucket, obj, table, index, progress, overall):
     return key, ({**index.schema.column_values(k), **r} for k, r in records.items())
 
 
-def _bulk_insert(engine, table, records):
+def _bulk_insert(engine, table_name, records):
     """
     Insert all the records in batches.
     """
@@ -243,7 +289,7 @@ def _bulk_insert(engine, table, records):
 
         sql = (
             f"LOAD DATA LOCAL INFILE '{infile}' "
-            f"INTO TABLE `{table.name}` "
+            f"INTO TABLE `{table_name}` "
             f"FIELDS TERMINATED BY ',' "
             f"LINES TERMINATED BY '\\n' "
             f"IGNORE 1 ROWS "

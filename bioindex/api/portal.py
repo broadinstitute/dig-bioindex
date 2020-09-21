@@ -1,7 +1,7 @@
 import fastapi
 
+from ..lib import aws
 from ..lib import config
-from ..lib import secrets
 
 from ..lib.auth import restrictions
 from ..lib.profile import profile
@@ -15,7 +15,7 @@ CONFIG = config.Config()
 router = fastapi.APIRouter()
 
 # connect to database
-portal = secrets.connect_to_mysql(CONFIG.rds_instance, schema=CONFIG.portal_schema)
+portal = aws.connect_to_rds(CONFIG.rds_instance, schema=CONFIG.portal_schema)
 
 
 @router.get('/groups', response_class=fastapi.responses.ORJSONResponse)

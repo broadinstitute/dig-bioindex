@@ -1,5 +1,3 @@
-import boto3
-import botocore.config
 import botocore.errorfactory
 import fnmatch
 import os
@@ -7,10 +5,10 @@ import os.path
 import re
 import urllib.parse
 
+from .aws import aws_config, aws_session
+
 # create an s3 session from ~/.aws credentials
-s3_config = botocore.config.Config(max_pool_connections=200)
-s3_session = boto3.session.Session()
-s3_client = s3_session.client('s3', config=s3_config)
+s3_client = aws_session.client('s3', config=aws_config)
 
 
 def is_absolute(s3_key):

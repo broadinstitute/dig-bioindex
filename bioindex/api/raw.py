@@ -1,8 +1,8 @@
 import fastapi
 
+from ..lib import aws
 from ..lib import config
 from ..lib import s3
-from ..lib import secrets
 
 from ..lib.auth import verify_permissions
 
@@ -14,7 +14,7 @@ CONFIG = config.Config()
 router = fastapi.APIRouter()
 
 # connect to database
-engine = secrets.connect_to_mysql(CONFIG.rds_instance, schema=CONFIG.portal_schema)
+engine = aws.connect_to_rds(CONFIG.rds_instance, schema=CONFIG.portal_schema)
 
 
 @router.get('/plot/dataset/{dataset}/{file:path}')

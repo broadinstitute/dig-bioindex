@@ -1,10 +1,10 @@
 import fastapi
 import itertools
 
+from ..lib import aws
 from ..lib import config
 from ..lib import continuation
 from ..lib import query
-from ..lib import secrets
 from ..lib import tables
 
 from ..lib.auth import restricted_keywords
@@ -18,8 +18,8 @@ CONFIG = config.Config()
 router = fastapi.APIRouter()
 
 # connect to database
-engine = secrets.connect_to_mysql(CONFIG.rds_instance, schema=CONFIG.bio_schema)
-portal = secrets.connect_to_mysql(CONFIG.rds_instance, schema=CONFIG.portal_schema)
+engine = aws.connect_to_rds(CONFIG.rds_instance, schema=CONFIG.bio_schema)
+portal = aws.connect_to_rds(CONFIG.rds_instance, schema=CONFIG.portal_schema)
 
 # max number of bytes to read from s3 per request
 RESPONSE_LIMIT = CONFIG.response_limit

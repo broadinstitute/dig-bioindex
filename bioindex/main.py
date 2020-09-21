@@ -8,12 +8,12 @@ import rich.table
 import sys
 import uvicorn
 
+from .lib import aws
 from .lib import config
 from .lib import index
 from .lib import query
 from .lib import s3
 from .lib import schema
-from .lib import secrets
 from .lib import tables
 
 # create the global console
@@ -45,7 +45,7 @@ def cli_serve(port, env_file):
 @click.confirmation_option(prompt='This will create/update an index; continue?')
 @click.pass_obj
 def cli_create(cfg, index_name, s3_prefix, index_schema):
-    engine = secrets.connect_to_mysql(cfg.rds_instance, schema=cfg.bio_schema)
+    engine = aws.connect_to_rds(cfg.rds_instance, schema=cfg.bio_schema)
 
     # parse the schema to ensure validity; create the index
     try:
@@ -60,7 +60,7 @@ def cli_create(cfg, index_name, s3_prefix, index_schema):
 @click.command(name='list')
 @click.pass_obj
 def cli_list(cfg):
-    engine = secrets.connect_to_mysql(cfg.rds_instance, schema=cfg.bio_schema)
+    engine = aws.connect_to_rds(cfg.rds_instance, schema=cfg.bio_schema)
     indexes = tables.list_indexes(engine, False)
 
     table = rich.table.Table(title='Indexes')
@@ -80,16 +80,21 @@ def cli_list(cfg):
 @click.argument('index_name')
 @click.option('--cont', '-c', is_flag=True)
 @click.option('--rebuild', '-r', is_flag=True)
+@click.option('--use-lambda', '-l', is_flag=True)
 @click.option('--workers', '-w', type=int, default=3)
 @click.confirmation_option(prompt='This will build the index; continue? ')
 @click.pass_obj
-def cli_index(cfg, index_name, cont, rebuild, workers):
-    engine = secrets.connect_to_mysql(cfg.rds_instance, schema=cfg.bio_schema)
+def cli_index(cfg, index_name, use_lambda, cont, rebuild, workers):
+    engine = aws.connect_to_rds(cfg.rds_instance, schema=cfg.bio_schema)
 
     # handle mutually exclusive options
     if rebuild and cont:
         logging.error('Cannot supply both --rebuild and --cont')
         return
+
+    # if --use-lambda specified, then ensure that config options are set
+    if use_lambda:
+        assert cfg.lambda_function, 'BIOINDEX_LAMBDA_FUNCTION not set; cannot use --use-lambda'
 
     # discover which indexes will be indexes
     indexes = tables.list_indexes(engine)
@@ -110,8 +115,9 @@ def cli_index(cfg, index_name, cont, rebuild, workers):
             index.build(
                 engine,
                 idx,
-                cfg.s3_bucket,
+                cfg,
                 s3_objects,
+                use_lambda=use_lambda,
                 rebuild=rebuild,
                 cont=cont,
                 workers=workers,
@@ -129,7 +135,7 @@ def cli_index(cfg, index_name, cont, rebuild, workers):
 @click.argument('q')
 @click.pass_obj
 def cli_query(cfg, index_name, q):
-    engine = secrets.connect_to_mysql(cfg.rds_instance, schema=cfg.bio_schema)
+    engine = aws.connect_to_rds(cfg.rds_instance, schema=cfg.bio_schema)
     idx = tables.lookup_index(engine, index_name)
 
     # query the index
@@ -144,7 +150,7 @@ def cli_query(cfg, index_name, q):
 @click.argument('index_name')
 @click.pass_obj
 def cli_all(cfg, index_name):
-    engine = secrets.connect_to_mysql(cfg.rds_instance, schema=cfg.bio_schema)
+    engine = aws.connect_to_rds(cfg.rds_instance, schema=cfg.bio_schema)
     idx = tables.lookup_index(engine, index_name)
 
     # read all records
@@ -160,7 +166,7 @@ def cli_all(cfg, index_name):
 @click.argument('q', nargs=-1)
 @click.pass_obj
 def cli_count(cfg, index_name, q):
-    engine = secrets.connect_to_mysql(cfg.rds_instance, schema=cfg.bio_schema)
+    engine = aws.connect_to_rds(cfg.rds_instance, schema=cfg.bio_schema)
     idx = tables.lookup_index(engine, index_name)
 
     # query the index
@@ -173,7 +179,7 @@ def cli_count(cfg, index_name, q):
 @click.argument('q', nargs=-1)
 @click.pass_obj
 def cli_match(cfg, index_name, q):
-    engine = secrets.connect_to_mysql(cfg.rds_instance, schema=cfg.bio_schema)
+    engine = aws.connect_to_rds(cfg.rds_instance, schema=cfg.bio_schema)
     idx = tables.lookup_index(engine, index_name)
 
     # lookup the table class from the schema

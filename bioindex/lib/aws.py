@@ -1,12 +1,18 @@
 import base64
 import boto3
+import botocore.config
 import json
 import sqlalchemy.engine
 
 
-# create a session from ~/.aws credentials
-secrets_session = boto3.session.Session()
-secrets_client = secrets_session.client('secretsmanager')
+# create an AWS session from ~/.aws credentials
+aws_config = botocore.config.Config(max_pool_connections=200)
+aws_session = boto3.session.Session()
+
+# create service clients
+lambda_client = aws_session.client('lambda')
+s3_client = aws_session.client('s3', config=aws_config)
+secrets_client = aws_session.client('secretsmanager')
 
 
 def secret_lookup(secret_id):
@@ -24,7 +30,7 @@ def secret_lookup(secret_id):
     return json.loads(secret)
 
 
-def connect_to_mysql(secret_id, schema=None):
+def connect_to_rds(secret_id, schema=None):
     """
     Create and return a connection to a MySQL server.
     """
@@ -46,3 +52,15 @@ def connect_to_mysql(secret_id, schema=None):
 
     # create the connection pool
     return sqlalchemy.create_engine(connection_string, pool_recycle=3600)
+
+
+def invoke_lambda(function_name, payload):
+    """
+    Invokes an AWS lambda function and waits for it to complete.
+    """
+    return lambda_client.invoke(
+        FunctionName=function_name,
+        InvocationType='Event',
+        LogType='Tail',
+        Payload=json.dumps(payload),
+    )
