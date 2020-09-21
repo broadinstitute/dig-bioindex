@@ -34,7 +34,7 @@ def connect_to_db(**kwargs):
     """
     Connect to a MySQL database using keyword arguments.
     """
-    uri = '{engine}://{username}:{password}@{host}/{dbname}?local_infile=1'.format(kwargs)
+    uri = '{engine}://{username}:{password}@{host}/{dbname}?local_infile=1'.format(**kwargs)
 
     # create the connection pool
     return sqlalchemy.create_engine(uri, pool_recycle=3600)
@@ -49,6 +49,7 @@ def connect_to_rds(secret_id, schema=None):
     return connect_to_db(
         engine = secret['engine'],
         host = secret['host'],
+        port = secret['port'],
         username = secret['username'],
         password = secret['password'],
         dbname = schema or secret['dbname'],
