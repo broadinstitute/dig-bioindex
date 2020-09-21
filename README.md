@@ -23,7 +23,7 @@ At this point, the BioIndex is installed on your system and you can run it with 
 Alternately, if you do not want to install BioIndex, you can just run it locally with `python -m main`:
 
 ```bash
-$ python -m main <command> [args]
+$ python -m bioindex.main <command> [args]
 ```
 
 ## Configuring the BioIndex
