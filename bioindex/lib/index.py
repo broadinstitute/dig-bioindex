@@ -78,9 +78,26 @@ def build(engine, cfg, index, s3_objects, use_lambda=False, rebuild=False, cont=
 
             # index the objects remotely using lambda or locally
             if use_lambda:
-                _index_objects_remote(engine, cfg, pool, objects, index, cfg.lambda_function)
+                _index_objects_remote(
+                    engine,
+                    cfg,
+                    pool,
+                    objects,
+                    index,
+                    cfg.lambda_function,
+                    progress,
+                    overall,
+                )
             else:
-                _index_objects_local(engine, cfg, pool, objects, index, progress, overall)
+                _index_objects_local(
+                    engine,
+                    cfg,
+                    pool,
+                    objects,
+                    index,
+                    progress,
+                    overall,
+                )
 
             # finally, build the index after all inserts are done
             logging.info('Building table index...')
@@ -159,12 +176,15 @@ def _delete_stale_keys(engine, index, table, objects, last_built, console):
     return [o for o in objects if o['Key'] not in indexed_keys]
 
 
-def _index_objects_remote(engine, cfg, pool, objects, index, function_name):
+def _index_objects_remote(engine, cfg, pool, objects, index, function_name, progress, overall):
     """
     Index the objects using a lambda.
     """
-    def make_payload(obj):
-        return {
+    def run_function(obj):
+        logging.info(f'Processing {relative_key(obj["Key"], index.s3_prefix)}...')
+
+        # lambda function event data
+        payload = {
             'index': index.name,
             'rds_instance': cfg.rds_instance,
             'rds_schema': cfg.bio_schema,
@@ -172,8 +192,11 @@ def _index_objects_remote(engine, cfg, pool, objects, index, function_name):
             's3_obj': obj,
         }
 
+        # run the lambda asynchronously
+        return invoke_lambda(function_name, payload)
+
     # create a job per object
-    jobs = [pool.submit(invoke_lambda, function_name, make_payload(obj)) for obj in objects]
+    jobs = [pool.submit(run_function, obj) for obj in objects]
 
     # as each job finishes, set the built flag for that key
     for job in concurrent.futures.as_completed(jobs):
@@ -183,12 +206,17 @@ def _index_objects_remote(engine, cfg, pool, objects, index, function_name):
         result = job.result()
         key = result['key']
         record_count = result['records']
+        size = result['size']
 
         # the insert was done remotely, simply set the built flag now
         _set_key_built_flag(engine, index, key)
 
         # output number of records
         logging.info(f'Wrote {record_count:,} records')
+
+        # update the overall bar
+        if progress:
+            progress.advance(overall, advance=size)
 
 
 def _index_objects_local(engine, cfg, pool, objects, index, progress, overall):
