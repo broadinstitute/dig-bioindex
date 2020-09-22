@@ -4,15 +4,10 @@ import botocore.config
 import orjson
 import sqlalchemy.engine
 
-
-# create an AWS session from ~/.aws credentials
-aws_config = botocore.config.Config(max_pool_connections=200)
-aws_session = boto3.session.Session()
-
 # create service clients
-lambda_client = aws_session.client('lambda')
-s3_client = aws_session.client('s3', config=aws_config)
-secrets_client = aws_session.client('secretsmanager')
+lambda_client = boto3.client('lambda')
+s3_client = boto3.client('s3')
+secrets_client = boto3.client('secretsmanager')
 
 
 def secret_lookup(secret_id):
@@ -34,7 +29,7 @@ def connect_to_db(**kwargs):
     """
     Connect to a MySQL database using keyword arguments.
     """
-    uri = 'mysql://{username}:{password}@{host}/{dbname}?local_infile=1'.format(**kwargs)
+    uri = '{engine}://{username}:{password}@{host}/{dbname}?local_infile=1'.format(**kwargs)
 
     # create the connection pool
     return sqlalchemy.create_engine(uri, pool_recycle=3600)

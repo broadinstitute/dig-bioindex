@@ -5,16 +5,12 @@ import os.path
 import re
 import urllib.parse
 
-from .aws import aws_config, aws_session
-
-# create an s3 session from ~/.aws credentials
-s3_client = aws_session.client('s3', config=aws_config)
+from .aws import s3_client
 
 
 def is_absolute(s3_key):
     """
-    True if the s3 key points to an absolute bucket location. If it
-    is,
+    True if the s3 key points to an absolute bucket location.
     """
     return s3_key.startsWith('s3://')
 
