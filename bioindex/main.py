@@ -5,7 +5,6 @@ import orjson
 import rich.console
 import rich.logging
 import rich.table
-import sys
 import uvicorn
 
 from .lib import aws

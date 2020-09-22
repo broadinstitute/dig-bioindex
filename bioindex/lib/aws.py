@@ -34,7 +34,7 @@ def connect_to_db(**kwargs):
     """
     Connect to a MySQL database using keyword arguments.
     """
-    uri = '{engine}://{username}:{password}@{host}/{dbname}?local_infile=1'.format(**kwargs)
+    uri = 'mysql://{username}:{password}@{host}/{dbname}?local_infile=1'.format(**kwargs)
 
     # create the connection pool
     return sqlalchemy.create_engine(uri, pool_recycle=3600)
