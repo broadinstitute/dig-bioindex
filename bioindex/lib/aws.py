@@ -72,4 +72,4 @@ def invoke_lambda(function_name, payload):
     if response.get('FunctionError'):
         raise RuntimeError(payload)
 
-    return payload
+    return payload['body']
