@@ -4,9 +4,12 @@ import botocore.config
 import orjson
 import sqlalchemy.engine
 
+# allow lots of connections
+aws_config = botocore.config.Config(max_pool_connections=200)
+
 # create service clients
-lambda_client = boto3.client('lambda')
-s3_client = boto3.client('s3')
+lambda_client = boto3.client('lambda', config=aws_config)
+s3_client = boto3.client('s3', config=aws_config)
 secrets_client = boto3.client('secretsmanager')
 
 
