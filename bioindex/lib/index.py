@@ -292,6 +292,17 @@ def _index_object(engine, bucket, obj, index, progress=None, overall=None):
     return key, ({**index.schema.column_values(k), **r} for k, r in records.items())
 
 
+def _bulk_insert_batched(engine, table_name, records, batch_size=None):
+    """
+    Insert all the records, but in batches.
+    """
+    if batch_size:
+        for i in range(0, len(records), batch_size):
+            _bulk_insert(engine, table_name, records[i:i+batch_size])
+    else:
+        _bulk_insert(engine, table_name, records)
+
+
 def _bulk_insert(engine, table_name, records):
     """
     Insert all the records in batches.
