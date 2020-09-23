@@ -35,6 +35,7 @@ The following are the environment variables that can be set in the `.bioindex` f
 ```ini
 BIOINDEX_S3_BUCKET       # S3 bucket to index/read from
 BIOINDEX_RDS_INSTANCE    # RDS MySQL instance indexes are written to/read from
+BIOINDEX_LAMBDA_FUNCTION # Lambda function that can be used for indexing remotely
 BIOINDEX_BIO_SCHEMA      # RDS MySQL schema for the bio index (default=bio)
 BIOINDEX_PORTAL_SCHEMA   # RDS MySQL schema for the portal (default=portal)
 BIOINDEX_RESPONSE_LIMIT  # number of bytes to read from S3 per request (default = 1MB)
@@ -131,6 +132,8 @@ $ bioindex index my-index,another-index
 ```
 
 _NOTE: You can also pass `*` as to build all indexes!_
+
+You can also build indexes "remotely" using an AWS Lambda Function. To do this, see the [DIG Indexer][indexer] project, which is a [Serverless][serverless] project that can be used to deploy a Lambda Function to AWS. Once deployed, set the `BIOINDEX_LAMBDA_FUNCTION` environment variable and pass `--use-lambda` on the CLI for the `index` command. You can also adjust the number of workers (`--workers`) to use, which is the number of Lambda functions that will execute in parallel.
 
 ## Querying Indexes
 
