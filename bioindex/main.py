@@ -80,7 +80,7 @@ def cli_list(cfg):
 @click.option('--cont', '-c', is_flag=True)
 @click.option('--rebuild', '-r', is_flag=True)
 @click.option('--use-lambda', '-l', is_flag=True)
-@click.option('--workers', '-w', type=int, default=3)
+@click.option('--workers', '-w', type=int, default=None)
 @click.confirmation_option(prompt='This will build the index; continue? ')
 @click.pass_obj
 def cli_index(cfg, index_name, use_lambda, cont, rebuild, workers):
@@ -119,7 +119,7 @@ def cli_index(cfg, index_name, use_lambda, cont, rebuild, workers):
                 use_lambda=use_lambda,
                 rebuild=rebuild,
                 cont=cont,
-                workers=workers,
+                workers=workers or (10 if use_lambda else 1),
                 console=console,
             )
         except AssertionError as e:
