@@ -4,13 +4,16 @@ import botocore.config
 import orjson
 import sqlalchemy.engine
 
-# allow lots of connections
-aws_config = botocore.config.Config(max_pool_connections=200)
+# allow lots of connections and time to read
+aws_config = botocore.config.Config(
+    max_pool_connections=200,
+    read_timeout=900,
+)
 
 # create service clients
 lambda_client = boto3.client('lambda', config=aws_config)
 s3_client = boto3.client('s3', config=aws_config)
-secrets_client = boto3.client('secretsmanager')
+secrets_client = boto3.client('secretsmanager', config=aws_config)
 
 
 def secret_lookup(secret_id):
