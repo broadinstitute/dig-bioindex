@@ -211,7 +211,7 @@ async def api_portal_links(q: str = None, group: str = None):
 
     # create conditionals
     if q:
-        tests += [('`path` = %s', q)]
+        tests += [('%s LIKE `path`', q)]
     if group:
         tests += [('`group` = %s', group)]
 

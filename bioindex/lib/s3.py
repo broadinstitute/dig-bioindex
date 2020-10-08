@@ -93,8 +93,8 @@ def list_objects(bucket, prefix, only=None, exclude=None):
             path = obj['Key']
             file = os.path.basename(path)
 
-            # ignore any files beginning with _
-            if file[0] == '_':
+            # ignore empty files
+            if obj['Size'] == 0:
                 continue
 
             # filter by --only and --exclude
