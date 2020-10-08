@@ -1,5 +1,9 @@
+import concurrent.futures
 import fastapi
 import itertools
+
+from pydantic import BaseModel
+from typing import List, Optional
 
 from ..lib import aws
 from ..lib import config
@@ -24,6 +28,16 @@ portal = aws.connect_to_rds(CONFIG.rds_instance, schema=CONFIG.portal_schema)
 # max number of bytes to read from s3 per request
 RESPONSE_LIMIT = CONFIG.response_limit
 MATCH_LIMIT = CONFIG.match_limit
+
+# multi-query executor
+executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
+
+
+class Query(BaseModel):
+    q: List[str]
+    fmt: Optional[str] = 'row'
+    limit: Optional[int] = None
+
 
 
 def _load_indexes():
@@ -99,7 +113,7 @@ async def api_match(index: str,
 
 
 @router.get('/count/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_count_index(index: str, req: fastapi.Request, q: str = None):
+async def api_count_index(index: str, req: fastapi.Request, q: str=None):
     """
     Query the database and estimate how many records will be returned.
     """
@@ -127,7 +141,7 @@ async def api_count_index(index: str, req: fastapi.Request, q: str = None):
 
 
 @router.get('/all/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_all(index: str, req: fastapi.Request, fmt: str = 'row'):
+async def api_all(index: str, req: fastapi.Request, fmt: str='row'):
     """
     Query the database and return ALL records for a given index.
     """
@@ -187,7 +201,7 @@ async def api_query_index(index: str,
                           q: str,
                           req: fastapi.Request,
                           fmt='row',
-                          limit: int = None):
+                          limit: int=None):
     """
     Query the database for records matching the query parameter and
     read the records from s3.
@@ -215,6 +229,48 @@ async def api_query_index(index: str,
 
         # the results of the query
         return _fetch_records(reader, index, qs, fmt, query_s=auth_s + query_s)
+    except KeyError:
+        raise fastapi.HTTPException(
+            status_code=400, detail=f'Invalid index: {index}')
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
+
+
+#@router.post('/query/{index}', response_class=fastapi.responses.ORJSONResponse)
+async def api_query_index_multi(index: str, qs: Query, req: fastapi.Request):
+    """
+    Issue multiple queries in parallel to the same index using a
+    JSON body in a POST request. The records are returned together
+    in whatever order the queries are completed.
+    """
+    try:
+        idx = INDEXES[index]
+
+        # decode the body for query parameters
+        queries = [_parse_query(q, required=True) for q in qs.q]
+        limit = qs.limit
+        fmt = qs.fmt
+
+        # discover what the user doesn't have access to see
+        restricted, auth_s = profile(restricted_keywords, portal, req)
+
+        # lookup the schema for this index and perform the query
+        reader, query_s = profile(
+            query.fetch_multi,
+            executor,
+            engine,
+            CONFIG.s3_bucket,
+            idx,
+            queries,
+            restricted=restricted,
+        )
+
+        # use a zip to limit the total number of records that will be read
+        if limit is not None:
+            reader.set_limit(limit)
+
+        # the results of the query
+        return _fetch_records(reader, index, queries, fmt, query_s=auth_s + query_s)
     except KeyError:
         raise fastapi.HTTPException(
             status_code=400, detail=f'Invalid index: {index}')

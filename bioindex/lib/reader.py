@@ -129,3 +129,74 @@ class RecordReader:
 
         # update the iterator so it stops once the limit is reached
         self.records = itertools.takewhile(lambda _: self.count <= self.limit, self.records)
+
+
+class MultiRecordReader:
+    """
+    A RecordReader that's the aggregate of several readers chained
+    together into a single reader.
+    """
+
+    def __init__(self, readers):
+        """
+        Initialize with the several readers.
+        """
+        self.readers = readers
+        self.records = itertools.chain(*(r.records for r in readers))
+        self.limit = None
+
+    @property
+    def buckets(self):
+        """
+        All buckets.
+        """
+        return [r.bucket for r in self.readers]
+
+    @property
+    def sources(self):
+        """
+        All sources.
+        """
+        return [s for s in r.sources for r in self.readers]
+
+    @property
+    def bytes_total(self):
+        """
+        Total bytes to read.
+        """
+        return sum(r.bytes_total for r in self.readers)
+
+    @property
+    def bytes_read(self):
+        """
+        Total bytes read.
+        """
+        return sum(r.bytes_read for r in self.readers)
+
+    @property
+    def count(self):
+        """
+        Total number of records read.
+        """
+        return sum(r.count for r in self.readers)
+
+    @property
+    def restricted_count(self):
+        """
+        Total number of restricted records read.
+        """
+        return sum(r.restricted_count for r in self.readers)
+
+    @property
+    def at_end(self):
+        """
+        True if all records have been read.
+        """
+        return all(r.at_end for r in self.readers)
+
+    def set_limit(self, limit):
+        """
+        Apply a limit to the number of records that will be read.
+        """
+        for r in self.readers:
+            r.set_limit(limit)

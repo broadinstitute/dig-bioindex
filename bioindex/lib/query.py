@@ -1,7 +1,8 @@
+import concurrent.futures
 import re
 
 from .locus import Locus, parse_locus
-from .reader import RecordReader, RecordSource
+from .reader import MultiRecordReader, RecordReader, RecordSource
 from .s3 import list_objects
 
 
@@ -15,6 +16,21 @@ def fetch(engine, bucket, index, q, restricted=None):
 
     # execute the query and fetch the records from s3
     return _run_query(engine, bucket, index, q, restricted)
+
+
+def fetch_multi(executor, engine, bucket, index, queries, restricted=None):
+    """
+    Run multiple queries in parallel and chain the readers returned
+    into a single reader.
+    """
+    jobs = [executor.submit(fetch, engine, bucket, index, q, restricted) for q in queries]
+
+    # wait for them to complete and get the readers for each
+    done = concurrent.futures.as_completed(jobs)
+    readers = [d.result() for d in done]
+
+    # chain the records together
+    return MultiRecordReader(readers)
 
 
 def fetch_all(bucket, s3_prefix, restricted=None):
@@ -104,9 +120,13 @@ def _run_query(engine, bucket, index, q, restricted):
     Construct a SQL query to fetch S3 objects and byte offsets. Run it and
     return a RecordReader to the results.
     """
+    record_filter = None
+
+    # validate the index
     if not index.built:
         raise ValueError(f'Index "{index.name}" is not built')
 
+    # build the query
     sql = (
         f'SELECT `__Keys`.`key`, MIN(`start_offset`), MAX(`end_offset`) '
         f'FROM `{index.table}` '
@@ -116,8 +136,6 @@ def _run_query(engine, bucket, index, q, restricted):
         f'GROUP BY `key` '
         f'ORDER BY `key` ASC'
     )
-
-    record_filter = None
 
     # if the schema has a locus, parse the query parameter
     if index.schema.has_locus:

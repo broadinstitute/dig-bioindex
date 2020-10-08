@@ -198,3 +198,44 @@ async def api_portal_documentation(q: str, group: str = None):
         'count': len(data),
         'nonce': nonce(),
     }
+
+
+@router.get('/links', response_class=fastapi.responses.ORJSONResponse)
+async def api_portal_links(q: str = None, group: str = None):
+    """
+    Returns one - or all - redirect links.
+    """
+    sql = 'SELECT `path`, `group`, `redirect`, `description` FROM Links '
+    tests = []
+    data = []
+
+    # create conditionals
+    if q:
+        tests += [('`path` = %s', q)]
+    if group:
+        tests += [('`group` = %s', group)]
+
+    # add all the tests
+    if tests:
+        sql += f'WHERE {" AND ".join(test[0] for test in tests)}'
+
+    # run the query
+    resp, query_s = profile(portal.execute, sql, *[test[1] for test in tests])
+
+    # transform results
+    for path, group, redirect, description in resp:
+        data.append({
+            'path': path,
+            'group': group,
+            'redirect': redirect,
+            'description': description,
+        })
+
+    return {
+        'profile': {
+            'query': query_s,
+        },
+        'data': data,
+        'count': len(data),
+        'nonce': nonce(),
+    }
