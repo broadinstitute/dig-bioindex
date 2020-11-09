@@ -136,14 +136,14 @@ def cli_index(cfg, index_name, use_lambda, cont, rebuild, workers):
 
 @click.command(name='query')
 @click.argument('index_name')
-@click.argument('q')
+@click.argument('q', nargs=-1)
 @click.pass_obj
 def cli_query(cfg, index_name, q):
     engine = aws.connect_to_rds(cfg.rds_instance, schema=cfg.bio_schema)
     idx = tables.lookup_index(engine, index_name)
 
     # query the index
-    reader = query.fetch(engine, cfg.s3_bucket, idx, q.split(','))
+    reader = query.fetch(engine, cfg.s3_bucket, idx, q)
 
     # dump all the records
     for record in reader.records:
