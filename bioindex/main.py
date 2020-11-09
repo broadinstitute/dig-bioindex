@@ -20,19 +20,24 @@ console = rich.console.Console()
 
 
 @click.group()
-def cli():
-    pass
+@click.option('--env-file', '-e', type=str, default='.bioindex')
+@click.pass_context
+def cli(ctx, env_file):
+    if env_file:
+        logging.info('Loading %s environment variables...', env_file)
+        dotenv.load_dotenv(env_file)
+
+    # load the configuration into the click object
+    ctx.obj = config.Config()
 
 
 @click.command(name='serve')
 @click.option('--port', '-p', type=int, default=5000)
-@click.option('--env-file', '-e', type=str, default='.env')
-def cli_serve(port, env_file):
+def cli_serve(port):
     uvicorn.run(
         'bioindex.server:app',
         host='0.0.0.0',
         port=port,
-        env_file=env_file,
         log_level='info',
     )
 
@@ -214,12 +219,8 @@ def main():
     logging.getLogger('botocore').setLevel(logging.CRITICAL)
     logging.getLogger('boto3').setLevel(logging.CRITICAL)
 
-    # load dot files
-    dotenv.load_dotenv('.env')
-    dotenv.load_dotenv('.bioindex')
-
     # run
-    cli(obj=config.Config())
+    cli()
 
 
 if __name__ == '__main__':
