@@ -2,18 +2,16 @@ import click
 import dotenv
 import logging
 import orjson
+import pymysql
 import rich.console
 import rich.logging
 import rich.table
 import uvicorn
 
-from .lib import aws
 from .lib import config
 from .lib import index
+from .lib import migrate
 from .lib import query
-from .lib import s3
-from .lib import schema
-from .lib import tables
 
 # create the global console
 console = rich.console.Console()
@@ -49,11 +47,11 @@ def cli_serve(port):
 @click.confirmation_option(prompt='This will create/update an index; continue?')
 @click.pass_obj
 def cli_create(cfg, index_name, s3_prefix, index_schema):
-    engine = aws.connect_to_rds(cfg.rds_instance, schema=cfg.bio_schema)
+    engine = migrate.migrate(cfg)
 
     # parse the schema to ensure validity; create the index
     try:
-        tables.create_index(engine, index_name, s3_prefix, schema.Schema(index_schema))
+        index.Index.create(engine, index_name, s3_prefix, index_schema)
 
         # successfully completed
         logging.info('Done; build with `index %s`', index_name)
@@ -64,8 +62,8 @@ def cli_create(cfg, index_name, s3_prefix, index_schema):
 @click.command(name='list')
 @click.pass_obj
 def cli_list(cfg):
-    engine = aws.connect_to_rds(cfg.rds_instance, schema=cfg.bio_schema)
-    indexes = tables.list_indexes(engine, False)
+    engine = migrate.migrate(cfg)
+    indexes = index.Index.list_indexes(engine, False)
 
     table = rich.table.Table(title='Indexes')
     table.add_column('Last Built')
@@ -73,65 +71,49 @@ def cli_list(cfg):
     table.add_column('S3 Prefix')
     table.add_column('Schema')
 
-    for index in sorted(indexes, key=lambda i: i.name):
-        built = f'[green]{index.built}[/]' if index.built else '[red]Not built[/]'
-        table.add_row(built, index.name, index.s3_prefix, str(index.schema))
+    for i in sorted(indexes, key=lambda i: i.name):
+        built = f'[green]{i.built}[/]' if i.built else '[red]Not built[/]'
+        table.add_row(built, i.name, i.s3_prefix, str(i.schema))
 
     console.print(table)
 
 
 @click.command(name='index')
 @click.argument('index_name')
-@click.option('--cont', '-c', is_flag=True)
 @click.option('--rebuild', '-r', is_flag=True)
 @click.option('--use-lambda', '-l', is_flag=True)
 @click.option('--workers', '-w', type=int, default=None)
 @click.confirmation_option(prompt='This will build the index; continue? ')
 @click.pass_obj
-def cli_index(cfg, index_name, use_lambda, cont, rebuild, workers):
-    engine = aws.connect_to_rds(cfg.rds_instance, schema=cfg.bio_schema)
-
-    # handle mutually exclusive options
-    if rebuild and cont:
-        logging.error('Cannot supply both --rebuild and --cont')
-        return
+def cli_index(cfg, index_name, use_lambda, rebuild, workers):
+    engine = migrate.migrate(cfg)
 
     # if --use-lambda specified, then ensure that config options are set
     if use_lambda:
         assert cfg.lambda_function, 'BIOINDEX_LAMBDA_FUNCTION not set; cannot use --use-lambda'
 
     # discover which indexes will be indexes
-    indexes = tables.list_indexes(engine, filter_built=False)
-    index_names = index_name.split(',')
+    i = index.Index.lookup(engine, index_name)
 
-    # which tables will be indexed? allow all with "*"
-    if '*' not in index_names:
-        indexes = [i for i in indexes if i.name in index_names]
+    # optional build arguments for build/rebuild function
+    build_kwargs = {
+        'console': console,
+        'use_lambda': use_lambda,
+        'workers': workers or (20 if use_lambda else 1),
+    }
 
-    for idx in indexes:
-        try:
-            logging.info(f'{"Rebuilding" if rebuild else "Updating"} index {idx.name}')
+    # build each index specified
+    try:
+        logging.info(f'{"Rebuilding" if rebuild else "Updating"} index {i.name}')
 
-            # get an s3 object listing
-            s3_objects = s3.list_objects(cfg.s3_bucket, idx.s3_prefix, exclude='_SUCCESS')
+        # prepare and build the index
+        i.prepare(engine, rebuild=rebuild)
+        i.build(cfg, engine, **build_kwargs)
 
-            # build the index
-            index.build(
-                engine,
-                cfg,
-                idx,
-                s3_objects,
-                use_lambda=use_lambda,
-                rebuild=rebuild,
-                cont=cont,
-                workers=workers or (10 if use_lambda else 1),
-                console=console,
-            )
-        except AssertionError as e:
-            logging.error(f'Failed to build index %s: %s', idx.name, e)
-
-    # finished building all indexes
-    logging.info('Done')
+        # finished building all indexes
+        logging.info('Done')
+    except AssertionError as e:
+        logging.error(f'Failed to build index %s: %s', i.name, e)
 
 
 @click.command(name='query')
@@ -139,11 +121,11 @@ def cli_index(cfg, index_name, use_lambda, cont, rebuild, workers):
 @click.argument('q', nargs=-1)
 @click.pass_obj
 def cli_query(cfg, index_name, q):
-    engine = aws.connect_to_rds(cfg.rds_instance, schema=cfg.bio_schema)
-    idx = tables.lookup_index(engine, index_name)
+    engine = migrate.migrate(cfg)
+    i = index.Index.lookup(engine, index_name)
 
     # query the index
-    reader = query.fetch(engine, cfg.s3_bucket, idx, q)
+    reader = query.fetch(engine, cfg.s3_bucket, i, q)
 
     # dump all the records
     for record in reader.records:
@@ -154,8 +136,8 @@ def cli_query(cfg, index_name, q):
 @click.argument('index_name')
 @click.pass_obj
 def cli_all(cfg, index_name):
-    engine = aws.connect_to_rds(cfg.rds_instance, schema=cfg.bio_schema)
-    idx = tables.lookup_index(engine, index_name)
+    engine = migrate.migrate(cfg)
+    idx = index.Index.lookup(engine, index_name)
 
     # read all records
     reader = query.fetch_all(cfg.s3_bucket, idx.s3_prefix)
@@ -170,11 +152,11 @@ def cli_all(cfg, index_name):
 @click.argument('q', nargs=-1)
 @click.pass_obj
 def cli_count(cfg, index_name, q):
-    engine = aws.connect_to_rds(cfg.rds_instance, schema=cfg.bio_schema)
-    idx = tables.lookup_index(engine, index_name)
+    engine = migrate.migrate(cfg)
+    i = index.Index.lookup(engine, index_name)
 
     # query the index
-    count = query.count(engine, cfg.s3_bucket, idx, q)
+    count = query.count(engine, cfg.s3_bucket, i, q)
     console.print(count)
 
 
@@ -183,12 +165,12 @@ def cli_count(cfg, index_name, q):
 @click.argument('q', nargs=-1)
 @click.pass_obj
 def cli_match(cfg, index_name, q):
-    engine = aws.connect_to_rds(cfg.rds_instance, schema=cfg.bio_schema)
-    idx = tables.lookup_index(engine, index_name)
+    engine = migrate.migrate(cfg)
+    i = index.Index.lookup(engine, index_name)
 
     # lookup the table class from the schema
     try:
-        for obj in query.match(engine, idx, q):
+        for obj in query.match(engine, i, q):
             console.print(obj)
     except AssertionError:
         console.log(f'Index {index_name} is not indexed by value!')
@@ -218,6 +200,9 @@ def main():
     # disable info logging for 3rd party modules
     logging.getLogger('botocore').setLevel(logging.CRITICAL)
     logging.getLogger('boto3').setLevel(logging.CRITICAL)
+
+    # install mysql drivers
+    pymysql.install_as_MySQLdb()
 
     # run
     cli()

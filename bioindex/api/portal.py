@@ -4,8 +4,7 @@ from ..lib import aws
 from ..lib import config
 
 from ..lib.auth import restrictions
-from ..lib.profile import profile
-from ..lib.utils import nonce
+from ..lib.utils import nonce, profile
 
 
 # load dot files and configuration

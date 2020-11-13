@@ -8,12 +8,11 @@ from typing import List, Optional
 from ..lib import aws
 from ..lib import config
 from ..lib import continuation
+from ..lib import index
 from ..lib import query
-from ..lib import tables
 
 from ..lib.auth import restricted_keywords
-from ..lib.profile import profile
-from ..lib.utils import nonce
+from ..lib.utils import nonce, profile
 
 # load dot files and configuration
 CONFIG = config.Config()
@@ -44,7 +43,7 @@ def _load_indexes():
     """
     Create a cache of the indexes in the database.
     """
-    indexes = tables.list_indexes(engine, filter_built=False)
+    indexes = index.Index.list_indexes(engine, filter_built=False)
     return dict((i.name, i) for i in indexes)
 
 
@@ -66,14 +65,14 @@ async def api_list_indexes():
     data = []
 
     # add each index to the response data
-    for index in sorted(INDEXES.values(), key=lambda i: i.name):
+    for i in sorted(INDEXES.values(), key=lambda i: i.name):
         data.append({
-            'index': index.name,
-            'built': index.built,
-            'schema': str(index.schema),
+            'index': i.name,
+            'built': i.built,
+            'schema': str(i.schema),
             'query': {
-                'keys': index.schema.key_columns,
-                'locus': index.schema.has_locus,
+                'keys': i.schema.key_columns,
+                'locus': i.schema.has_locus,
             },
         })
 
@@ -85,19 +84,16 @@ async def api_list_indexes():
 
 
 @router.get('/match/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_match(index: str,
-                    req: fastapi.Request,
-                    q: str,
-                    limit: int = None):
+async def api_match(index: str, req: fastapi.Request, q: str, limit: int = None):
     """
     Return all the unique keys for a value-indexed table.
     """
     try:
-        idx = INDEXES[index]
+        i = INDEXES[index]
         qs = _parse_query(q)
 
         # execute the query
-        keys, query_s = profile(query.match, engine, idx, qs)
+        keys, query_s = profile(query.match, engine, i, qs)
 
         # allow an upper limit on the total number of keys returned
         if limit is not None:
@@ -118,11 +114,11 @@ async def api_count_index(index: str, req: fastapi.Request, q: str=None):
     Query the database and estimate how many records will be returned.
     """
     try:
-        idx = INDEXES[index]
+        i = INDEXES[index]
         qs = _parse_query(q)
 
         # lookup the schema for this index and perform the query
-        count, query_s = profile(query.count, engine, CONFIG.s3_bucket, idx, qs)
+        count, query_s = profile(query.count, engine, CONFIG.s3_bucket, i, qs)
 
         return {
             'profile': {
@@ -146,7 +142,7 @@ async def api_all(index: str, req: fastapi.Request, fmt: str='row'):
     Query the database and return ALL records for a given index.
     """
     try:
-        idx = INDEXES[index]
+        i = INDEXES[index]
 
         # discover what the user doesn't have access to see
         restricted, auth_s = profile(restricted_keywords, portal, req)
@@ -155,7 +151,7 @@ async def api_all(index: str, req: fastapi.Request, fmt: str='row'):
         reader, query_s = profile(
             query.fetch_all,
             CONFIG.s3_bucket,
-            idx.s3_prefix,
+            i.s3_prefix,
             restricted=restricted,
         )
 
@@ -177,13 +173,13 @@ async def api_test_all(index: str, req: fastapi.Request):
     number of bytes what would be read.
     """
     try:
-        idx = INDEXES[index]
+        i = INDEXES[index]
 
         # lookup the schema for this index and perform the query
         reader, query_s = profile(
             query.fetch_all,
             CONFIG.s3_bucket,
-            idx.s3_prefix,
+            i.s3_prefix,
         )
 
         # return the total number of bytes that need to be read
@@ -197,17 +193,13 @@ async def api_test_all(index: str, req: fastapi.Request):
 
 
 @router.get('/query/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_query_index(index: str,
-                          q: str,
-                          req: fastapi.Request,
-                          fmt='row',
-                          limit: int=None):
+async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', limit: int=None):
     """
     Query the database for records matching the query parameter and
     read the records from s3.
     """
     try:
-        idx = INDEXES[index]
+        i = INDEXES[index]
         qs = _parse_query(q, required=True)
 
         # discover what the user doesn't have access to see
@@ -218,7 +210,7 @@ async def api_query_index(index: str,
             query.fetch,
             engine,
             CONFIG.s3_bucket,
-            idx,
+            i,
             qs,
             restricted=restricted,
         )
@@ -244,7 +236,7 @@ async def api_query_index_multi(index: str, qs: Query, req: fastapi.Request):
     in whatever order the queries are completed.
     """
     try:
-        idx = INDEXES[index]
+        i = INDEXES[index]
 
         # decode the body for query parameters
         queries = [_parse_query(q, required=True) for q in qs.q]
@@ -260,7 +252,7 @@ async def api_query_index_multi(index: str, qs: Query, req: fastapi.Request):
             executor,
             engine,
             CONFIG.s3_bucket,
-            idx,
+            i,
             queries,
             restricted=restricted,
         )
@@ -286,11 +278,11 @@ async def api_test_index(index: str, q: str, req: fastapi.Request):
     total number of bytes what would be read.
     """
     try:
-        idx = INDEXES[index]
+        i = INDEXES[index]
         qs = _parse_query(q, required=True)
 
         # lookup the schema for this index and perform the query
-        reader, query_s = profile(query.fetch, engine, CONFIG.s3_bucket, idx, qs)
+        reader, query_s = profile(query.fetch, engine, CONFIG.s3_bucket, i, qs)
 
         return fastapi.Response(
             headers={'Content-Length': str(reader.bytes_total)})
