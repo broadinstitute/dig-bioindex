@@ -221,12 +221,12 @@ class Index:
         # filter the objects that still need to be indexed
         return [o for o in objects if o['Key'] not in indexed_keys]
 
-    def index_objects_remote(self, config, engine, pool, objects, function_name, progress=None, overall=None):
+    def index_objects_remote(self, config, engine, pool, objects, progress=None, overall=None):
         """
         Index the objects using a lambda function.
         """
         def run_function(obj):
-            logging.info(f'Processing {relative_key(obj["Key"], index.s3_prefix)}...')
+            logging.info(f'Processing {relative_key(obj["Key"], self.s3_prefix)}...')
 
             # lambda function event data
             payload = {
@@ -238,7 +238,7 @@ class Index:
             }
 
             # run the lambda asynchronously
-            return invoke_lambda(function_name, payload)
+            return invoke_lambda(config.lambda_function, payload)
 
         # create a job per object
         jobs = [pool.submit(run_function, obj) for obj in objects]
