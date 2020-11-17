@@ -22,18 +22,19 @@ async def api_portal_groups():
     """
     Returns the list of portals available.
     """
-    sql = 'SELECT `name`, `description`, `default`, `memberCMD` FROM DiseaseGroups'
+    sql = 'SELECT `name`, `title`, `description`, `default`, `memberCMD` FROM DiseaseGroups'
 
     # run the query
     resp, query_s = profile(portal.execute, sql)
     disease_groups = []
 
     # transform response
-    for name, desc, default, member_cmd in resp:
+    for name, title, desc, default, member_cmd in resp:
         disease_groups.append({
             'name': name,
             'default': default != 0,
             'description': desc,
+            'title': title,
             'memberCMD': member_cmd != 0,
         })
 
