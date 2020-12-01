@@ -6,12 +6,16 @@ import pymysql
 import rich.console
 import rich.logging
 import rich.table
+import sys
 import uvicorn
+
+from pqs.lib import script
 
 from .lib import config
 from .lib import index
 from .lib import migrate
 from .lib import query
+from .lib import source
 
 # create the global console
 console = rich.console.Console()
@@ -132,6 +136,31 @@ def cli_query(cfg, index_name, q):
         console.print(orjson.dumps(record).decode('utf-8'))
 
 
+@click.command(name='script')
+@click.pass_obj
+def cli_script(cfg):
+    engine = migrate.migrate(cfg)
+
+    # get all the indexes as a dictionary
+    indexes = dict((i.name, i) for i in index.Index.list_indexes(engine))
+
+    # create a script
+    s = script.Script()
+
+    # register the bioindex as a data source
+    s.context.register('bio', source.BioIndexDataSource(engine, cfg, indexes))
+
+    # parse the script
+    s.loads(sys.stdin.read())
+
+    # run it
+    df = s.run()
+
+    # dump all the records
+    for record in df.to_dict('records'):
+        console.print(orjson.dumps(record).decode('utf-8'))
+
+
 @click.command(name='all')
 @click.argument('index_name')
 @click.pass_obj
@@ -182,6 +211,7 @@ cli.add_command(cli_create)
 cli.add_command(cli_list)
 cli.add_command(cli_index)
 cli.add_command(cli_query)
+cli.add_command(cli_script)
 cli.add_command(cli_all)
 cli.add_command(cli_count)
 cli.add_command(cli_match)

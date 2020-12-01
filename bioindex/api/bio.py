@@ -5,6 +5,8 @@ import itertools
 from pydantic import BaseModel
 from typing import List, Optional
 
+from pqs.lib import script
+
 from ..lib import aws
 from ..lib import config
 from ..lib import continuation
@@ -12,6 +14,7 @@ from ..lib import index
 from ..lib import query
 
 from ..lib.auth import restricted_keywords
+from ..lib.source import BioIndexDataSource
 from ..lib.utils import nonce, profile
 
 # load dot files and configuration
@@ -228,6 +231,40 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
+@router.post('/query', response_class=fastapi.responses.ORJSONResponse)
+async def api_query_script(req: fastapi.Request):
+    """
+    Treat the body of the request as a PQS script. Execute it and return
+    the resulting dataframe as records.
+    """
+    s = script.Script()
+
+    # discover what the user doesn't have access to see
+    restricted, auth_s = profile(restricted_keywords, portal, req)
+    body = await req.body()
+
+    # register the bioindex as a data source
+    s.context.register('bio', BioIndexDataSource(engine, CONFIG, INDEXES, restricted))
+
+    # parse the script
+    s.loads(body.decode(encoding='utf-8'))
+
+    # run it
+    df, query_s = profile(s.run)
+    records = df.to_dict('records')
+
+    # send the response
+    return {
+        'profile': {
+            'query': query_s,
+        },
+        'q': body,
+        'count': len(records),
+        'data': records,
+        'nonce': nonce(),
+    }
+
+
 #@router.post('/query/{index}', response_class=fastapi.responses.ORJSONResponse)
 async def api_query_index_multi(index: str, qs: Query, req: fastapi.Request):
     """
@@ -264,8 +301,7 @@ async def api_query_index_multi(index: str, qs: Query, req: fastapi.Request):
         # the results of the query
         return _fetch_records(reader, index, queries, fmt, query_s=auth_s + query_s)
     except KeyError:
-        raise fastapi.HTTPException(
-            status_code=400, detail=f'Invalid index: {index}')
+        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 

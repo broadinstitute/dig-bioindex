@@ -18,7 +18,7 @@ setup(
         'boto3>=1.10',
         'click>=7.0',
         'fastapi>=0.53',
-        'mysqlclient>=1.4',
+        'pymysql>=0.10',
         'orjson>=2.6',
         'pydantic>=1.4',
         'python-dotenv>=0.10',
