@@ -112,6 +112,57 @@ async def api_portal_phenotypes(q: str = None):
     }
 
 
+
+@router.get('/complications', response_class=fastapi.responses.ORJSONResponse)
+async def api_portal_complications(q: str = None):
+    """
+    Returns all available complication phenotype pairs.
+    """
+    sql = (
+        'SELECT Complications.`name`, Phenotypes.`group`, Complications.`phenotype`, Complications.`withComplication` '
+        'FROM Complications '
+        'JOIN Phenotypes '
+        'ON Phenotypes.`name` = Complications.`name` '
+    )
+
+    # groups to match
+    groups = None
+
+    # optionally filter by disease group
+    if q and q != '':
+        resp = portal.execute('SELECT `groups` FROM DiseaseGroups WHERE `name` = %s', q)
+        groups = resp.fetchone()
+
+        # groups are a comma-separated set
+        if groups:
+            groups = groups[0] and groups[0].split(',')
+
+    # collect phenotype groups by union
+    if groups is not None:
+        sql = ' UNION '.join(f'({sql} WHERE FIND_IN_SET(%s, Phenotypes.`group`))' for _ in groups)
+
+    # run the query
+    resp, query_s = profile(portal.execute, sql, *groups) if groups else profile(portal.execute, sql)
+    complications = []
+
+    # transform response
+    for name, _, phenotype, with_complication in resp:
+        complications.append({
+            'name': name,
+            'phenotype': phenotype,
+            'withComplication': with_complication,
+        })
+
+    return {
+        'profile': {
+            'query': query_s,
+        },
+        'data': complications,
+        'count': len(complications),
+        'nonce': nonce(),
+    }
+
+
 @router.get('/datasets', response_class=fastapi.responses.ORJSONResponse)
 async def api_portal_datasets(req: fastapi.Request, q: str=None):
     """
