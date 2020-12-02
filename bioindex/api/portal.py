@@ -79,11 +79,10 @@ async def api_portal_phenotypes(q: str = None):
     # optionally filter by disease group
     if q and q != '':
         resp = portal.execute('SELECT `groups` FROM DiseaseGroups WHERE `name` = %s', q)
-        groups = resp.fetchone()
+        rows = resp.fetchone() or ['']
 
         # groups are a comma-separated set
-        if groups:
-            groups = groups[0] and groups[0].split(',')
+        groups = rows[0].split(',')
 
     # collect phenotype groups by union
     if groups is not None:
@@ -131,33 +130,31 @@ async def api_portal_complications(q: str = None):
     # optionally filter by disease group
     if q and q != '':
         resp = portal.execute('SELECT `groups` FROM DiseaseGroups WHERE `name` = %s', q)
-        groups = resp.fetchone()
+        rows = resp.fetchone() or ['']
 
         # groups are a comma-separated set
-        if groups:
-            groups = groups[0] and groups[0].split(',')
+        groups = rows[0].split(',')
 
     # collect phenotype groups by union
     if groups is not None:
         sql = ' UNION '.join(f'({sql} WHERE FIND_IN_SET(%s, Phenotypes.`group`))' for _ in groups)
 
     # run the query
-    resp, query_s = profile(portal.execute, sql, *groups) if groups else profile(portal.execute, sql)
-    complications = []
+    if sql:
+        resp, query_s = profile(portal.execute, sql, *groups) if groups else profile(portal.execute, sql)
 
-    # transform response
+    # distinct complications
+    complications = {}
+
+    # collect all complication phenotypes together into a dict
     for name, _, phenotype, with_complication in resp:
-        complications.append({
-            'name': name,
-            'phenotype': phenotype,
-            'withComplication': with_complication,
-        })
+        complications.setdefault(name, dict())[phenotype] = with_complication
 
     return {
         'profile': {
             'query': query_s,
         },
-        'data': complications,
+        'data': [{'name': k, 'phenotypes': v} for k, v in complications.items()],
         'count': len(complications),
         'nonce': nonce(),
     }
