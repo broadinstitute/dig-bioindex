@@ -1,3 +1,4 @@
+import asyncio
 import concurrent.futures
 import fastapi
 import itertools
@@ -5,7 +6,7 @@ import itertools
 from pydantic import BaseModel
 from typing import List, Optional
 
-from pqs.lib import script
+from pqs.script import Script
 
 from ..lib import aws
 from ..lib import config
@@ -15,7 +16,7 @@ from ..lib import query
 
 from ..lib.auth import restricted_keywords
 from ..lib.source import BioIndexDataSource
-from ..lib.utils import nonce, profile
+from ..lib.utils import nonce, profile, profile_async
 
 # load dot files and configuration
 CONFIG = config.Config()
@@ -237,7 +238,7 @@ async def api_query_script(req: fastapi.Request):
     Treat the body of the request as a PQS script. Execute it and return
     the resulting dataframe as records.
     """
-    s = script.Script()
+    s = Script()
 
     # discover what the user doesn't have access to see
     restricted, auth_s = profile(restricted_keywords, portal, req)
@@ -246,23 +247,34 @@ async def api_query_script(req: fastapi.Request):
     # register the bioindex as a data source
     s.context.register('bio', BioIndexDataSource(engine, CONFIG, INDEXES, restricted))
 
+    # don't allow local reading, connection, or execution
+    s.context.allow_read = False
+    s.context.allow_connect = False
+    s.context.allow_run = False
+
     # parse the script
     s.loads(body.decode(encoding='utf-8'))
 
-    # run it
-    df, query_s = profile(s.run)
-    records = df.to_dict('records')
+    # run the script asynchronously
+    try:
+        co = asyncio.wait_for(s.run_async(), timeout=CONFIG.script_timeout)
 
-    # send the response
-    return {
-        'profile': {
-            'query': query_s,
-        },
-        'q': body,
-        'count': len(records),
-        'data': records,
-        'nonce': nonce(),
-    }
+        # wait for it to complete
+        df, query_s = await profile_async(co)
+        records = df.to_dict('records')
+
+        # send the response
+        return {
+            'profile': {
+                'query': query_s,
+            },
+            'q': body,
+            'count': len(records),
+            'data': records,
+            'nonce': nonce(),
+        }
+    except asyncio.TimeoutError:
+        raise fastapi.HTTPException(status_code=408, detail=f'Script execution timed out after {CONFIG.script_timeout} seconds')
 
 
 #@router.post('/query/{index}', response_class=fastapi.responses.ORJSONResponse)

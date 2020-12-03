@@ -15,13 +15,11 @@ class BioIndexDataSource(source.DataSource):
         self.indexes = indexes
 
     def query(self, q, table):
-        qs = q.split(',')
-        index = self.indexes[table]
         reader = fetch(
             self.engine,
             self.config.s3_bucket,
-            index,
-            qs,
+            self.indexes[table],
+            q.split(','),
             restricted=self.restricted,
         )
 

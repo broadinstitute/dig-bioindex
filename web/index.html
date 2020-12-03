@@ -30,7 +30,7 @@
 
 <body>
     <center>
-        <div id="app" v-cloak>
+        <div id="app" v-cloak style="margin-bottom: 50px">
             <div class="mt-5 mb-4">
                 <h1 style="font-family: 'Lato', sans-serif">HuGe BioIndex</h1>
                 <div>
@@ -39,39 +39,84 @@
             </div>
 
             <div class="w-75">
-                <!-- search field -->
-                <div class="input-group mb-4 bg-white rounded">
-                    <div class="input-group-prepend">
-                        <button class="btn btn-secondary dropdown-toggle" type="button" id="indexSelect" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                            {{selectedIndexName || 'Search...'}}
-                        </button>
-                        <div class="dropdown-menu" aria-labelledby="indexSelect">
-                            <a v-for="i in $store.state.indexes"
-                               @click="$store.commit('setIndex', i)"
-                               href="#"
-                               class="dropdown-item">
-                                {{i.index}}
-                            </a>
+
+                <!-- tabbed navigation -->
+                <ul class="nav nav-tabs justify-content-center" style="margin-bottom: 10px">
+                    <li class="nav-item">
+                        <a class="nav-link active" id="search-tab" data-toggle="tab" href="#search">
+                            Search
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" id="query-tab" data-toggle="tab" href="#query">
+                            Query
+                        </a>
+                    </li>
+                </ul>
+
+                <!-- tabbed content -->
+                <div class="tab-content">
+
+                    <!-- search field -->
+                    <div class="tab-pane fade show active" id="search">
+                        <div class="input-group mb-4 bg-white rounded">
+                            <div class="input-group-prepend">
+                                <button class="btn btn-secondary dropdown-toggle" type="button" id="indexSelect" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                    {{selectedIndexName || 'Search...'}}
+                                </button>
+                                <div class="dropdown-menu" aria-labelledby="indexSelect">
+                                    <a v-for="i in $store.state.indexes"
+                                       @click="$store.commit('setIndex', i)"
+                                       href="#"
+                                       class="dropdown-item">
+                                        {{i.index}}
+                                    </a>
+                                </div>
+                            </div>
+                            <input class="form-control"
+                                   type="text"
+                                   v-model="$store.state.q"
+                                   :placeholder="selectedIndexSchema">
+                            <div class="input-group-append">
+                                <button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown">
+                                    Run
+                                </button>
+                                <div class="dropdown-menu">
+                                    <a class="dropdown-item" href="#" @click="$store.dispatch('search', 'query')">
+                                        Query
+                                    </a>
+                                    <a class="dropdown-item" href="#" @click="$store.dispatch('search', 'match')">
+                                        Match
+                                    </a>
+                                    <a class="dropdown-item" href="#" @click="$store.dispatch('search', 'count')">
+                                        Count
+                                    </a>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <input class="form-control"
-                           type="text"
-                           v-model="$store.state.q"
-                           :placeholder="selectedIndexSchema">
-                    <div class="input-group-append">
-                        <button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown">
-                            Run
-                        </button>
-                        <div class="dropdown-menu">
-                            <a class="dropdown-item" href="#" @click="$store.dispatch('search', 'query')">
-                                Query
-                            </a>
-                            <a class="dropdown-item" href="#" @click="$store.dispatch('search', 'match')">
-                                Match
-                            </a>
-                            <a class="dropdown-item" href="#" @click="$store.dispatch('search', 'count')">
-                                Count
-                            </a>
+
+                    <!-- query field -->
+                    <div role="tabpanel" class="tab-pane fade" id="query">
+                        <div class="form-horizontal">
+                            <div class="form-group">
+                                <button
+                                    class="btn btn-sm"
+                                    type="button"
+                                    style="position: relative; float: right; top: 35px; z-index: 100"
+                                    @click="$store.dispatch('run')">
+                                    &#x25b6;
+                                </button>
+                                <textarea
+                                    v-model="$store.state.script"
+                                    class="form-control"
+                                    rows="4"
+                                    placeholder="QUERY 'pcsk9' FROM bio.`top-associations`"
+                                    style="font-family: consolas, monospace; margin-bottom: 10px"
+                                    spellcheck="false"
+                                    required>
+                                </textarea>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -92,8 +137,8 @@
                     <!-- output JSON results -->
                     <div v-if="$store.state.loading" class="card-body">
                         <button class="btn btn-light btn-sm" type="button" disabled>
-                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                            Searching {{$store.state.loading}}...
+                            <span class="spinner-border spinner-border-sm"></span>
+                            {{$store.state.loading}}...
                         </button>
                     </div>
 
@@ -146,6 +191,7 @@
                 error: null,
                 call: null,
                 q: '',
+                script: null,
                 t0: 0.0,
                 searchTime: 0.0,
                 jsTime: 0.0,
@@ -170,7 +216,7 @@
                 },
 
                 setResults(state, json) {
-                    let bioIndexTime = (json.profile.fetch + (json.profile.query || 0)) * 1000;
+                    let bioIndexTime = ((json.profile.fetch || 0) + (json.profile.query || 0)) * 1000;
 
                     state.loading = null;
                     state.error = null;
@@ -185,8 +231,8 @@
                     state.results = json;
                 },
 
-                startLoading(state) {
-                    state.loading = state.index.index;
+                startLoading(state, loading) {
+                    state.loading = loading;
                     state.error = null;
                     state.results = {};
                     state.t0 = Date.now();
@@ -200,6 +246,34 @@
                     commit('setIndexes', json.data);
                 },
 
+                // perform script query
+                async run(context) {
+                    let script = context.state.script || "QUERY 'pcsk9' FROM bio.`top-associations`";
+
+                    // can't link to a post, so just link to the documentation
+                    let href = `/docs#/bio/api_query_script_api_bio_query_post`;
+                    let link = `/api/bio/query`;
+
+                    context.commit('setCall', {href, link});
+                    context.commit('startLoading', 'Submitting query script');
+
+                    let resp = await fetch('/api/bio/query', {
+                        method: 'POST',
+                        body: script,
+                        headers: {
+                            'Content-Type': 'text/plain',
+                        }
+                    });
+
+                    if (resp.ok) {
+                        $('#api-call').removeClass('alert-danger').addClass('alert-success');
+                        context.commit('setResults', await resp.json());
+                    } else {
+                        $('#api-call').removeClass('alert-success').addClass('alert-danger');
+                        context.commit('setError', await resp.json());
+                    }
+                },
+
                 // perform the search
                 async search(context, action) {
                     let q = context.state.q;
@@ -211,7 +285,7 @@
                     let link = `/api/bio/${action}/${i}?q=${q}`;
 
                     context.commit('setCall', {href, link});
-                    context.commit('startLoading');
+                    context.commit('startLoading', `Searching ${i}`);
 
                     // perform the query
                     let resp = await fetch(href);

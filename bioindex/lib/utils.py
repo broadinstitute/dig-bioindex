@@ -13,6 +13,16 @@ def profile(f, *args, **kwargs):
     return f(*args, **kwargs), time.perf_counter() - now
 
 
+async def profile_async(awaitable):
+    """
+    Execute f and return the result along with the time in seconds.
+    """
+    now = time.perf_counter()
+
+    # execute and determine how long it took
+    return await awaitable, time.perf_counter() - now
+
+
 def cap_case_str(s):
     """
     Translate a string like "foo_Bar-baz  whee" and return "FooBarBazWhee".

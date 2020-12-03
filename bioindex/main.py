@@ -9,7 +9,7 @@ import rich.table
 import sys
 import uvicorn
 
-from pqs.lib import script
+from pqs.script import Script
 
 from .lib import config
 from .lib import index
@@ -145,7 +145,7 @@ def cli_script(cfg):
     indexes = dict((i.name, i) for i in index.Index.list_indexes(engine))
 
     # create a script
-    s = script.Script()
+    s = Script()
 
     # register the bioindex as a data source
     s.context.register('bio', source.BioIndexDataSource(engine, cfg, indexes))
