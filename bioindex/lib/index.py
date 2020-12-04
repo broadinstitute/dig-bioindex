@@ -206,7 +206,7 @@ class Index:
 
                     # delete all the keys from the table
                     for kid in stale_ids:
-                        sql = f'DELETE FROM {table.name} WHERE `key` = %s'
+                        sql = f'DELETE FROM {self.table.name} WHERE `key` = %s'
                         n += engine.execute(sql, kid).rowcount
 
                         # remove the key from the __Keys table
