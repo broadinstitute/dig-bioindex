@@ -29,40 +29,39 @@
 </head>
 
 <body>
-    <center>
-        <div id="app" v-cloak style="margin-bottom: 50px">
-            <div class="mt-5 mb-4">
-                <h1 style="font-family: 'Lato', sans-serif">HuGe BioIndex</h1>
-                <div>
-                    <a href="/docs" target="_blank">REST API Documentation</a>
+    <div id="app" v-cloak style="margin-bottom: 50px">
+        <center>
+            <div class="mt-4 w-100 justified-content-center">
+                <div class="mb-4">
+                    <div style="font-size: xx-large; font-weight: bold">
+                        HuGe BioIndex
+                    </div>
+                    <a style="font-size: smaller" href="/docs" target="_blank">
+                        REST API
+                    </a>
                 </div>
-            </div>
 
-            <div class="w-75">
-
-                <!-- tabbed navigation -->
-                <ul class="nav nav-tabs justify-content-center" style="margin-bottom: 10px">
-                    <li class="nav-item">
-                        <a class="nav-link active" id="search-tab" data-toggle="tab" href="#search">
-                            Search
-                        </a>
+                <!-- tabs -->
+                <ul class="nav nav-tabs justify-content-center mb-2">
+                    <li class="nav-item" id="search-tab">
+                        <a class="nav-link active" data-toggle="tab" href="#search">Search</a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" id="query-tab" data-toggle="tab" href="#query">
-                            Query
-                        </a>
+                    <li class="nav-item" id="advanced-tab">
+                        <a class="nav-link" data-toggle="tab" href="#advanced">Advanced</a>
                     </li>
                 </ul>
+            </div>
 
-                <!-- tabbed content -->
-                <div class="tab-content">
+            <!-- user input -->
+            <div class="m-3 w-75 justified-content-center">
+                <div class="tab-content" style="margin-bottom: 20px">
 
-                    <!-- search field -->
+                    <!-- search tab -->
                     <div class="tab-pane fade show active" id="search">
-                        <div class="input-group mb-4 bg-white rounded">
+                        <div class="w-75 input-group shadow-sm bg-white rounded">
                             <div class="input-group-prepend">
-                                <button class="btn btn-secondary dropdown-toggle" type="button" id="indexSelect" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                    {{selectedIndexName || 'Search...'}}
+                                <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="indexSelect" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                    {{selectedIndexName || 'Choose Index...'}}
                                 </button>
                                 <div class="dropdown-menu" aria-labelledby="indexSelect">
                                     <a v-for="i in $store.state.indexes"
@@ -78,8 +77,8 @@
                                    v-model="$store.state.q"
                                    :placeholder="selectedIndexSchema">
                             <div class="input-group-append">
-                                <button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown">
-                                    Run
+                                <button class="btn btn-success dropdown-toggle" type="button" data-toggle="dropdown">
+                                    Search
                                 </button>
                                 <div class="dropdown-menu">
                                     <a class="dropdown-item" href="#" @click="$store.dispatch('search', 'query')">
@@ -96,77 +95,86 @@
                         </div>
                     </div>
 
-                    <!-- query field -->
-                    <div role="tabpanel" class="tab-pane fade" id="query">
-                        <div class="form-horizontal">
-                            <div class="form-group">
-                                <button
-                                    class="btn btn-sm"
-                                    type="button"
-                                    style="position: relative; float: right; top: 35px; z-index: 100"
-                                    @click="$store.dispatch('run')">
-                                    &#x25b6;
+                    <!-- advanced tab -->
+                    <div class="tab-pane fade" id="advanced">
+                        <div class="w-100 card shadow-sm">
+                            <div class="card-header">
+                                <div class="dropdown" style="float:left">
+                                    <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                        Examples
+                                    </button>
+                                    <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                                        <a
+                                            v-for="ex in $store.state.examples"
+                                            @click="$store.state.script = ex[1]"
+                                            class="dropdown-item"
+                                            href="#">
+                                            {{ex[0]}}
+                                        </a>
+                                    </div>
+                                </div>
+                                <button class="btn btn-sm btn-success" style="float:right" @click="$store.dispatch('run')">
+                                    Submit
                                 </button>
+                            </div>
+
+                            <!-- script query -->
+                            <div class="card-body p-0" style="flex: 1 1 auto; height: 8em">
+                                <!--<editor editor-id="script" :content="$store.state.script"></editor>-->
                                 <textarea
                                     v-model="$store.state.script"
-                                    class="form-control"
-                                    rows="4"
-                                    placeholder="QUERY 'pcsk9' FROM bio.`top-associations`"
-                                    style="font-family: consolas, monospace; margin-bottom: 10px"
+                                    :placeholder="$store.state.defaultQuery"
+                                    id="script-source"
+                                    class="text-monospace p-2"
                                     spellcheck="false"
-                                    required>
+                                    style="white-space: nowrap; border: 0; outline: none; width: 100%; height: 100%; resize: none; overflow: auto"
+                                    >
                                 </textarea>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- results -->
-                <div v-if="showResults" class="card shadow">
-                    <div v-if="$store.state.call" id="api-call" class="card-header">
-                        <a :href="$store.state.call.href" target="_blank">
-                            {{ $store.state.call.link }}
-                        </a>
-                        <button type="button"
-                                class="close"
-                                @click="$store.commit('clearResults')">
-                            <span>&times;</span>
-                        </button>
-                    </div>
+                <!-- response -->
+                <div v-show="showResults">
+                    <div id="results-card" class="w-100 card shadow-sm">
+                        <div id="results-header" class="card-header">
+                            <div class="text-sm">
+                                <span v-if="$store.state.loading && !dataLoaded">
+                                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                    Loading...
+                                </span>
+                                <div v-else-if="$store.state.error">
+                                    Error
+                                </div>
+                                <div v-else>
+                                    <span>{{$store.state.results.count}} records returned</span>
 
-                    <!-- output JSON results -->
-                    <div v-if="$store.state.loading" class="card-body">
-                        <button class="btn btn-light btn-sm" type="button" disabled>
-                            <span class="spinner-border spinner-border-sm"></span>
-                            {{$store.state.loading}}...
-                        </button>
-                    </div>
+                                    <!-- check for continuation -->
+                                    <a v-if="$store.state.results.continuation" class="text-sm" href="#" @click="$store.dispatch('loadMore')">
+                                        there are more results...
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
 
-                    <!-- response here -->
-                    <div v-show="dataLoaded">
-                        <div class="card-body p-0" style="height: 20em">
+                        <!-- JSON response -->
+                        <div class="card-body p-0" style="flex: 1 1 auto; height: 200px">
                             <editor editor-id="results" :content="results" :read-only="true"></editor>
                         </div>
 
-                        <!-- results time -->
-                        <div class="card-footer">
+                        <!-- if there's a continuation, follow it? -->
+                        <div id="results-footer" class="card-footer">
                             <span class="text-muted text-sm">
-                                Index: {{ $store.state.searchTime }} ms,
+                                Request: {{ $store.state.searchTime }} ms,
                                 JavaScript: {{ $store.state.jsTime }} ms
                             </span>
-                        </div>
-
-                        <!-- if there's a continuation, follow it? -->
-                        <div v-if="$store.state.results.continuation" class="alert-primary p-2">
-                            <a href="#" @click="$store.dispatch('loadMore')">
-                                There are more results...
-                            </a>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </center>
+        </center>
+    </div>
 
     <!-- jquery, popper, bootstrap -->
     <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
@@ -191,12 +199,18 @@
                 error: null,
                 call: null,
                 q: '',
-                script: null,
+                script: '',
                 t0: 0.0,
                 searchTime: 0.0,
                 jsTime: 0.0,
                 traits: [],
                 results: {},
+                defaultQuery: "QUERY 't2d,slc30a8' FROM bio.associations",
+                examples: [
+                    ["Top Phenotypes Associated with Region", "QUERY 'slc30a8' FROM bio.`top-associations`\nSORT BY pValue\nDISTINCT BY phenotype KEEP FIRST"],
+                    ["Top Phenotype Associated with Genes", "CREATE genes AS CSV WITH HEADER << END\ngene\nslc30a8\npcsk9\napoc1\nEND\n\n# find the most associated phenotype per gene\nQUERY gene FROM bio.`gene-associations`\nSORT BY pValue\nDISTINCT BY gene KEEP FIRST"],
+                    ["SNPs Associated with Phenotype", "CREATE snps AS CSV WITH HEADER << END\ndbSNP\nrs7523141\nrs1260326\nrs147890266\nEND\n\n# look up the variant ID for each SNP\nQUERY '$dbSNP' FROM bio.variant\n\n# for each variant, get the associations across all phenotypes\nQUERY '$varId' FROM bio.`phewas-associations`\n\n# filter for phenotype and sort by p value\nFILTER phenotype = 'T2D'\nSORT BY pValue"],
+                ]
             },
             mutations: {
                 setIndexes: (state, indexes) => state.indexes = indexes,
@@ -248,11 +262,11 @@
 
                 // perform script query
                 async run(context) {
-                    let script = context.state.script || "QUERY 'pcsk9' FROM bio.`top-associations`";
+                    let script = context.state.script || context.state.defaultQuery;
 
                     // can't link to a post, so just link to the documentation
-                    let href = `/docs#/bio/api_query_script_api_bio_query_post`;
-                    let link = `/api/bio/query`;
+                    let href = `#`;
+                    let link = `Script results`;
 
                     context.commit('setCall', {href, link});
                     context.commit('startLoading', 'Submitting query script');
@@ -265,12 +279,12 @@
                         }
                     });
 
+                    let json = await resp.json();
+
                     if (resp.ok) {
-                        $('#api-call').removeClass('alert-danger').addClass('alert-success');
-                        context.commit('setResults', await resp.json());
+                        context.commit('setResults', json);
                     } else {
-                        $('#api-call').removeClass('alert-success').addClass('alert-danger');
-                        context.commit('setError', await resp.json());
+                        context.commit('setError', json);
                     }
                 },
 
@@ -289,30 +303,28 @@
 
                     // perform the query
                     let resp = await fetch(href);
+                    let json = await resp.json();
 
                     if (resp.ok) {
-                        $('#api-call').removeClass('alert-danger').addClass('alert-success');
-                        context.commit('setResults', await resp.json());
+                        context.commit('setResults', json);
                     } else {
-                        $('#api-call').removeClass('alert-success').addClass('alert-danger');
-                        context.commit('setError', await resp.json());
+                        context.commit('setError', json);
                     }
                 },
 
                 async loadMore(context) {
                     let href = `/api/bio/cont?token=${context.state.results.continuation}`;
 
-                    context.commit('startLoading');
+                    context.commit('startLoading', 'Fetching more');
 
                     // perform the query
                     let resp = await fetch(href);
+                    let json = await resp.json();
 
                     if (resp.ok) {
-                        $('#api-call').removeClass('alert-danger').addClass('alert-success');
-                        context.commit('setResults', await resp.json());
+                        context.commit('setResults', json);
                     } else {
-                        $('#api-call').removeClass('alert-success').addClass('alert-danger');
-                        context.commit('setError', await resp.json());
+                        context.commit('setError', json);
                     }
                 },
             },
@@ -321,7 +333,7 @@
         // ace editor
         Vue.component('editor', {
             template: '<div :id="editorId" style="width: 100%; height: 100%;"></div>',
-            props: ['editorId', 'content', 'readOnly'],
+            props: ['editorId', 'content', 'readOnly', 'mode'],
 
             data() {
                 return {
@@ -331,8 +343,8 @@
             watch: {
                 'content'(value) {
                     this.editor.setValue(value, -1);
-                    this.editor.getSession().setMode('ace/mode/json');
-                    this.editor.setReadOnly(this.readOnly);
+                    this.editor.getSession().setMode(this.mode || 'ace/mode/json');
+                    this.editor.setReadOnly(this.readOnly || false);
                     this.editor.setShowPrintMargin(false);
                     this.editor.resize();
                 }
@@ -380,6 +392,29 @@
                 results() {
                     return JSON.stringify(this.$store.state.results, null, '    ');
                 },
+            },
+            watch: {
+                '$store.state.loading'(loading) {
+                    $('#results-header').removeClass('alert-danger');
+                    $('#results-header').removeClass('alert-success');
+                    $('#results-header').removeClass('alert-primary');
+                },
+                '$store.state.error'(json) {
+                    if (!!json) {
+                        $('#results-header').addClass('alert-danger');
+                    } else {
+                        $('#results-header').removeClass('alert-danger');
+                    }
+                },
+                '$store.state.results'(json) {
+                    if (!!json.continuation) {
+                        $('#results-header').addClass('alert-primary');
+                    } else if (!!json) {
+                        $('#results-header').addClass('alert-success');
+                    } else {
+                        $('#results-header').addClass('alert-danger');
+                    }
+                }
             },
         });
     </script>

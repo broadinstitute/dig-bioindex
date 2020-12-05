@@ -6,7 +6,7 @@ import itertools
 from pydantic import BaseModel
 from typing import List, Optional
 
-from pqs.script import Script
+from pqs.script import Script, ScriptError
 
 from ..lib import aws
 from ..lib import config
@@ -226,8 +226,7 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
         # the results of the query
         return _fetch_records(reader, index, qs, fmt, query_s=auth_s + query_s)
     except KeyError:
-        raise fastapi.HTTPException(
-            status_code=400, detail=f'Invalid index: {index}')
+        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
@@ -252,16 +251,15 @@ async def api_query_script(req: fastapi.Request):
     s.context.allow_connect = False
     s.context.allow_run = False
 
-    # parse the script
-    s.loads(body.decode(encoding='utf-8'))
-
-    # run the script asynchronously
     try:
+        s.loads(body.decode(encoding='utf-8'))
+
+        # run the script asynchronously
         co = asyncio.wait_for(s.run_async(), timeout=CONFIG.script_timeout)
 
         # wait for it to complete
         df, query_s = await profile_async(co)
-        records = df.to_dict('records')
+        records = df.to_dict('records') if df is not None else []
 
         # send the response
         return {
@@ -275,6 +273,10 @@ async def api_query_script(req: fastapi.Request):
         }
     except asyncio.TimeoutError:
         raise fastapi.HTTPException(status_code=408, detail=f'Script execution timed out after {CONFIG.script_timeout} seconds')
+    except ScriptError as ex:
+        raise fastapi.HTTPException(status_code=400, detail=str(ex))
+    except SyntaxError as ex:
+        raise fastapi.HTTPException(status_code=400, detail=str(ex))
 
 
 #@router.post('/query/{index}', response_class=fastapi.responses.ORJSONResponse)
