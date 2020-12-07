@@ -58,7 +58,7 @@
 
                     <!-- search tab -->
                     <div class="tab-pane fade show active" id="search">
-                        <div class="w-75 input-group shadow-sm bg-white rounded">
+                        <div class="input-group shadow-sm bg-white rounded">
                             <div class="input-group-prepend">
                                 <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="indexSelect" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                                     {{selectedIndexName || 'Choose Index...'}}
@@ -97,13 +97,13 @@
 
                     <!-- advanced tab -->
                     <div class="tab-pane fade" id="advanced">
-                        <div class="w-100 card shadow-sm">
+                        <div class="card shadow-sm">
                             <div class="card-header">
                                 <div class="dropdown" style="float:left">
-                                    <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                    <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown">
                                         Examples
                                     </button>
-                                    <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                                    <div class="dropdown-menu">
                                         <a
                                             v-for="ex in $store.state.examples"
                                             @click="$store.state.script = ex[1]"
@@ -114,20 +114,20 @@
                                     </div>
                                 </div>
                                 <button class="btn btn-sm btn-success" style="float:right" @click="$store.dispatch('run')">
-                                    Submit
+                                    Run
                                 </button>
                             </div>
 
                             <!-- script query -->
-                            <div class="card-body p-0" style="flex: 1 1 auto; height: 8em">
+                            <div class="card-body p-0">
                                 <!--<editor editor-id="script" :content="$store.state.script"></editor>-->
                                 <textarea
                                     v-model="$store.state.script"
                                     :placeholder="$store.state.defaultQuery"
                                     id="script-source"
-                                    class="text-monospace p-2"
+                                    class="text-monospace pt-2 pl-2 pr-0 pb-0"
                                     spellcheck="false"
-                                    style="white-space: nowrap; border: 0; outline: none; width: 100%; height: 100%; resize: none; overflow: auto"
+                                    style="font-size: 12px; white-space: nowrap; border: 0; outline: none; width: 100%; height: 100%; min-height: 16em; resize: vertical; overflow: auto"
                                     >
                                 </textarea>
                             </div>
@@ -137,7 +137,7 @@
 
                 <!-- response -->
                 <div v-show="showResults">
-                    <div id="results-card" class="w-100 card shadow-sm">
+                    <div id="results-card" class="card shadow-sm">
                         <div id="results-header" class="card-header">
                             <div class="text-sm">
                                 <span v-if="$store.state.loading && !dataLoaded">
@@ -147,8 +147,8 @@
                                 <div v-else-if="$store.state.error">
                                     Error
                                 </div>
-                                <div v-else>
-                                    <span>{{$store.state.results.count}} records returned</span>
+                                <div v-else-if="$store.state.results.data">
+                                    <span>Found {{$store.state.results.count.toLocaleString()}} records</span>
 
                                     <!-- check for continuation -->
                                     <a v-if="$store.state.results.continuation" class="text-sm" href="#" @click="$store.dispatch('loadMore')">
@@ -159,7 +159,7 @@
                         </div>
 
                         <!-- JSON response -->
-                        <div class="card-body p-0" style="flex: 1 1 auto; height: 200px">
+                        <div class="card-body p-0" style="flex: 1 1 auto; height: 300px">
                             <editor editor-id="results" :content="results" :read-only="true"></editor>
                         </div>
 
@@ -210,6 +210,7 @@
                     ["Top Phenotypes Associated with Region", "QUERY 'slc30a8' FROM bio.`top-associations`\nSORT BY pValue\nDISTINCT BY phenotype KEEP FIRST"],
                     ["Top Phenotype Associated with Genes", "CREATE genes AS CSV WITH HEADER << END\ngene\nslc30a8\npcsk9\napoc1\nEND\n\n# find the most associated phenotype per gene\nQUERY gene FROM bio.`gene-associations`\nSORT BY pValue\nDISTINCT BY gene KEEP FIRST"],
                     ["SNPs Associated with Phenotype", "CREATE snps AS CSV WITH HEADER << END\ndbSNP\nrs7523141\nrs1260326\nrs147890266\nEND\n\n# look up the variant ID for each SNP\nQUERY '$dbSNP' FROM bio.variant\n\n# for each variant, get the associations across all phenotypes\nQUERY '$varId' FROM bio.`phewas-associations`\n\n# filter for phenotype and sort by p value\nFILTER phenotype = 'T2D'\nSORT BY pValue"],
+                    ["Credible Variants in Gene", "SELECT 't2d' AS phenotype, 'slc30a8' AS gene\n\n# lookup the credible sets for a phenotype in a region\nQUERY '$phenotype,$gene' FROM bio.`credible-sets`\n\n# for each credible set, load the variants in it\nQUERY '$phenotype,$credibleSetId' FROM bio.`credible-variants`\n\n# keep only variants with a high posterior probability\nFILTER posteriorProbability >= 0.5\nSORT BY posteriorProbability DESC"],
                 ]
             },
             mutations: {

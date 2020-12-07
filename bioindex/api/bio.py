@@ -277,6 +277,10 @@ async def api_query_script(req: fastapi.Request):
         raise fastapi.HTTPException(status_code=400, detail=str(ex))
     except SyntaxError as ex:
         raise fastapi.HTTPException(status_code=400, detail=str(ex))
+    except KeyError:
+        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
 #@router.post('/query/{index}', response_class=fastapi.responses.ORJSONResponse)
