@@ -84,6 +84,6 @@ class Config:
         return 'BIOINDEX_MATCH_LIMIT'
 
     @functools.cached_property
-    @config_var(default=3, type=float)
+    @config_var(default=10, type=float)
     def script_timeout(self):
         return 'BIOINDEX_SCRIPT_TIMEOUT'
