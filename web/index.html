@@ -148,7 +148,7 @@
                                     Error
                                 </div>
                                 <div v-else-if="$store.state.results.data">
-                                    <span>Found {{$store.state.results.count.toLocaleString()}} records</span>
+                                    <span>Found {{$store.state.results.count.toLocaleString()}} {{!!plots.length ? 'plots' : 'records'}}</span>
 
                                     <!-- check for continuation -->
                                     <a v-if="$store.state.results.continuation" class="text-sm" href="#" @click="$store.dispatch('loadMore')">
@@ -158,9 +158,16 @@
                             </div>
                         </div>
 
-                        <!-- JSON response -->
-                        <div class="card-body p-0" style="flex: 1 1 auto; height: 300px">
-                            <editor editor-id="results" :content="results" :read-only="true"></editor>
+                        <!-- JSON response or plots -->
+                        <div class="card-body p-0" style="flex: 1 1 auto; min-height: 300px">
+                            <div v-show="plots">
+                                <div v-for="data in plots">
+                                    <img :src="data">
+                                </div>
+                            </div>
+                            <div v-show="!plots.length" class="border-top" style="height: 300px">
+                                <editor editor-id="results" :content="results" :read-only="true"></editor>
+                            </div>
                         </div>
 
                         <!-- if there's a continuation, follow it? -->
@@ -392,6 +399,13 @@
                 },
                 results() {
                     return JSON.stringify(this.$store.state.results, null, '    ');
+                },
+                plots() {
+                    var data = (this.$store.state.results || {}).data || [];
+
+                    return data
+                        .filter(r => !!r.mime && !!r.data)
+                        .map(r => `data:${r.mime};base64,${r.data}`);
                 },
             },
             watch: {
