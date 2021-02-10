@@ -26,6 +26,7 @@ portal = aws.connect_to_rds(CONFIG.rds_instance, schema=CONFIG.portal_schema)
 
 # max number of bytes to read from s3 per request
 RESPONSE_LIMIT = CONFIG.response_limit
+RESPONSE_LIMIT_MAX = CONFIG.response_limit_max
 MATCH_LIMIT = CONFIG.match_limit
 
 # multi-query executor
@@ -139,7 +140,9 @@ async def api_count_index(index: str, req: fastapi.Request, q: str=None):
 @router.get('/all/{index}', response_class=fastapi.responses.ORJSONResponse)
 async def api_all(index: str, req: fastapi.Request, fmt: str='row'):
     """
-    Query the database and return ALL records for a given index.
+    Query the database and return ALL records for a given index. If the
+    total number of bytes read exceeds a pre-configured server limit, then
+    a 413 response will be returned.
     """
     try:
         i = INDEXES[index]
@@ -155,12 +158,14 @@ async def api_all(index: str, req: fastapi.Request, fmt: str='row'):
             restricted=restricted,
         )
 
+        # will this request exceed the limit?
+        if reader.bytes_total > RESPONSE_LIMIT_MAX:
+            raise fastapi.HTTPException(status_code=413)
+
         # fetch records from the reader
-        return _fetch_records(
-            reader, index, None, fmt, query_s=auth_s + query_s)
+        return _fetch_records(reader, index, None, fmt, query_s=auth_s + query_s)
     except KeyError:
-        raise fastapi.HTTPException(
-            status_code=400, detail=f'Invalid index: {index}')
+        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
@@ -183,8 +188,7 @@ async def api_test_all(index: str, req: fastapi.Request):
         )
 
         # return the total number of bytes that need to be read
-        return fastapi.Response(
-            headers={'Content-Length': str(reader.bytes_total)})
+        return fastapi.Response(headers={'Content-Length': str(reader.bytes_total)})
     except KeyError:
         raise fastapi.HTTPException(
             status_code=400, detail=f'Invalid index: {index}')
@@ -215,6 +219,10 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
             restricted=restricted,
         )
 
+        # with no limit, will this request exceed the limit?
+        if not limit and reader.bytes_total > RESPONSE_LIMIT_MAX:
+            raise fastapi.HTTPException(status_code=413)
+
         # use a zip to limit the total number of records that will be read
         if limit is not None:
             reader.set_limit(limit)
@@ -222,8 +230,7 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
         # the results of the query
         return _fetch_records(reader, index, qs, fmt, query_s=auth_s + query_s)
     except KeyError:
-        raise fastapi.HTTPException(
-            status_code=400, detail=f'Invalid index: {index}')
+        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
@@ -233,7 +240,9 @@ async def api_query_index_multi(index: str, qs: Query, req: fastapi.Request):
     """
     Issue multiple queries in parallel to the same index using a
     JSON body in a POST request. The records are returned together
-    in whatever order the queries are completed.
+    in whatever order the queries are completed. If the total number
+    of bytes read exceeds a pre-configured server limit, then a 413
+    response will be returned.
     """
     try:
         i = INDEXES[index]
@@ -257,6 +266,10 @@ async def api_query_index_multi(index: str, qs: Query, req: fastapi.Request):
             restricted=restricted,
         )
 
+        # with no limit, will this request exceed the limit?
+        if not limit and reader.bytes_total > RESPONSE_LIMIT_MAX:
+            raise fastapi.HTTPException(status_code=413)
+
         # use a zip to limit the total number of records that will be read
         if limit is not None:
             reader.set_limit(limit)
@@ -264,8 +277,7 @@ async def api_query_index_multi(index: str, qs: Query, req: fastapi.Request):
         # the results of the query
         return _fetch_records(reader, index, queries, fmt, query_s=auth_s + query_s)
     except KeyError:
-        raise fastapi.HTTPException(
-            status_code=400, detail=f'Invalid index: {index}')
+        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
@@ -275,7 +287,9 @@ async def api_test_index(index: str, q: str, req: fastapi.Request):
     """
     Query the database for records matching the query parameter. Don't
     read the records from S3, but instead set the Content-Length to the
-    total number of bytes what would be read.
+    total number of bytes what would be read. If the total number of
+    bytes read exceeds a pre-configured server limit, then a 413
+    response will be returned.
     """
     try:
         i = INDEXES[index]
@@ -335,10 +349,9 @@ def _match_keys(keys, index, qs, limit, page=1, query_s=None):
     fetched, fetch_s = profile(list, itertools.islice(keys, MATCH_LIMIT))
 
     # create a continuation if there is more data
-    token = None if len(
-        fetched) < MATCH_LIMIT else continuation.make_continuation(
-            callback=
-            lambda cont: _match_keys(keys, index, limit, qs, page=page + 1), )
+    token = None if len(fetched) < MATCH_LIMIT else continuation.make_continuation(
+        callback=lambda cont: _match_keys(keys, index, limit, qs, page=page + 1),
+    )
 
     return {
         'profile': {
@@ -381,6 +394,10 @@ def _fetch_records(reader, index, qs, fmt, page=1, query_s=None):
     fetched_records, fetch_s = profile(list, take())
     count = len(fetched_records)
 
+    # did the reader exceed the configured, maximum number of bytes to read?
+    if reader.bytes_read > RESPONSE_LIMIT_MAX:
+        raise fastapi.HTTPException(status_code=413)
+
     # transform a list of dictionaries into a dictionary of lists
     if fmt[0] == 'c':
         fetched_records = {
@@ -390,8 +407,8 @@ def _fetch_records(reader, index, qs, fmt, page=1, query_s=None):
 
     # create a continuation if there is more data
     token = None if reader.at_end else continuation.make_continuation(
-        callback=
-        lambda cont: _fetch_records(reader, index, qs, fmt, page=page + 1), )
+        callback=lambda cont: _fetch_records(reader, index, qs, fmt, page=page + 1),
+    )
 
     # build JSON response
     return {
