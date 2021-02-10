@@ -79,6 +79,11 @@ class Config:
         return 'BIOINDEX_RESPONSE_LIMIT'
 
     @functools.cached_property
+    @config_var(default=100 * 1024 * 1024, type=int)
+    def response_limit_max(self):
+        return 'BIOINDEX_RESPONSE_LIMIT_MAX'
+
+    @functools.cached_property
     @config_var(default=100, type=int)
     def match_limit(self):
         return 'BIOINDEX_MATCH_LIMIT'

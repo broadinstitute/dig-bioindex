@@ -30,6 +30,7 @@ portal = aws.connect_to_rds(CONFIG.rds_instance, schema=CONFIG.portal_schema)
 
 # max number of bytes to read from s3 per request
 RESPONSE_LIMIT = CONFIG.response_limit
+RESPONSE_LIMIT_MAX = CONFIG.response_limit_max
 MATCH_LIMIT = CONFIG.match_limit
 
 # multi-query executor
@@ -143,7 +144,9 @@ async def api_count_index(index: str, req: fastapi.Request, q: str=None):
 @router.get('/all/{index}', response_class=fastapi.responses.ORJSONResponse)
 async def api_all(index: str, req: fastapi.Request, fmt: str='row'):
     """
-    Query the database and return ALL records for a given index.
+    Query the database and return ALL records for a given index. If the
+    total number of bytes that would be downloaded exceeds the configured
+    limit then the request will be denied.
     """
     try:
         i = INDEXES[index]
@@ -160,11 +163,9 @@ async def api_all(index: str, req: fastapi.Request, fmt: str='row'):
         )
 
         # fetch records from the reader
-        return _fetch_records(
-            reader, index, None, fmt, query_s=auth_s + query_s)
+        return _fetch_records(reader, index, None, fmt, query_s=auth_s + query_s)
     except KeyError:
-        raise fastapi.HTTPException(
-            status_code=400, detail=f'Invalid index: {index}')
+        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
@@ -187,8 +188,7 @@ async def api_test_all(index: str, req: fastapi.Request):
         )
 
         # return the total number of bytes that need to be read
-        return fastapi.Response(
-            headers={'Content-Length': str(reader.bytes_total)})
+        return fastapi.Response(headers={'Content-Length': str(reader.bytes_total)})
     except KeyError:
         raise fastapi.HTTPException(
             status_code=400, detail=f'Invalid index: {index}')
@@ -389,10 +389,9 @@ def _match_keys(keys, index, qs, limit, page=1, query_s=None):
     fetched, fetch_s = profile(list, itertools.islice(keys, MATCH_LIMIT))
 
     # create a continuation if there is more data
-    token = None if len(
-        fetched) < MATCH_LIMIT else continuation.make_continuation(
-            callback=
-            lambda cont: _match_keys(keys, index, limit, qs, page=page + 1), )
+    token = None if len(fetched) < MATCH_LIMIT else continuation.make_continuation(
+        callback=lambda cont: _match_keys(keys, index, limit, qs, page=page + 1),
+    )
 
     return {
         'profile': {
@@ -435,6 +434,10 @@ def _fetch_records(reader, index, qs, fmt, page=1, query_s=None):
     fetched_records, fetch_s = profile(list, take())
     count = len(fetched_records)
 
+    # did the reader exceed the maximum number of bytes to read?
+    if reader.bytes_read > RESPONSE_LIMIT_MAX:
+        raise fastapi.HTTPException(status_code=413)
+
     # transform a list of dictionaries into a dictionary of lists
     if fmt[0] == 'c':
         fetched_records = {
@@ -444,8 +447,8 @@ def _fetch_records(reader, index, qs, fmt, page=1, query_s=None):
 
     # create a continuation if there is more data
     token = None if reader.at_end else continuation.make_continuation(
-        callback=
-        lambda cont: _fetch_records(reader, index, qs, fmt, page=page + 1), )
+        callback=lambda cont: _fetch_records(reader, index, qs, fmt, page=page + 1),
+    )
 
     # build JSON response
     return {
