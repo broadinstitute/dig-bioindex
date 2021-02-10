@@ -74,7 +74,7 @@ class Config:
         return 'BIOINDEX_PORTAL_SCHEMA'
 
     @functools.cached_property
-    @config_var(default=1024 * 1024, type=int)
+    @config_var(default=1 * 1024 * 1024, type=int)
     def response_limit(self):
         return 'BIOINDEX_RESPONSE_LIMIT'
 

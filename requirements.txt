@@ -6,8 +6,8 @@ python-dotenv
 fastapi
 orjson
 pydantic
+uvicorn[standard]
 pymysql
-uvicorn
 requests
 rich
 sqlalchemy
