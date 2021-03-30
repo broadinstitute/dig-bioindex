@@ -1,9 +1,9 @@
-from pqs.lib import source
+import flummox.source
 
 from ..lib.query import fetch
 
 
-class BioIndexDataSource(source.DataSource):
+class BioIndexDataSource(flummox.source.DataSource):
 
     def __init__(self, engine, config, indexes, restricted=None):
         """

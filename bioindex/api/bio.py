@@ -6,7 +6,7 @@ import itertools
 from pydantic import BaseModel
 from typing import List, Optional
 
-from pqs.script import Script, ScriptError
+from flummox.script import Script, ScriptError
 
 from ..lib import aws
 from ..lib import config

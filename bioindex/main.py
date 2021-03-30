@@ -9,7 +9,7 @@ import rich.table
 import sys
 import uvicorn
 
-from pqs.script import Script
+from flummox.script import Script
 
 from .lib import config
 from .lib import index
