@@ -51,7 +51,7 @@ class Config:
         """
         for k, v in env.items():
             if not os.getenv(k):
-                os.putenv(k, v)
+                os.environ[k] = v
 
     @property
     @config_var()
