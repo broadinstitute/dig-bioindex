@@ -14,7 +14,7 @@ from .lib import migrate
 from .lib import query
 
 # create the global console
-console = rich.console.Console()
+console = rich.console.Console(markup=False, emoji=False)
 
 
 @click.group()

@@ -137,6 +137,9 @@ def _run_query(engine, bucket, index, q, restricted):
         f'ORDER BY `key` ASC'
     )
 
+    # query parameter list
+    query_params = q
+
     # if the schema has a locus, parse the query parameter
     if index.schema.has_locus:
         if index.schema.locus_is_template:
@@ -149,7 +152,7 @@ def _run_query(engine, bucket, index, q, restricted):
         step_stop = (stop // Locus.LOCUS_STEP) * Locus.LOCUS_STEP
 
         # replace the last query parameter with the locus
-        q = [*q[:-1], chromosome, step_start, step_stop]
+        query_params = [*q[:-1], chromosome, step_start, step_stop]
 
         # match templated locus or overlapping loci
         def overlaps(row):
@@ -162,7 +165,7 @@ def _run_query(engine, bucket, index, q, restricted):
         record_filter = overlaps
 
     # execute the query
-    cursor = engine.execute(sql, *q)
+    cursor = engine.execute(sql, *query_params)
     rows = cursor.fetchall()
 
     # create a RecordSource for each entry in the database
