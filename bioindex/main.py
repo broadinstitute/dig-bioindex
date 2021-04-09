@@ -197,6 +197,9 @@ def main():
         handlers=[rich.logging.RichHandler(console=console)],
     )
 
+    # load the default .env file
+    dotenv.load_dotenv()
+
     # disable info logging for 3rd party modules
     logging.getLogger('botocore').setLevel(logging.CRITICAL)
     logging.getLogger('boto3').setLevel(logging.CRITICAL)

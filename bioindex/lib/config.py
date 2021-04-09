@@ -26,7 +26,17 @@ class Config:
     Configuration file.
     """
 
-    def __init__(self):
+    @staticmethod
+    def set_default_env(env):
+        """
+        Set default environment variables
+        """
+        for k, v in env.items():
+            if not os.getenv(k):
+                os.putenv(k, v)
+
+
+    def __init__(self, **kwargs):
         """
         Loads the configuration file using environment.
         """
@@ -34,9 +44,10 @@ class Config:
             secret = secret_lookup(self.bioindex_env)
 
             # set environment keys if not already set
-            for k, v in secret.items():
-                if not os.getenv(k):
-                    os.putenv(k, v)
+            Config.set_default_env(secret)
+
+        # use keyword arguments if environment not yet set
+        Config.set_default_env(kwargs)
 
         # validate required settings
         assert self.s3_bucket, 'BIOINDEX_S3_BUCKET not set in the environment'
