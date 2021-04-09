@@ -26,15 +26,6 @@ class Config:
     Configuration file.
     """
 
-    @staticmethod
-    def set_default_env(env):
-        """
-        Set default environment variables
-        """
-        for k, v in env.items():
-            if not os.getenv(k):
-                os.putenv(k, v)
-
 
     def __init__(self, **kwargs):
         """
@@ -53,6 +44,15 @@ class Config:
         assert self.s3_bucket, 'BIOINDEX_S3_BUCKET not set in the environment'
         assert self.rds_instance, 'BIOINDEX_RDS_INSTANCE not set in the environment'
         assert self.bio_schema, 'BIOINDEX_BIO_SCHEMA not set in the environment'
+
+    @staticmethod
+    def set_default_env(env):
+        """
+        Set environment variables, but only if not already set.
+        """
+        for k, v in env.items():
+            if not os.getenv(k):
+                os.putenv(k, v)
 
     @functools.cached_property
     @config_var()
