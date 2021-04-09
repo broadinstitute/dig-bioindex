@@ -2,6 +2,7 @@ import abc
 import itertools
 import locale
 import re
+import string
 
 
 class Locus(abc.ABC):
@@ -20,6 +21,10 @@ class Locus(abc.ABC):
 
     @abc.abstractmethod
     def __str__(self):
+        pass
+
+    @abc.abstractmethod
+    def region(self):
         pass
 
     @abc.abstractmethod
@@ -60,6 +65,12 @@ class SNPLocus(Locus):
         """
         return f'{self.chromosome}:{self.position}'
 
+    def region(self):
+        """
+        Returns the complete range of this locus: [position,position+1).
+        """
+        return self.chromosome, self.position, self.position+1
+
     def loci(self):
         """
         A generator of record loci. Reduce the total number of records by
@@ -92,6 +103,12 @@ class RegionLocus(Locus):
         """
         return f'{self.chromosome}:{self.start}-{self.stop}'
 
+    def region(self):
+        """
+        Returns the complete range of this locus: [start,stop).
+        """
+        return self.chromosome, self.start, self.stop
+
     def loci(self):
         """
         A generator of record loci.
@@ -113,14 +130,14 @@ def chromosomes():
     """
     Return an iterator of all chromosomes.
     """
-    return itertools.chain(range(1, 23), ['X', 'Y', 'XY', 'M', 'MT'])
+    return itertools.chain(range(1, 23), ['X', 'Y', 'XY', 'MT'])
 
 
 def parse_chromosome(s):
     """
     Parse and normalize a chromosome string, which may be prefixed with 'chr'.
     """
-    match = re.fullmatch(r'(?:chr)?([1-9]|1\d|2[0-2]|x|y|xy|m)', s, re.IGNORECASE)
+    match = re.fullmatch(r'(?:chr)?([1-9]|1\d|2[0-2]|x|y|xy|mt)', s, re.IGNORECASE)
 
     if not match:
         raise ValueError(f'Failed to match chromosome against {s}')
@@ -128,28 +145,70 @@ def parse_chromosome(s):
     return match.group(1).upper()
 
 
-def parse_columns(s):
+def parse_locus_builder(s):
     """
-    Parse a locus string and return the locus class, and column names
-    as a tuple. If not a valid locus string, returns None and a tuple
-    of all None.
+    Parse a locus string and return a function that - when passed a list
+    of column values - returns an instance of Locus. It also returns a
+    list of column names as a tuple that should be used as the inputs to
+    the locus creation function. If not a valid locus string, this returns
+    None, None.
     """
+    match = re.fullmatch(r'([^=]+)=(.+)', s)
+
+    # is this a field=template locus?
+    if match:
+        column, format_str = match.groups()
+
+        # constant fields expected in the template
+        fields = {
+            'chr': r'(?P<chr>(?:chr)?(?:[1-9]|1\d|2[0-2]|x|y|xy|mt))',
+            'pos': r'(?P<pos>[\d,]+)',
+            'start': r'(?P<start>[\d,]+)',
+            'stop': r'(?P<stop>[\d,]+)',
+        }
+
+        # build the template from the format and fields
+        template = string.Template(f'^{format_str}').substitute(fields)
+        pattern = re.compile(template, re.IGNORECASE)
+
+        # create a function that extracts the locus and returns it
+        def build_locus(value):
+            match = re.match(pattern, value)
+
+            if not match:
+                raise ValueError(f'Invalid locus: {value}')
+
+            # if there are 2 matched groups, then assume SNPLocus
+            groups = match.groups()
+            if len(groups) == 2:
+                return SNPLocus(match.group('chr'), match.group('pos'))
+            elif len(groups) == 3:
+                return RegionLocus(match.group('chr'), match.group('start'), match.group('stop'))
+            else:
+                raise ValueError(f'Invalid locus: {value}')
+
+        # custom build function and column name
+        return build_locus, (column,)
+
+    # extract the locus column names
     match = re.fullmatch(r'([^:]+):([^-]+)(?:-(.+))?', s)
 
+    # no match means not a locus
     if not match:
-        return None, (None, None, None)
+        return None, None
 
-    cols = match.groups()
+    chromosome, start, stop = match.groups()
 
     # return the class and columns parsed
-    return (RegionLocus if cols[2] else SNPLocus), cols
+    return (RegionLocus if stop else SNPLocus), (chromosome, start, stop)
 
 
-def parse_locus(s, gene_lookup_engine=False):
+def parse_region_string(s, gene_lookup_engine=False):
     """
-    Parse a locus string and return the chromosome, start, stop.
+    Parse a locus string and return the chromosome, start, stop, and
+    optional exact locus id.
     """
-    match = re.fullmatch(r'(?:chr)?([1-9]|1\d|2[0-2]|x|y|xy|m):([\d,]+)(?:([+/-])([\d,]+))?', s, re.IGNORECASE)
+    match = re.fullmatch(r'(?:chr)?([1-9]|1\d|2[0-2]|x|y|xy|mt):([\d,]+)(?:([+/-])([\d,]+))?', s, re.IGNORECASE)
 
     if not match:
         if not gene_lookup_engine:

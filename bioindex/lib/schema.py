@@ -1,22 +1,54 @@
 from sqlalchemy import Column, Index, Integer, BigInteger, MetaData, String, Table
 from sqlalchemy.exc import OperationalError
 
-from .locus import parse_columns
+from .locus import parse_locus_builder
 
 
 class Schema:
     """
     Each table has a particular schema associated with it that defines
-    how is is indexed. The two supported schemas are by locus and by
-    value.
+    how is is indexed. This is a compound, comma-separated list of fields
+    that are indexed together. The order of the fields matters and is
+    the order of the compound index.
 
-    Multiple indexes can be built per index. To do this, indexes are
-    separated by the '|' character. Some example schemas:
+    A locus index (e.g. chromosome:position or chromosome:start-stop) is
+    special an MUST appear last. Locus fields are actually multiple fields
+    combined together. It must either be a chromosome:position combination
+    or chromosome:start-stop combination, where each element is the name
+    of the field being endexed (e.g. "chr:pos" and "chr:start-end" are both
+    valid).
+
+    Optionally, instead of providing individual columns for a locus, a
+    column with a locus ID - which is able to be parsed to get the locus -
+    can be used instead. This has a benefits of allowing the locus ID to
+    also be used at query time and the locus format to be specific to the
+    data being indexed. To do this, the locus index must be a format of
+    column=template. The locus ID template format expects the following
+    fields to be present:
+
+    * $chr   - the chromosome
+    * $pos   - the SNP position if a SNPLocus
+    * $start - the start position if a RegionLocus
+    * $stop  - the end position if a RegionLocus
+
+    If the last character in the template is a * that indicates the rest
+    of the id can be ignored. For example, the following would be a valid
+    templates:
+
+      varId=$chr:$pos*
+      regionId=region_$chr:$start-$stop
+
+    Finally, multiple indexes can be built as well using different columns.
+    To do this, indexes are separated by the '|' character. Some example
+    schemas:
 
     "phenotype"
     "varId|dbSNP"
     "chr:pos"
+    "chrom:pos"
     "chromosome:start-stop"
+    "varId=$chr:$pos"
+    "annotation,region=region_$chr/$start/$stop"
     "phenotype,chromosome:start-stop"
     "consequence,chromosome,gene|transcript"
     """
@@ -45,8 +77,8 @@ class Schema:
             if self.locus_class is not None:
                 raise ValueError(f'Invalid schema (locus must be last): {self.schema_str}')
 
-            # is this "column" name a locus?
-            self.locus_class, self.locus_columns = parse_columns(column)
+            # parse the index "column" for a locus class builder and list of columns
+            self.locus_class, self.locus_columns = parse_locus_builder(column)
 
             # append either locus or value columns
             if self.locus_class:
@@ -75,6 +107,13 @@ class Schema:
         True if this schema has a locus in the index.
         """
         return self.locus_class is not None
+
+    @property
+    def locus_is_template(self):
+        """
+        True if this locus is a template extracted from a single column.
+        """
+        return len(self.locus_columns) == 1
 
     def table_def(self, name, meta):
         """
