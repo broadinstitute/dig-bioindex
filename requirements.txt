@@ -1,10 +1,13 @@
 aiofiles
+altair
 botocore
 boto3
 click
 python-dotenv
 fastapi
 orjson
+pandas
+pyarrow
 pydantic
 uvicorn[standard]
 pymysql
