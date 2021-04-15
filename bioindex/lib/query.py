@@ -1,7 +1,7 @@
 import concurrent.futures
 import re
 
-from .locus import Locus, parse_locus
+from .locus import Locus, parse_region_string
 from .reader import MultiRecordReader, RecordReader, RecordSource
 from .s3 import list_objects
 
@@ -137,26 +137,35 @@ def _run_query(engine, bucket, index, q, restricted):
         f'ORDER BY `key` ASC'
     )
 
+    # query parameter list
+    query_params = q
+
     # if the schema has a locus, parse the query parameter
     if index.schema.has_locus:
-        chromosome, start, stop = parse_locus(q[-1], gene_lookup_engine=engine)
+        if index.schema.locus_is_template:
+            chromosome, start, stop = index.schema.locus_class(q[-1]).region()
+        else:
+            chromosome, start, stop = parse_region_string(q[-1], gene_lookup_engine=engine)
 
         # positions are stepped, and need to be between stepped ranges
         step_start = (start // Locus.LOCUS_STEP) * Locus.LOCUS_STEP
         step_stop = (stop // Locus.LOCUS_STEP) * Locus.LOCUS_STEP
 
         # replace the last query parameter with the locus
-        q = [*q[:-1], chromosome, step_start, step_stop]
+        query_params = [*q[:-1], chromosome, step_start, step_stop]
 
-        # don't return rows that fail to overlap the locus
+        # match templated locus or overlapping loci
         def overlaps(row):
+            if index.schema.locus_is_template:
+                return row[index.schema.locus_columns[0]] == q[-1]
+
             return index.schema.locus_of_row(row).overlaps(chromosome, start, stop)
 
         # filter records read by locus
         record_filter = overlaps
 
     # execute the query
-    cursor = engine.execute(sql, *q)
+    cursor = engine.execute(sql, *query_params)
     rows = cursor.fetchall()
 
     # create a RecordSource for each entry in the database

@@ -18,7 +18,7 @@ from .lib import query
 from .lib import source
 
 # create the global console
-console = rich.console.Console()
+console = rich.console.Console(markup=False, emoji=False)
 
 
 @click.group()
@@ -226,6 +226,9 @@ def main():
         format='%(message)s',
         handlers=[rich.logging.RichHandler(console=console)],
     )
+
+    # load the default .env file
+    dotenv.load_dotenv()
 
     # disable info logging for 3rd party modules
     logging.getLogger('botocore').setLevel(logging.CRITICAL)
