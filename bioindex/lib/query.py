@@ -33,13 +33,17 @@ def fetch_multi(executor, engine, bucket, index, queries, restricted=None):
     return MultiRecordReader(readers)
 
 
-def fetch_all(bucket, s3_prefix, restricted=None):
+def fetch_all(bucket, s3_prefix, restricted=None, key_limit=None):
     """
     Scans for all the S3 files in the schema and creates a dummy cursor
     to read all the records from all the files. Returns a RecordReader
     of the results.
     """
-    s3_objects = list_objects(bucket, s3_prefix)
+    s3_objects = list_objects(bucket, s3_prefix, max_keys=key_limit)
+
+    # arbitrarily limit the number of keys
+    if key_limit:
+        s3_objects = [o[1] for o in zip(range(key_limit), s3_objects)]
 
     # create a RecordSource for each object
     sources = [RecordSource.from_s3_object(obj) for obj in s3_objects]

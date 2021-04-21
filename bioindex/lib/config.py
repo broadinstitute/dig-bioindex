@@ -84,6 +84,11 @@ class Config:
         return 'BIOINDEX_PORTAL_SCHEMA'
 
     @property
+    @config_var(default='schema.graphql')
+    def graphql_schema(self):
+        return 'BIOINDEX_GRAPHQL_SCHEMA'
+
+    @property
     @config_var(default=1 * 1024 * 1024, type=int)
     def response_limit(self):
         return 'BIOINDEX_RESPONSE_LIMIT'

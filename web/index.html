@@ -132,9 +132,8 @@
                                 </textarea>
                             </div>
                         </div>
-
-                        <div class="translate-middle mt-2" style="font-size:smaller">
-                            Powered by <a href="https://github.com/massung/flummox" target="_blank">Flummox</a>
+                        <div class="mt-1" style="font-size: smaller">
+                            Powered by <a href="https://graphql.org" target="_blank">GraphQL</a>
                         </div>
                     </div>
                 </div>
@@ -152,7 +151,7 @@
                                     Error
                                 </div>
                                 <div v-else-if="$store.state.results.data">
-                                    <span>Found {{$store.state.results.count.toLocaleString()}} {{!!plots.length ? 'plots' : 'records'}}</span>
+                                    <span>Found {{resultsCount.toLocaleString()}} records</span>
 
                                     <!-- check for continuation -->
                                     <a v-if="$store.state.results.continuation" class="text-sm" href="#" @click="$store.dispatch('loadMore')">
@@ -162,14 +161,9 @@
                             </div>
                         </div>
 
-                        <!-- JSON response or plots -->
+                        <!-- JSON response -->
                         <div class="card-body p-0" style="flex: 1 1 auto; min-height: 300px">
-                            <div v-show="plots">
-                                <div v-for="data in plots">
-                                    <img :src="data">
-                                </div>
-                            </div>
-                            <div v-show="!plots.length" class="border-top" style="height: 300px">
+                            <div class="border-top" style="height: 300px">
                                 <editor editor-id="results" :content="results" :read-only="true"></editor>
                             </div>
                         </div>
@@ -216,12 +210,9 @@
                 jsTime: 0.0,
                 traits: [],
                 results: {},
-                defaultQuery: "QUERY 't2d,slc30a8' FROM bio.associations",
+                defaultQuery: 'query {\n  TopAssociations(locus: {gene: "slc30a8"}) {\n    varId, dbSNP, phenotype, pValue, beta\n  }\n}',
                 examples: [
-                    ["Top Phenotypes Associated with Region", "QUERY 'slc30a8' FROM bio.`top-associations`\nSORT BY pValue\nDISTINCT BY phenotype KEEP FIRST"],
-                    ["Top Phenotype Associated with Genes", "CREATE genes AS CSV WITH HEADER << END\ngene\nslc30a8\npcsk9\napoc1\nEND\n\n# find the most associated phenotype per gene\nQUERY gene FROM bio.`gene-associations`\nSORT BY pValue\nDISTINCT BY gene KEEP FIRST"],
-                    ["SNPs Associated with Phenotype", "CREATE snps AS CSV WITH HEADER << END\ndbSNP\nrs7523141\nrs1260326\nrs147890266\nEND\n\n# look up the variant ID for each SNP\nQUERY '$dbSNP' FROM bio.variant\n\n# for each variant, get the associations across all phenotypes\nQUERY '$varId' FROM bio.`phewas-associations`\n\n# filter for phenotype and sort by p value\nFILTER phenotype = 'T2D'\nSORT BY pValue"],
-                    ["Enriched Variants in Gene", "QUERY 'ldl' FROM bio.`global-enrichment`\nSELECT *, SNPs / expectedSNPs AS fold\nFILTER fold > 3 INTO enrichment\n\n# find ABC regions in gene contributing to enrichment\nQUERY 'sort1' FROM bio.regions\nFILTER annotation='GenePrediction'\nJOIN WITH enrichment ON tissueId, annotation, method INTO regions\n\n# query variant associations\nQUERY 'ldl,sort1' FROM bio.associations\nFILTER pValue < 5e-4\n\n# cross with the regions and filter overlapping\nCROSS WITH regions\nFILTER position >= start AND position < end\n\n# keep only unique variants\nSORT BY pValue\nDISTINCT BY varId KEEP FIRST\n\n# select final columns\nSELECT varId, chromosome, position, phenotype, pValue, fold, tissueId, predictedTargetGene"],
+                    ['Globally Enriched Phenotypes', 'query {\n  GlobalEnrichment(phenotype: "ldl") {\n    annotation, tissue, SNPs, expectedSNPs\n  }\n}'],
                 ]
             },
             mutations: {
@@ -404,12 +395,17 @@
                 results() {
                     return JSON.stringify(this.$store.state.results, null, '    ');
                 },
-                plots() {
-                    var data = (this.$store.state.results || {}).data || [];
+                resultsCount() {
+                    if (!this.$store.state.results.count) {
+                        return 0;
+                    }
 
-                    return data
-                        .filter(r => !!r.mime && !!r.data)
-                        .map(r => `data:${r.mime};base64,${r.data}`);
+                    // graphql queries return multiple counts
+                    if (typeof this.$store.state.results.count === 'object') {
+                        return Object.values(this.$store.state.results.count).reduce((a,b) => a+b, 0);
+                    }
+
+                    return this.$store.state.results.count;
                 },
             },
             watch: {

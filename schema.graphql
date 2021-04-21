@@ -1,0 +1,447 @@
+schema {
+  query: Query
+}
+
+type AnnotatedRegions {
+  tissue: String
+  annotation: String
+  start: Int
+  chromosome: String
+  end: Int
+}
+
+type Associations {
+  pValue: Float
+  phenotype: String
+  consequence: String
+  stdErr: Float
+  alt: String
+  reference: String
+  beta: Float
+  chromosome: String
+  zScore: Float
+  position: Int
+  maf: Float
+  dbSNP: String
+  nearest: [String]
+  n: Float
+  varId: String
+}
+
+type Burden {
+  lof: String
+  lrtPred: String
+  eigenPcRawCodingRankscore: Float
+  maf: Float
+  polyphenHvarPred: String
+  metalrPred: String
+  fathmmPred: String
+  dannRankscore: Float
+  fathmmMklCodingPred: String
+  burdenBinId: String
+  caddRawRankscore: Float
+  metasvmPred: String
+  impact: String
+  proveanPred: String
+  gnomadGenomesPopmaxAf: Float
+  polyphenHdivPred: String
+  pick: Int
+  transcriptId: String
+  varId: String
+  mutationtasterPred: String
+  siftPred: String
+  gene: String
+  mCapScore: Float
+  vestRankscore: Float
+}
+
+type ClumpedMatrix {
+  clump: Int
+  pValue: Float
+  phenotype: String
+  consequence: String
+  stdErr: String
+  alt: String
+  reference: String
+  beta: Float
+  chromosome: String
+  zScore: Float
+  leadPhenotype: String
+  position: Int
+  maf: Float
+  dbSNP: String
+  nearest: [String]
+  n: Float
+  varId: String
+}
+
+type ClumpedVariants {
+  phenotype: String
+  zScore: Float
+  maf: Float
+  dbSNP: String
+  nearest: [String]
+  consequence: String
+  beta: Float
+  n: Float
+  alt: String
+  chromosome: String
+  clumpEnd: Int
+  leadSNP: Boolean
+  varId: String
+  clump: Int
+  pValue: Float
+  reference: String
+  clumpStart: Int
+  position: Int
+  stdErr: String
+}
+
+type CredibleRegions {
+  phenotype: String
+  dataset: String
+  tissue: String
+  annotation: String
+  method: String
+  tissueId: String
+  predictedTargetGene: String
+  start: Int
+  targetStart: Int
+  targetEnd: Int
+  chromosome: String
+  end: Int
+  credibleSetId: String
+}
+
+type CredibleSets {
+  dataset: String
+  phenotype: String
+  start: Int
+  chromosome: String
+  end: Int
+  credibleSetId: String
+}
+
+type CredibleVariants {
+  dataset: String
+  pValue: Float
+  phenotype: String
+  posteriorProbability: Float
+  stdErr: Float
+  alt: String
+  reference: String
+  chromosome: String
+  maf: Float
+  multiAllelic: Boolean
+  position: Int
+  eaf: Float
+  credibleSetId: String
+  varId: String
+  ancestry: String
+}
+
+type DatasetAssociations {
+  dataset: String
+  pValue: Float
+  phenotype: String
+  consequence: String
+  stdErr: Float
+  alt: String
+  reference: String
+  beta: Float
+  chromosome: String
+  zScore: Float
+  oddsRatio: Float
+  multiAllelic: Boolean
+  position: Int
+  dbSNP: String
+  nearest: [String]
+  n: Int
+  varId: String
+  ancestry: String
+}
+
+type Gene {
+  type: String
+  start: Int
+  chromosome: String
+  name: String
+  end: Int
+  source: String
+}
+
+type GeneAssociations {
+  pValue: Float
+  phenotype: String
+  type: String
+  start: Int
+  chromosome: String
+  nParam: Int
+  gene: String
+  subjects: Int
+  end: Int
+  zStat: Float
+}
+
+type GeneAssociations52k {
+  pValue: Float
+  dataset: String
+  phenotype: String
+  masks: [GeneAssociations52kMasks]
+  beta: Float
+  gene: String
+}
+
+type GeneAssociations52kMasks {
+  pValue: Float
+  singleVariants: Int
+  combinedAF: Float
+  passingVariants: Int
+  beta: Float
+  mask: String
+  n: Int
+  stdErr: Float
+}
+
+type GeneFinder {
+  pValue: Float
+  phenotype: String
+  type: String
+  start: Int
+  chromosome: String
+  nParam: Int
+  gene: String
+  subjects: Int
+  end: Int
+  zStat: Float
+}
+
+type GeneVariants {
+  dataset: String
+  phenotype: String
+  type: String
+  heterozygousCases: Int
+  heterozygousControls: Int
+  start: Int
+  alleleCountControls: Int
+  maf: Float
+  dbSNP: String
+  nearest: [String]
+  consequence: String
+  homozygousCases: Int
+  alleleCount: Int
+  alleleCountCases: Int
+  source: String
+  alt: String
+  chromosome: String
+  homozygousControls: Int
+  multiAllelic: Boolean
+  varId: String
+  reference: String
+  gene: String
+  position: Int
+  end: Int
+  ancestry: String
+}
+
+type Genes {
+  type: String
+  start: Int
+  chromosome: String
+  name: String
+  end: Int
+  source: String
+}
+
+type GlobalAssociations {
+  phenotype: String
+  zScore: Float
+  maf: Float
+  dbSNP: String
+  nearest: [String]
+  consequence: String
+  beta: Float
+  n: Float
+  alt: String
+  chromosome: String
+  clumpEnd: Int
+  leadSNP: Boolean
+  varId: String
+  clump: Int
+  pValue: Float
+  reference: String
+  clumpStart: Int
+  position: Int
+  stdErr: String
+}
+
+type GlobalEnrichment {
+  pValue: Float
+  phenotype: String
+  tissue: String
+  annotation: String
+  SNPs: Int
+  expectedSNPs: Float
+  ancestry: String
+}
+
+input LocusInput {
+  gene: String
+  chromosome: String
+  position: Int
+  start: Int
+  end: Int
+}
+
+type PhewasAssociations {
+  phenotype: String
+  pValue: Float
+  stdErr: String
+  beta: Float
+  chromosome: String
+  position: Int
+  n: Float
+  varId: String
+}
+
+type Query {
+  Gene(name: ID): [Gene]
+  Genes(locus: LocusInput): [Genes]
+  GlobalEnrichment(phenotype: ID): [GlobalEnrichment]
+  Associations(phenotype: ID, locus: LocusInput): [Associations]
+  TopAssociations(locus: LocusInput): [TopAssociations]
+  AnnotatedRegions(annotation: ID, locus: LocusInput): [AnnotatedRegions]
+  CredibleSets(phenotype: ID, locus: LocusInput): [CredibleSets]
+  CredibleVariants(phenotype: ID, credibleSetId: ID): [CredibleVariants]
+  CredibleRegions(phenotype: ID, credibleSetId: ID): [CredibleRegions]
+  TranscriptionFactors(varId: ID): [TranscriptionFactors]
+  TranscriptConsequences(varId: ID): [TranscriptConsequences]
+  PhewasAssociations(varId: ID): [PhewasAssociations]
+  DatasetAssociations(dataset: ID, phenotype: ID): [DatasetAssociations]
+  Variant(varId: ID, dbSNP: ID): [Variant]
+  GlobalAssociations(phenotype: ID): [GlobalAssociations]
+  GeneAssociations(gene: ID): [GeneAssociations]
+  VariantDatasetAssociations(varId: ID): [VariantDatasetAssociations]
+  GeneAssociations52k(gene: ID): [GeneAssociations52k]
+  GeneFinder(phenotype: ID): [GeneFinder]
+  Burden(gene: ID, burdenBinId: ID): [Burden]
+  GeneVariants(gene: ID): [GeneVariants]
+  ClumpedVariants(phenotype: ID, clump: ID): [ClumpedVariants]
+  ClumpedMatrix(leadPhenotype: ID, phenotype: ID): [ClumpedMatrix]
+  TissueRegions(tissue: ID, locus: LocusInput): [TissueRegions]
+  Regions(locus: LocusInput): [Regions]
+}
+
+type Regions {
+  tissue: String
+  annotation: String
+  start: Int
+  chromosome: String
+  end: Int
+}
+
+type TissueRegions {
+  tissue: String
+  annotation: String
+  start: Int
+  chromosome: String
+  end: Int
+}
+
+type TopAssociations {
+  phenotype: String
+  zScore: Float
+  maf: Float
+  dbSNP: String
+  nearest: [String]
+  alignment: Float
+  consequence: String
+  beta: Float
+  n: Float
+  alt: String
+  chromosome: String
+  clumpEnd: Int
+  leadSNP: Boolean
+  varId: String
+  clump: Int
+  pValue: Float
+  reference: String
+  clumpStart: Int
+  position: Int
+  stdErr: String
+}
+
+type TranscriptConsequences {
+  geneId: String
+  lrtPred: String
+  ccds: String
+  distance: Int
+  vestScore: String
+  polyphenHvarPred: String
+  polyphenScore: Float
+  metalrPred: String
+  hgncId: Int
+  fathmmPred: String
+  consequenceTerms: [String]
+  polyphenPrediction: String
+  cdnaEnd: Int
+  dannRankscore: Float
+  vestRankscore: Float
+  eigenPcRawCodingRankscore: Float
+  transcriptId: String
+  mCapScore: Float
+  caddRawRankscore: Float
+  codons: String
+  cdnaStart: Int
+  metasvmPred: String
+  biotype: String
+  impact: String
+  flags: [String]
+  cdsStart: Int
+  siftPrediction: String
+  proveanPred: String
+  gnomadGenomesPopmaxAf: Float
+  polyphenHdivPred: String
+  pick: Int
+  siftScore: Float
+  cdsEnd: Int
+  variantAllele: String
+  varId: String
+  proteinEnd: Int
+  proteinStart: Int
+  geneSymbolSource: String
+  mutationtasterPred: String
+  siftPred: String
+  aminoAcids: String
+  geneSymbol: String
+  strand: Int
+  fathmmMklCodingPred: String
+}
+
+type TranscriptionFactors {
+  positionWeightMatrix: String
+  altScore: Float
+  refScore: Float
+  dbSNP: String
+  delta: Float
+  strand: String
+  varId: String
+}
+
+type Variant {
+  consequence: String
+  maf: Float
+  dbSNP: String
+  nearest: [String]
+  varId: String
+}
+
+type VariantDatasetAssociations {
+  dataset: String
+  pValue: Float
+  phenotype: String
+  beta: Float
+  n: Float
+  varId: String
+}
+

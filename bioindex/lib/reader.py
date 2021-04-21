@@ -91,6 +91,10 @@ class RecordReader:
                     length=source.end - source.start,
                 )
 
+                # handle a bad case where the content failed to be read
+                if content is None:
+                    raise FileNotFoundError(source.key)
+
                 for line in content.iter_lines():
                     self.bytes_read += len(line) + 1  # eol character
 
@@ -109,7 +113,9 @@ class RecordReader:
 
             # handle database out of sync with S3
             except botocore.exceptions.ClientError:
-                logging.error('Failed to read table %s; some records missing', source.key)
+                logging.error('Failed to read key %s; some records missing', source.key)
+            except FileNotFoundError:
+                logging.error('Failed to read key %s; some records missing', source.key)
 
     @property
     def at_end(self):

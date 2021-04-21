@@ -70,7 +70,7 @@ def relative_key(key, common_prefix, strip_uuid=True):
     return simple_key
 
 
-def list_objects(bucket, prefix, only=None, exclude=None):
+def list_objects(bucket, prefix, only=None, exclude=None, max_keys=None):
     """
     Generator function that returns all the objects in S3 with a given prefix.
     If the prefix is an absolute path (beginning with "s3://" then the bucket
@@ -80,6 +80,10 @@ def list_objects(bucket, prefix, only=None, exclude=None):
         'Bucket': bucket,
         'Prefix': prefix.strip('/') + '/',
     }
+
+    # allow for a limit to be placed on the number of objects returned
+    if max_keys:
+        kwargs['MaxKeys'] = max_keys
 
     # initial call
     resp = s3_client.list_objects_v2(**kwargs)

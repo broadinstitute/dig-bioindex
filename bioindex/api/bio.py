@@ -6,16 +6,14 @@ import itertools
 from pydantic import BaseModel
 from typing import List, Optional
 
-from flummox.script import Script, ScriptError
-
 from ..lib import aws
 from ..lib import config
 from ..lib import continuation
 from ..lib import index
+from ..lib import ql
 from ..lib import query
 
 from ..lib.auth import restricted_keywords
-from ..lib.source import BioIndexDataSource
 from ..lib.utils import nonce, profile, profile_async
 
 # load dot files and configuration
@@ -35,6 +33,13 @@ MATCH_LIMIT = CONFIG.match_limit
 
 # multi-query executor
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
+
+# by default, there is no graphql schema
+gql_schema = None
+
+# if the graphql schema file exists, load it
+if CONFIG.graphql_schema:
+    gql_schema = ql.load_schema(engine, CONFIG.s3_bucket, CONFIG.graphql_schema)
 
 
 class Query(BaseModel):
@@ -240,34 +245,28 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
 
 
 @router.post('/query', response_class=fastapi.responses.ORJSONResponse)
-async def api_query_script(req: fastapi.Request):
+async def api_query_ql(req: fastapi.Request):
     """
-    Treat the body of the request as a PQS script. Execute it and return
-    the resulting dataframe as records.
+    Treat the body of the POST as a GraphQL query to be resolved.
     """
-    s = Script()
-
-    # discover what the user doesn't have access to see
-    restricted, auth_s = profile(restricted_keywords, portal, req)
+    #restricted, auth_s = profile(restricted_keywords, portal, req)
     body = await req.body()
 
-    # register the bioindex as a data source
-    s.context.register('bio', BioIndexDataSource(engine, CONFIG, INDEXES, restricted))
-
-    # don't allow local reading, connection, or execution
-    s.context.allow_read = False
-    s.context.allow_connect = False
-    s.context.allow_run = False
-
     try:
-        s.loads(body.decode(encoding='utf-8'))
+        query = body.decode(encoding='utf-8')
+
+        #
+        async def run_query():
+            return gql_schema.execute(query)
 
         # run the script asynchronously
-        co = asyncio.wait_for(s.run_async(), timeout=CONFIG.script_timeout)
+        co = asyncio.wait_for(run_query(), timeout=CONFIG.script_timeout)
 
         # wait for it to complete
-        df, query_s = await profile_async(co)
-        records = df.to_dict('records') if df is not None else []
+        result, query_s = await profile_async(co)
+
+        if result.errors:
+            raise fastapi.HTTPException(status_code=400, detail=str(result.errors[0]))
 
         # send the response
         return {
@@ -275,65 +274,12 @@ async def api_query_script(req: fastapi.Request):
                 'query': query_s,
             },
             'q': body,
-            'count': len(records),
-            'data': records,
+            'count': {k: len(v) for k, v in result.data.items()},
+            'data': result.data,
             'nonce': nonce(),
         }
     except asyncio.TimeoutError:
         raise fastapi.HTTPException(status_code=408, detail=f'Script execution timed out after {CONFIG.script_timeout} seconds')
-    except ScriptError as ex:
-        raise fastapi.HTTPException(status_code=400, detail=str(ex))
-    except SyntaxError as ex:
-        raise fastapi.HTTPException(status_code=400, detail=str(ex))
-    except KeyError:
-        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
-    except ValueError as e:
-        raise fastapi.HTTPException(status_code=400, detail=str(e))
-
-
-#@router.post('/query/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_query_index_multi(index: str, qs: Query, req: fastapi.Request):
-    """
-    Issue multiple queries in parallel to the same index using a
-    JSON body in a POST request. The records are returned together
-    in whatever order the queries are completed. If the total number
-    of bytes read exceeds a pre-configured server limit, then a 413
-    response will be returned.
-    """
-    try:
-        i = INDEXES[index]
-
-        # decode the body for query parameters
-        queries = [_parse_query(q, required=True) for q in qs.q]
-        limit = qs.limit
-        fmt = qs.fmt
-
-        # discover what the user doesn't have access to see
-        restricted, auth_s = profile(restricted_keywords, portal, req)
-
-        # lookup the schema for this index and perform the query
-        reader, query_s = profile(
-            query.fetch_multi,
-            executor,
-            engine,
-            CONFIG.s3_bucket,
-            i,
-            queries,
-            restricted=restricted,
-        )
-
-        # with no limit, will this request exceed the limit?
-        if not limit and reader.bytes_total > RESPONSE_LIMIT_MAX:
-            raise fastapi.HTTPException(status_code=413)
-
-        # use a zip to limit the total number of records that will be read
-        if limit is not None:
-            reader.set_limit(limit)
-
-        # the results of the query
-        return _fetch_records(reader, index, queries, fmt, query_s=auth_s + query_s)
-    except KeyError:
-        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 

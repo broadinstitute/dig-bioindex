@@ -6,16 +6,13 @@ import pymysql
 import rich.console
 import rich.logging
 import rich.table
-import sys
 import uvicorn
-
-from flummox.script import Script
 
 from .lib import config
 from .lib import index
 from .lib import migrate
+from .lib import ql
 from .lib import query
-from .lib import source
 
 # create the global console
 console = rich.console.Console(markup=False, emoji=False)
@@ -136,31 +133,6 @@ def cli_query(cfg, index_name, q):
         console.print(orjson.dumps(record).decode('utf-8'))
 
 
-@click.command(name='script')
-@click.pass_obj
-def cli_script(cfg):
-    engine = migrate.migrate(cfg)
-
-    # get all the indexes as a dictionary
-    indexes = dict((i.name, i) for i in index.Index.list_indexes(engine))
-
-    # create a script
-    s = Script()
-
-    # register the bioindex as a data source
-    s.context.register('bio', source.BioIndexDataSource(engine, cfg, indexes))
-
-    # parse the script
-    s.loads(sys.stdin.read())
-
-    # run it
-    df = s.run()
-
-    # dump all the records
-    for record in df.to_dict('records'):
-        console.print(orjson.dumps(record).decode('utf-8'))
-
-
 @click.command(name='all')
 @click.argument('index_name')
 @click.pass_obj
@@ -205,16 +177,45 @@ def cli_match(cfg, index_name, q):
         console.log(f'Index {index_name} is not indexed by value!')
 
 
+@click.command(name='build-schema')
+@click.option('--save', '-s', is_flag=True)
+@click.option('--out', '-o', type=str, default=None)
+@click.argument('indexes', nargs=-1)
+@click.pass_obj
+def cli_build_schema(cfg, save, out, indexes):
+    engine = migrate.migrate(cfg)
+
+    # attempt to build the graphql object class for this index
+    schema = ql.build_schema(engine, cfg.s3_bucket, subset=indexes)
+
+    # file the output the schema to
+    out_file = out or cfg.graphql_schema
+
+    # special case: allow asserting output to stdout (via --out "-")
+    if out_file == '-':
+        out_file = None
+
+    # output the schema to a file
+    if save and out_file:
+        logging.info('Writing schema to %s...', out_file)
+
+        # write the schema file
+        with open(out_file, mode='w') as fp:
+            print(str(schema), file=fp)
+    else:
+        print(schema)
+
+
 # initialize the cli
 cli.add_command(cli_serve)
 cli.add_command(cli_create)
 cli.add_command(cli_list)
 cli.add_command(cli_index)
 cli.add_command(cli_query)
-cli.add_command(cli_script)
 cli.add_command(cli_all)
 cli.add_command(cli_count)
 cli.add_command(cli_match)
+cli.add_command(cli_build_schema)
 
 
 def main():
