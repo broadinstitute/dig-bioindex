@@ -7,6 +7,7 @@ setup(
         'bioindex',
         'bioindex.api',
         'bioindex.lib',
+        'bioindex.client',
     ],
     py_modules=[
         'bioindex.main',
@@ -14,12 +15,15 @@ setup(
     ],
     install_requires=[
         'aiofiles>=0.6',
+        'altair>=4.1',
         'botocore>=1.20',
         'boto3>=1.17',
         'click>=7.0',
         'fastapi>=0.60',
         'graphql-core>=3.0',
         'orjson>=3.5',
+        'pandas>=1.2',
+        'pyarrow>=3.0',
         'pydantic>=1.4',
         'pymysql>=0.10',
         'python-dotenv>=0.15',
