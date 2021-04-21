@@ -245,6 +245,31 @@ def parse_region_string(s, gene_lookup_engine=False):
         locale.setlocale(locale.LC_ALL, cur_locale)
 
 
+def build_region_str(gene=None, chromosome=None, position=None, start=None, end=None):
+    """
+    Given optional keywords, build and return a region string.
+    """
+    if gene:
+        return gene
+
+    # if no gene is present, then the chromosome is required
+    if not chromosome:
+        raise ValueError('Missing chromosome parameter; gene or chromosome required')
+
+    # single base position
+    if position:
+        if start or end:
+            raise ValueError('Cannot specify both position and start/end in locus')
+
+        return f'{chromosome}:{position}'
+
+    # range position
+    if not start or not end:
+        raise ValueError('Either position or start and end must be specified')
+
+    return f'{chromosome}:{start}-{end}'
+
+
 def request_gene_locus(engine, q):
     """
     Use the __Genes table to lookup the region of a gene.

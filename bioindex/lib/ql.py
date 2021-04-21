@@ -1,46 +1,21 @@
-import graphene
 import graphql
+import graphql.utilities
 import logging
 import os.path
 
 from .index import Index
 from .query import fetch, fetch_all
+from .locus import build_region_str
 from .utils import pascal_case_str
 
 
-class LocusInput(graphene.InputObjectType):
-    """
-    A generic locus input. Every field is optional, but based on the
-    index might fail if not provided.
-    """
-    gene = graphene.String()
-    chromosome = graphene.String()
-    position = graphene.Int()
-    start = graphene.Int()
-    end = graphene.Int()
-
-    def __str__(self):
-        """
-        Returns the region string for this input.
-        """
-        if self.gene:
-            return self.gene
-
-        # if the gene isn't specified, then chromosome is required
-        if not self.chromosome:
-            raise ValueError('Missing chromosome in locus input')
-
-        # single base position
-        if self.position:
-            if self.start or self.end:
-                raise ValueError('Cannot specify both position and start/end in locus')
-            return f'{self.chromosome}:{self.position}'
-
-        # range position
-        if not self.start or not self.end:
-            raise ValueError('Either position or start+end must be specified')
-
-        return f'{self.chromosome}:{self.start}-{self.end}'
+LocusInput = graphql.GraphQLInputObjectType('LocusInput', {
+    'gene': graphql.GraphQLInputField(graphql.GraphQLString),
+    'chromosome': graphql.GraphQLInputField(graphql.GraphQLString),
+    'position': graphql.GraphQLInputField(graphql.GraphQLInt),
+    'start': graphql.GraphQLInputField(graphql.GraphQLInt),
+    'end': graphql.GraphQLInputField(graphql.GraphQLInt),
+})
 
 
 def load_schema(engine, bucket, schema_file):
@@ -50,13 +25,15 @@ def load_schema(engine, bucket, schema_file):
     if not os.path.isfile(schema_file):
         return None
 
+    # parse the schema
     with open(schema_file) as fp:
-        source = fp.read()
-        schema = graphql.build_schema(source)
+        schema = graphql.utilities.build_schema(fp.read())
 
-        # TODO: add resolvers for each index
+    # add resolvers for each index
+    for i in Index.list_indexes(engine):
+        schema.query_type.fields[i.table.name].resolve = ql_resolver(engine, bucket, i)
 
-        return schema
+    return schema
 
 
 def build_schema(engine, bucket, subset=None):
@@ -74,16 +51,19 @@ def build_schema(engine, bucket, subset=None):
                 resolver = ql_resolver(engine, bucket, i)
 
                 # create the field for this table, with arguments and resolver
-                fields[f'{i.table.name}'] = graphene.Field(
-                    graphene.List(output_type),
+                fields[f'{i.table.name}'] = graphql.GraphQLField(
+                    graphql.GraphQLList(output_type),
                     args=args,
-                    resolver=resolver,
+                    resolve=resolver,
                 )
             except (ValueError, AssertionError) as ex:
                 logging.error('%s; skipping %s...', str(ex), i.name)
 
-    # build the root query object
-    return graphene.Schema(query=type('Query', (graphene.ObjectType,), fields))
+    # construct the query object for the root object type
+    root = graphql.GraphQLObjectType('Query', fields)
+
+    # build the schema
+    return graphql.GraphQLSchema(query=root)
 
 
 def build_index_type(engine, bucket, index, n=500):
@@ -106,19 +86,19 @@ def build_index_type(engine, bucket, index, n=500):
     args = {}
     for col in index.schema.key_columns:
         for field in col.split('|'):
-            args[field] = graphene.ID()
+            args[field] = graphql.GraphQLID
 
     # does this index's schema have a locus argument?
     if index.schema.has_locus:
         if index.schema.locus_is_template:
             name = index.schema.locus_columns[0]
-            field_type = graphene.ID
+            field_type = graphql.GraphQLID
         else:
             name = 'locus'
             field_type = LocusInput
 
         # add the locus field
-        args[name] = field_type()
+        args[name] = field_type
 
     return obj_type, args
 
@@ -139,12 +119,13 @@ def build_object_type(name, objs):
     fields = {}
     for k, xs in columns.items():
         this_type = ql_type(name, k, xs)
+        field_name = pascal_case_str(k)
 
         # create the field for this column
-        fields[k] = graphene.Field(this_type, name=pascal_case_str(k))
+        fields[field_name] = graphql.GraphQLField(this_type)
 
     # build the final object
-    return type(name, (graphene.ObjectType,), fields)
+    return graphql.GraphQLObjectType(name, fields)
 
 
 def ql_type(parent_name, field, xs):
@@ -164,17 +145,17 @@ def ql_type(parent_name, field, xs):
 
     # if the base type is a list, wrap the base type
     if this_type == list:
-        return graphene.List(ql_type(parent_name, field, [y for ys in xs for y in ys]))
+        return graphql.GraphQLList(ql_type(parent_name, field, [y for ys in xs for y in ys]))
 
     # scalar type
     if this_type == bool:
-        return graphene.Boolean
+        return graphql.GraphQLBoolean
     elif this_type == int:
-        return graphene.Int
+        return graphql.GraphQLInt
     elif this_type == float:
-        return graphene.Float
+        return graphql.GraphQLFloat
     elif this_type == str:
-        return graphene.String
+        return graphql.GraphQLString
 
     # unknown, or can't be represented
     raise ValueError(f'Cannot define GraphQL type for {field}')
@@ -198,12 +179,12 @@ def ql_resolver(engine, bucket, index):
             if index.schema.locus_is_template:
                 q.append(kwargs[index.schema.locus_columns[0]])
             else:
-                q.append(str(kwargs['locus']))
+                q.append(build_region_str(**kwargs['locus']))
 
         # execute the query, get the resulting reader
         reader = fetch(engine, bucket, index, q)
 
-        # materialize all the records into a single list
+        # materialize all the records
         return list(reader.records)
 
     return resolver

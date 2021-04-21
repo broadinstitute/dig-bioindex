@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import fastapi
+import graphql
 import itertools
 
 from pydantic import BaseModel
@@ -252,15 +253,18 @@ async def api_query_ql(req: fastapi.Request):
     #restricted, auth_s = profile(restricted_keywords, portal, req)
     body = await req.body()
 
+    # ensure the graphql schema is loaded
+    if gql_schema is None:
+        raise fastapi.HTTPException(status_code=503, detail='GraphQL Schema not built')
+
     try:
         query = body.decode(encoding='utf-8')
 
-        #
-        async def run_query():
-            return gql_schema.execute(query)
-
-        # run the script asynchronously
-        co = asyncio.wait_for(run_query(), timeout=CONFIG.script_timeout)
+        # execute the query asynchronously using the schema
+        co = asyncio.wait_for(
+            graphql.graphql(gql_schema, query),
+            timeout=CONFIG.script_timeout,
+        )
 
         # wait for it to complete
         result, query_s = await profile_async(co)
@@ -279,7 +283,7 @@ async def api_query_ql(req: fastapi.Request):
             'nonce': nonce(),
         }
     except asyncio.TimeoutError:
-        raise fastapi.HTTPException(status_code=408, detail=f'Script execution timed out after {CONFIG.script_timeout} seconds')
+        raise fastapi.HTTPException(status_code=408, detail=f'Query execution timed out after {CONFIG.script_timeout} seconds')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 

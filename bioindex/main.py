@@ -1,5 +1,6 @@
 import click
 import dotenv
+import graphql.utilities
 import logging
 import orjson
 import pymysql
@@ -195,15 +196,18 @@ def cli_build_schema(cfg, save, out, indexes):
     if out_file == '-':
         out_file = None
 
+    # output the schema to a string
+    schema_str = graphql.utilities.print_schema(schema)
+
     # output the schema to a file
     if save and out_file:
         logging.info('Writing schema to %s...', out_file)
 
         # write the schema file
         with open(out_file, mode='w') as fp:
-            print(str(schema), file=fp)
+            print(schema_str, file=fp)
     else:
-        print(schema)
+        print(schema_str)
 
 
 # initialize the cli
