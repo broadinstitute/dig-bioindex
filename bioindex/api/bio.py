@@ -245,6 +245,17 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
+@router.get('/schema', response_class=fastapi.responses.PlainTextResponse)
+async def api_schema(req: fastapi.Request):
+    """
+    Returns the GraphQL schema definition (SDL).
+    """
+    if gql_schema is None:
+        raise fastapi.HTTPException(status_code=503, detail='GraphQL Schema not built')
+
+    return graphql.utilities.print_schema(gql_schema)
+
+
 @router.post('/query', response_class=fastapi.responses.ORJSONResponse)
 async def api_query_ql(req: fastapi.Request):
     """
