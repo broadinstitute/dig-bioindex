@@ -4,6 +4,7 @@ boto3
 click
 python-dotenv
 fastapi
+graphql-core
 orjson
 pydantic
 uvicorn[standard]
