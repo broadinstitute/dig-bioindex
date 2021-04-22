@@ -2,12 +2,15 @@ import altair as alt
 import math
 
 
-# attempt to use the altair_viewer module for jupyter if it exists
 try:
-    import altair_viewer
+    # use the altair_viewer module if it exists and we're in a notebook
+    from IPython import get_ipython
 
-    # enable it for embedding inline
-    alt.renderers.enable('altair_viewer', inline=True)
+    if get_ipython().__class__.__name__ == 'ZMQInteractiveShell':
+        import altair_viewer
+
+        # enable it for embedding inline
+        alt.renderers.enable('altair_viewer', inline=True)
 except ModuleNotFoundError:
     pass
 
