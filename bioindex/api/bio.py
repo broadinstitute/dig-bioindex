@@ -257,7 +257,7 @@ async def api_schema(req: fastapi.Request):
 
 
 @router.post('/query', response_class=fastapi.responses.ORJSONResponse)
-async def api_query_ql(req: fastapi.Request):
+async def api_query_gql(req: fastapi.Request):
     """
     Treat the body of the POST as a GraphQL query to be resolved.
     """
@@ -281,7 +281,10 @@ async def api_query_ql(req: fastapi.Request):
         result, query_s = await profile_async(co)
 
         if result.errors:
-            raise fastapi.HTTPException(status_code=400, detail=str(result.errors[0]))
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=[str(e) for e in result.errors],
+            )
 
         # send the response
         return {

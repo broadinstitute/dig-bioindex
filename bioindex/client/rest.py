@@ -2,29 +2,7 @@ import functools
 import graphql.utilities
 import pandas as pd
 import requests
-import types
 import urllib.parse
-
-
-class Domain(types.SimpleNamespace):
-    """
-    A BioIndex portal domain, which filters phenotypes and datasets.
-    """
-    pass
-
-
-class Phenotype(types.SimpleNamespace):
-    """
-    Trait names (IDs), descriptions, and data.
-    """
-    pass
-
-
-class Dataset(types.SimpleNamespace):
-    """
-    Individual dataset statistics.
-    """
-    pass
 
 
 class RESTClient:
@@ -44,9 +22,9 @@ class RESTClient:
         self.portal = f'{self.base_url}/api/portal'
 
         # the currently selected domain filter
-        self.domain = None
+        self._domain = None
 
-    def _fetch_portal(self, req, q=None, cls=types.SimpleNamespace):
+    def _fetch_portal(self, req, q=None):
         """
         Perform a portal query.
         """
@@ -56,33 +34,72 @@ class RESTClient:
         # fetch the set of data
         data = requests.get(f'{self.portal}/{req}').json()['data']
 
-        # convert to namespaces
-        return [cls(**i) for i in data]
+        # build a dataframe
+        return pd.DataFrame(data)
 
     @functools.cached_property
     def domains(self):
         """
         Get all available domains.
         """
-        return self._fetch_portal('groups', cls=Domain)
+        return self._fetch_portal('groups')
 
-    def phenotypes(self, domain=None):
+    @functools.cached_property
+    def phenotypes(self):
         """
         Get all available phenotypes.
         """
-        domain = domain or self.domain
+        return self._fetch_portal('phenotypes', q=self._domain and self._domain['name'])
 
-        # lookup all the phenotypes by name
-        items = self._fetch_portal('phenotypes', q=domain and domain.name, cls=Phenotype)
-
-        # sort the phenotypes by pretty name
-        return sorted(items, key=lambda x: x.description)
-
-    def datasets(self, domain=None):
+    @functools.cached_property
+    def datasets(self):
         """
         Get all available datasets.
         """
-        return self._fetch_portal('datasets', q=domain or self.domain, cls=Dataset)
+        return self._fetch_portal('datasets', q=self._domain and self._domain['name'])
+
+    def clear_cache(self):
+        """
+        Remove cached dataframes for phenotypes and datasets. This is
+        done automatically whenever the selected domain changes.
+        """
+        if hasattr(self, 'phenotypes'):
+            del self.phenotypes
+        if hasattr(self, 'datasets'):
+            del self.datasets
+
+    @property
+    def domain(self):
+        """
+        Returns the dictionary representing the selected domain.
+        """
+        return self._domain
+
+    @domain.setter
+    def domain(self, name):
+        """
+        Sets the selected domain, choosing it by name. To clear the selected
+        domain, use the deleter property.
+        """
+        self._domain = self.domains.set_index('name', drop=False).loc[name].to_dict()
+        self.clear_cache()
+
+    @domain.deleter
+    def domain(self):
+        """
+        Clear the selected domain.
+        """
+        self._domain = None
+        self.clear_cache()
+
+    def merge_phenotypes(self, df, on='phenotype', **merge_kwargs):
+        """
+        Merge and return a new DataFrame with known phenotypes.
+        """
+        df = df.merge(self.phenotypes, left_on='phenotype', right_on='name', **merge_kwargs)
+        df = df.drop('name', axis=1)
+
+        return df
 
 
 class GraphQLClient(RESTClient):
@@ -112,5 +129,9 @@ class GraphQLClient(RESTClient):
         resp = requests.post(f'{self.bio}/query', data=q)
         data = resp.json()['data']
 
+        # special case, return a single frame
+        if len(data) == 1:
+            return pd.DataFrame(next(iter(data.values())))
+
         # values are in insertion order of the query
-        return [pd.DataFrame(rs) for rs in data.values()]
+        return tuple(pd.DataFrame(rs) for rs in data.values())
