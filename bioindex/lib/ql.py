@@ -9,7 +9,7 @@ from .locus import build_region_str
 from .utils import pascal_case_str
 
 
-LocusInput = graphql.GraphQLInputObjectType('LocusInput', {
+LocusInput = graphql.GraphQLInputObjectType('Locus', {
     'gene': graphql.GraphQLInputField(graphql.GraphQLString),
     'chromosome': graphql.GraphQLInputField(graphql.GraphQLString),
     'position': graphql.GraphQLInputField(graphql.GraphQLInt),
@@ -100,7 +100,8 @@ def build_index_type(engine, bucket, index, n=500):
             field_type = graphql.GraphQLID
         else:
             name = 'locus'
-            field_type = LocusInput
+            field_type = graphql.GraphQLString
+            #field_type = LocusInput
 
         # add the locus field; it's required
         args[name] = graphql.GraphQLNonNull(field_type)
@@ -184,7 +185,8 @@ def ql_resolver(engine, bucket, index):
             if index.schema.locus_is_template:
                 q.append(kwargs[index.schema.locus_columns[0]])
             else:
-                q.append(build_region_str(**kwargs['locus']))
+                q.append(kwargs['locus'])
+                #q.append(build_region_str(**kwargs['locus']))
 
         # execute the query, get the resulting reader
         reader = fetch(engine, bucket, index, q)

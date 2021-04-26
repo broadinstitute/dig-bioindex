@@ -108,30 +108,29 @@ class GraphQLClient(RESTClient):
     the BioIndex and returning results.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, *args, **kwargs):
         """
         Initialize and download the GraphQL schema.
         """
-        super().__init__(**kwargs)
+        super().__init__(*args, **kwargs)
 
-        # fetch the schema document and build the schema
-        self.schema = graphql.utilities.build_schema(requests.get(f'{self.bio}/schema').text)
-
-        # ensure the schema exists, is valid, and was built successfully
-        assert self.schema, 'Failed to build GraphQL schema'
+    @functools.cached_property
+    def schema(self):
+        """
+        Downloads the GraphQL schema for this BioIndex and caches it.
+        """
+        return graphql.utilities.build_schema(requests.get(f'{self.bio}/schema').text)
 
     def query(self, q):
         """
-        Submit a GraphQL query and fetch the results. The return value is
-        multiple DataFrames: one per input of the query and in the order of
-        the inputs in the query.
+        Submit a GraphQL query and fetch the results. Returns a dictionary of
+        DataFrames, one for each query.
         """
         resp = requests.post(f'{self.bio}/query', data=q)
-        data = resp.json()['data']
 
-        # special case, return a single frame
-        if len(data) == 1:
-            return pd.DataFrame(next(iter(data.values())))
+        # invalid requests should throw
+        if resp.status_code != 200:
+            raise RuntimeError(resp.json()['detail'])
 
         # values are in insertion order of the query
-        return tuple(pd.DataFrame(rs) for rs in data.values())
+        return {k: pd.DataFrame(rs) for k, rs in resp.json()['data'].items()}

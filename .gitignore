@@ -6,3 +6,4 @@ dist/
 __pycache__/
 *.wpr
 *.wpu
+schema.graphql
