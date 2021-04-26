@@ -23,12 +23,12 @@ At this point, the BioIndex is installed on your system and you can run it with 
 Alternately, if you do not want to install BioIndex, you can just run it locally with `python -m main`:
 
 ```bash
-$ python -m bioindex.main <command> [args]
+$ python -m bioindex.main [--env-file <environment overrides>] <command> [args]
 ```
 
 ## Configuring the BioIndex
 
-The bio-index uses [python-dotenv][dotenv] (environment variables) for configuration. There are two environment files of importance: `.bioindex` and `.env`. The `.bioindex` file contains environment variables for connecting to AWS if they need to differ from those in the AWS credentials file.
+The bio-index uses [python-dotenv][dotenv] (environment variables) for configuration. There are two environment files of importance: `.bioindex` and `.env`. The `.bioindex` file contains environment variables for connecting to AWS if they need to differ from those in the AWS credentials file. If you pass `--env-file` _before the command_ you can override which environment file is used instead of `.bioindex`.
 
 The following are the environment variables that can be set in the `.bioindex` file:
 
@@ -107,7 +107,7 @@ The rules of indexing are as follows:
 * Key columns can only be cardinal values and are matched exactly.
 * Interchangeable keys may be separated with `|`.
 * Locus must be last.
-* Locus must be a position (`chr:pos`) or region (`chr:start-stop`).
+* Locus must be a position (`chr:pos`), region (`chr:start-stop`), or field template (`varId=$chr:$pos`)
 
 ## Preparing S3 Objects
 
@@ -167,19 +167,29 @@ SLC30A9
 
 _NOTE: The `count` command is an approximation. It reads the first 500 records and divides the total number of bytes to read from S3 by the average byte size per record._
 
-# Index REST Server
+# The GraphQL REST Server
 
-In addition to a CLI, Bio-Index is also a [FastAPI][fastapi] server that allows you to query records via REST calls.
+In addition to a CLI, Bio-Index is also a [FastAPI][fastapi] server that allows you to query records using [GraphQL][graphql] via REST calls.
+
+## Building the GraphQL Schema
+
+[GraphQL][graphql] requires a schema to process queries. The schema is inferred from the data, and build with the `build-schema` CLI option:
+
+```
+$ bioindex build-schema --save
+```
+
+If you don't pass `--save`, then the schema is simply printed out. By default it is written to `schema.graphql`, but you can change the destination by either providing `--out <filename>` or simply redirecting the output somewhere else.
+
+Once the schema has been saved, you can then start the server.
 
 ## Starting the Server
 
 The server is started using the `serve` command:
 
 ```bash
-$ bioindex serve --port 5000 --env-file .my-bioindex-env-overrides
+$ bioindex serve --port 5000
 ```
-
-The default port is 5000 and `.env` is the default environment file.
 
 ## REST Queries
 
