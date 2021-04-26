@@ -16,7 +16,7 @@ from .lib import ql
 from .lib import query
 
 # create the global console
-console = rich.console.Console(markup=False, emoji=False)
+console = rich.console.Console(markup=True, emoji=False)
 
 
 @click.group()
