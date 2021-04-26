@@ -210,7 +210,7 @@
                 jsTime: 0.0,
                 traits: [],
                 results: {},
-                defaultQuery: 'query {\n  TopAssociations(locus: {gene: "slc30a8"}) {\n    varId, dbSNP, phenotype, pValue, beta\n  }\n}',
+                defaultQuery: 'query {\n  TopAssociations(locus: "slc30a8") {\n    varId, dbSNP, phenotype, pValue, beta\n  }\n}',
                 examples: [
                     ['Globally Enriched Phenotypes', 'query {\n  GlobalEnrichment(phenotype: "ldl") {\n    annotation, tissue, SNPs, expectedSNPs\n  }\n}'],
                 ]
