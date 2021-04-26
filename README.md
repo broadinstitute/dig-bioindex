@@ -267,11 +267,13 @@ If the `continuation` is followed to download more records, then the `page` coun
 [click]: https://click.palletsprojects.com/en/7.x/quickstart/
 [rich]: https://rich.readthedocs.io/en/latest/
 [fastapi]: https://fastapi.tiangolo.com/
+[graphql-core]: https://graphql-core-3.readthedocs.io/en/latest/
+[graphql]: https://graphql.org/
 [uvicorn]: https://www.uvicorn.org/
 [pydantic]: https://pydantic-docs.helpmanual.io/
 [boto3]: https://aws.amazon.com/sdk-for-python/
 [sqlalchemy]: http://www.sqlalchemy.org/
-[mysqlclient]: https://pypi.org/project/mysqlclient/
+[pymysql]: https://pymysql.readthedocs.io/en/latest/
 [spark]: https://spark.apache.org/
 [pyspark]: https://spark.apache.org/docs/latest/api/python/pyspark.html
 [json-lines]: http://jsonlines.org/examples/
