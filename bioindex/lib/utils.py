@@ -32,16 +32,20 @@ def cap_case_str(s):
 
 def camel_case_str(s):
     """
-    Like cap_case_str, but the first character is lower-cased.
+    Like cap_case_str, but the first character is lower-cased unless it is
+    part of an acronym.
     """
-    return re.sub(r'(?:[^a-z]+)(.)', lambda m: m.group(1).upper(), s, flags=re.IGNORECASE)
+    s=re.sub(r'(?:[^a-z]+)(.)', lambda m: m.group(1).upper(), s, flags=re.IGNORECASE)
+    s=re.sub(r'^[A-Z][a-z]+', lambda m: m.group(0).lower(), s)
+
+    return s
 
 
 def snake_case_str(s):
     """
-    Translate a string like "foo_Bar-baz  whee" and return "foo_Bar_baz_whee".
+    Translate a string like "foo_Bar-baz  whee" and return "foo_bar_baz_whee".
     """
-    return re.sub(r'([^a-z]+|^)(.)', lambda m: f'{"_" if m.group(1) else ""}{m.group(2)}', s, flags=re.IGNORECASE)
+    return re.sub(r'([^a-z]+|^)(.)', lambda m: f'{"_" if m.group(1) else ""}{m.group(2).lower()}', s, flags=re.IGNORECASE)
 
 
 def nonce(length=20):
