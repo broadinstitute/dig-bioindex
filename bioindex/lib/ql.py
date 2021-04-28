@@ -2,6 +2,7 @@ import graphql
 import graphql.utilities
 import logging
 import os.path
+import re
 
 from .index import Index
 from .query import fetch, fetch_all
@@ -118,19 +119,26 @@ def build_object_type(name, objs):
     # transpose the objects into columns of values
     columns = {}
     for k in all_columns:
-        columns[k] = [obj[k] for obj in objs if k in obj]
+        if not ql_is_valid_field(k):
+            logging.warning('%s is not a valid GraphQL field name; skipping...', k)
+        else:
+            columns[k] = [obj[k] for obj in objs if k in obj]
 
     # determine the type of each field (ignore nulls)
     fields = {}
-    for k, xs in columns.items():
-        this_type = ql_type(name, k, xs)
-        field_name = camel_case_str(k)
-
-        # create the field for this column
+    for field_name, xs in columns.items():
+        this_type = ql_type(name, field_name, xs)
         fields[field_name] = graphql.GraphQLField(this_type)
 
     # build the final object
     return graphql.GraphQLObjectType(name, fields)
+
+
+def ql_is_valid_field(s):
+    """
+    Returns False if s is not a valid identifier for a GraphQL field.
+    """
+    return re.fullmatch(r'[_a-z][_a-z0-9]*', s, re.IGNORECASE) is not None
 
 
 def ql_type(parent_name, field, xs):
