@@ -6,7 +6,6 @@ import re
 
 from .index import Index
 from .query import fetch, fetch_all
-from .utils import camel_case_str
 
 
 LocusInput = graphql.GraphQLInputObjectType('Locus', {
