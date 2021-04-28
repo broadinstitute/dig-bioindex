@@ -30,7 +30,7 @@ def cap_case_str(s):
     return re.sub(r'(?:[^a-z]+|^)(.)', lambda m: m.group(1).upper(), s, flags=re.IGNORECASE)
 
 
-def pascal_case_str(s):
+def camel_case_str(s):
     """
     Like cap_case_str, but the first character is lower-cased.
     """

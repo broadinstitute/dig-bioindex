@@ -5,8 +5,7 @@ import os.path
 
 from .index import Index
 from .query import fetch, fetch_all
-from .locus import build_region_str
-from .utils import pascal_case_str
+from .utils import camel_case_str
 
 
 LocusInput = graphql.GraphQLInputObjectType('Locus', {
@@ -125,7 +124,7 @@ def build_object_type(name, objs):
     fields = {}
     for k, xs in columns.items():
         this_type = ql_type(name, k, xs)
-        field_name = pascal_case_str(k)
+        field_name = camel_case_str(k)
 
         # create the field for this column
         fields[field_name] = graphql.GraphQLField(this_type)
