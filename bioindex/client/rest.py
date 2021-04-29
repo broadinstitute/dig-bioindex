@@ -1,6 +1,8 @@
 import functools
 import graphql.utilities
+import itertools
 import pandas as pd
+import re
 import requests
 import urllib.parse
 
@@ -114,6 +116,9 @@ class GraphQLClient(RESTClient):
         """
         super().__init__(*args, **kwargs)
 
+        # query builder which is executed
+        self.queries = []
+
     @functools.cached_property
     def schema(self):
         """
@@ -121,7 +126,7 @@ class GraphQLClient(RESTClient):
         """
         return graphql.utilities.build_schema(requests.get(f'{self.bio}/schema').text)
 
-    def query(self, q):
+    def query(self, q, concat=False):
         """
         Submit a GraphQL query and fetch the results. Returns a dictionary of
         DataFrames, one for each query.
@@ -131,6 +136,10 @@ class GraphQLClient(RESTClient):
         # invalid requests should throw
         if resp.status_code != 200:
             raise RuntimeError(resp.json()['detail'])
+
+        # concatenate all the results together into a single frame
+        if concat:
+            return pd.DataFrame(itertools.chain.from_iterable(resp.json()['data'].values()))
 
         # values are in insertion order of the query
         return {k: pd.DataFrame(rs) for k, rs in resp.json()['data'].items()}
