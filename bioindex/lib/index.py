@@ -9,6 +9,7 @@ import os.path
 import rich.progress
 import sqlalchemy
 import tempfile
+import time
 
 from .aws import invoke_lambda
 from .s3 import list_objects, read_object, relative_key
@@ -88,7 +89,7 @@ class Index:
         row = engine.execute(sql, name).fetchone()
 
         if row is None:
-            raise KeyError(f'No such index: {index}')
+            raise KeyError(f'No such index: {name}')
 
         return Index(*row)
 
@@ -361,6 +362,7 @@ class Index:
 
         try:
             infile = tmp.name.replace('\\', '/')
+            fail_ex = None
 
             sql = (
                 f"LOAD DATA LOCAL INFILE '{infile}' "
@@ -371,8 +373,18 @@ class Index:
                 f"({','.join(quoted_fieldnames)}) "
             )
 
-            # bulk load into the database
-            engine.execute(sql)
+            # attempt to bulk load into the database
+            for _ in range(5):
+                try:
+                    engine.execute(sql)
+                    break
+                except sqlalchemy.exc.OperationalError as ex:
+                    fail_ex = ex
+                    if ex.code == 1213:  # deadlock; wait and try again
+                        time.sleep(1)
+            else:
+                # failed to insert the rows, die
+                raise fail_ex
 
             # output number of records
             logging.info(f'Wrote {len(records):,} records')
