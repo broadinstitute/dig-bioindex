@@ -223,12 +223,14 @@ def _index_builder(index_keys, locus_class=None, locus_columns=None):
     contain additional indexed records for the loci as well.
     """
     def build_index_key(row):
-        indexed_tuples = list(filter(all, [tuple(row.get(k) for k in keys) for keys in index_keys]))
-        loci = None
+        indexed_tuples = (tuple(row.get(k) for k in keys) for keys in index_keys)
+        indexed_tuples = [tup for tup in indexed_tuples if all(tup)]
 
         # if there's a locus in the schema, match it
         if locus_class:
             loci = locus_class(*(row[col] for col in locus_columns if col)).loci()
+        else:
+            loci = None
 
         # if no index keys, just yield the loci
         if len(index_keys) == 0:
