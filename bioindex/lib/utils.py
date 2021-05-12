@@ -27,7 +27,7 @@ def cap_case_str(s):
     """
     Translate a string like "foo_Bar-baz  whee" and return "FooBarBazWhee".
     """
-    return re.sub(r'(?:[^a-z]+|^)(.)', lambda m: m.group(1).upper(), s, flags=re.IGNORECASE)
+    return re.sub(r'(?:[^a-z0-9]+|^)(.)', lambda m: m.group(1).upper(), s, flags=re.IGNORECASE)
 
 
 def camel_case_str(s):
