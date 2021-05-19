@@ -189,9 +189,13 @@ def ql_resolver(engine, bucket, index):
 
         # add the key columns to the query
         for key_col in index.schema.key_columns:
-            for col in key_col.split('|'):
+            opt_keys = key_col.split('|')
+            for col in opt_keys:
                 if col in kwargs:
                     q.append(kwargs[col])
+                    break
+            else:
+                raise ValueError(f'Missing input key; expected one of {", ".join(opt_keys)}')
 
         # add the locus if present
         if index.schema.has_locus:
