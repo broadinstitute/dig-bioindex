@@ -65,7 +65,7 @@ def build_schema(engine, bucket, subset=None):
     return graphql.GraphQLSchema(query=root)
 
 
-def build_index_type(engine, bucket, index, n=2000):
+def build_index_type(engine, bucket, index, n=5000):
     """
     Examine records from the index to build GraphQL objects and input
     types for querying the index.
