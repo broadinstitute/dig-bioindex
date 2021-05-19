@@ -145,11 +145,18 @@ def ql_type(parent_name, field, xs):
     Returns a Graphene field type for all values of xs. It assumes
     every item in xs is the same type or None.
     """
-    first = next((x for x in xs if x is not None), None)
-    this_type = type(first)
+    all_types = set([type(x) for x in xs if x is not None and x is not float('nan')])
 
-    # ensure the type of all values in the sample set are the same
-    assert all(type(x) == this_type for x in xs if x is not None), 'Heterogenous field type'
+    # handle a special case of floats being parsed as integers
+    if all_types == set([int, float]):
+        all_types = set([float])
+
+    # there should only be one type per field
+    if len(all_types) > 1:
+        assert False, f'Heterogenous field type: {parent_name}/{field} ({all_types})'
+
+    # get the only type
+    this_type = all_types.pop()
 
     # dictionaries are an object type that needs defined
     if this_type == dict:
