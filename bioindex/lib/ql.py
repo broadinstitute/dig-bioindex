@@ -84,13 +84,10 @@ def build_index_type(engine, bucket, index, n=500):
     # add all the arguments used to query the index
     args = {}
     for col in index.schema.key_columns:
-        optional = '|' in col
+        field, *rest = col.split('|')
 
-        for field in col.split('|'):
-            args[field] = graphql.GraphQLID
-
-            if not optional:
-                args[field] = graphql.GraphQLNonNull(args[field])
+        # only use the first column name, assumes synonym fields
+        args[field] = graphql.GraphQLNonNull(graphql.GraphQLID)
 
     # does this index's schema have a locus argument?
     if index.schema.has_locus:
