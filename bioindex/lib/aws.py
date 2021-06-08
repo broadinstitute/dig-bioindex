@@ -13,6 +13,7 @@ aws_config = botocore.config.Config(
 # create service clients
 lambda_client = boto3.client('lambda', config=aws_config)
 s3_client = boto3.client('s3', config=aws_config)
+rds_client = boto3.client('rds', config=aws_config)
 secrets_client = boto3.client('secretsmanager', config=aws_config)
 
 
@@ -31,30 +32,44 @@ def secret_lookup(secret_id):
     return orjson.loads(secret)
 
 
-def connect_to_db(**kwargs):
+def describe_rds_instance(instance_name):
+    """
+    Returns a dictionary with the engine, host, and port information
+    for the requested RDS instance.
+    """
+    response = rds_client.describe_db_instances(DBInstanceIdentifier=instance_name)
+    instances = response['DBInstances']
+
+    if not instances or len(instances) > 1:
+        raise RuntimeError('Either zero or more than one RDS instance found')
+
+    return {
+        'name': instance_name,
+        'engine': instances[0]['Engine'],
+        'host': instances[0]['Endpoint']['Address'],
+        'port': instances[0]['Endpoint']['Port'],
+
+        # optional values
+        'dbname': instances[0].get('DBName'),
+    }
+
+
+def connect_to_db(schema=None, **kwargs):
     """
     Connect to a MySQL database using keyword arguments.
     """
-    uri = '{engine}://{username}:{password}@{host}/{dbname}?local_infile=1'.format(**kwargs)
+    if not schema:
+        schema = kwargs.get('dbname')
+
+    # build the connection uri
+    uri = '{engine}://{username}:{password}@{host}/{schema}?local_infile=1'.format(schema=schema, **kwargs)
 
     # create the connection pool
-    return sqlalchemy.create_engine(uri, pool_recycle=3600)
+    engine = sqlalchemy.create_engine(uri, pool_recycle=3600)
 
-
-def connect_to_rds(secret_id, schema=None):
-    """
-    Create and return a connection to a RDS server using an AWS secret.
-    """
-    secret = secret_lookup(secret_id)
-
-    return connect_to_db(
-        engine = secret['engine'],
-        host = secret['host'],
-        port = secret['port'],
-        username = secret['username'],
-        password = secret['password'],
-        dbname = schema or secret['dbname'],
-    )
+    # test the engine by making a single connection
+    with engine.connect():
+        return engine
 
 
 def invoke_lambda(function_name, payload):

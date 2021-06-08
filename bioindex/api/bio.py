@@ -7,13 +7,13 @@ import itertools
 from pydantic import BaseModel
 from typing import List, Optional
 
-from ..lib import aws
+from .utils import *
+
 from ..lib import config
 from ..lib import continuation
 from ..lib import index
 from ..lib import ql
 from ..lib import query
-
 from ..lib.auth import restricted_keywords
 from ..lib.utils import nonce, profile, profile_async
 
@@ -24,8 +24,8 @@ CONFIG = config.Config()
 router = fastapi.APIRouter()
 
 # connect to database
-engine = aws.connect_to_rds(CONFIG.rds_instance, schema=CONFIG.bio_schema)
-portal = aws.connect_to_rds(CONFIG.rds_instance, schema=CONFIG.portal_schema)
+engine = connect_to_bio(CONFIG)
+portal = connect_to_portal(CONFIG)
 
 # max number of bytes to read from s3 per request
 RESPONSE_LIMIT = CONFIG.response_limit
@@ -158,7 +158,7 @@ async def api_all(index: str, req: fastapi.Request, fmt: str='row'):
         i = INDEXES[index]
 
         # discover what the user doesn't have access to see
-        restricted, auth_s = profile(restricted_keywords, portal, req)
+        restricted, auth_s = profile(restricted_keywords, portal, req) if portal else (None, 0)
 
         # lookup the schema for this index and perform the query
         reader, query_s = profile(
@@ -217,7 +217,7 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
         qs = _parse_query(q, required=True)
 
         # discover what the user doesn't have access to see
-        restricted, auth_s = profile(restricted_keywords, portal, req)
+        restricted, auth_s = profile(restricted_keywords, portal, req) if portal else (None, 0)
 
         # lookup the schema for this index and perform the query
         reader, query_s = profile(

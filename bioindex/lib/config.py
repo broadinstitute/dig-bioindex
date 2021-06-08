@@ -1,6 +1,9 @@
+import functools
+import logging
 import os
+import sys
 
-from .aws import secret_lookup
+from .aws import describe_rds_instance, secret_lookup
 
 
 def config_var(type=str, default=None):
@@ -29,20 +32,24 @@ class Config:
         """
         Loads the configuration file using environment.
         """
-        if self.bioindex_env is not None:
-            secret = secret_lookup(self.bioindex_env)
+        try:
+            if self.bioindex_env is not None:
+                secret = secret_lookup(self.bioindex_env)
+                assert secret, f'Failed to lookup secret {self.bioindex_env}'
 
-            # set environment keys if not already set
-            if secret:
+                # set environment keys if not already set
                 Config.set_default_env(secret)
 
-        # use keyword arguments if environment not yet set
-        Config.set_default_env(kwargs)
+            # use keyword arguments if environment not yet set
+            Config.set_default_env(kwargs)
 
-        # validate required settings
-        assert self.s3_bucket, 'BIOINDEX_S3_BUCKET not set in the environment'
-        assert self.rds_instance, 'BIOINDEX_RDS_INSTANCE not set in the environment'
-        assert self.bio_schema, 'BIOINDEX_BIO_SCHEMA not set in the environment'
+            # validate required settings
+            assert self.s3_bucket, 'BIOINDEX_S3_BUCKET not set in the environment'
+            assert self.rds_config, 'BIOINDEX_RDS_SECRET nor BIOINDEX_RDS_INSTANCE set in the environment'
+            assert self.bio_schema, 'BIOINDEX_BIO_SCHEMA not set in the environment'
+        except AssertionError as ex:
+            logging.error(ex)
+            sys.exit(-1)
 
     @staticmethod
     def set_default_env(env):
@@ -52,6 +59,37 @@ class Config:
         for k, v in env.items():
             if not os.getenv(k):
                 os.environ[k] = v
+
+    @functools.cached_property
+    def rds_config(self):
+        """
+        Builds the RDS configuration from the environment.
+        """
+        if self.rds_secret:
+            secret = secret_lookup(self.rds_secret)
+            assert secret, f'Failed to lookup secret {self.rds_secret}'
+
+            # set the name of the RDS instance
+            secret['name'] = secret.pop('dbInstanceIdentifier')
+            return secret
+
+        # no instance specified
+        if not self.rds_instance:
+            return None
+
+        # ensure the username and password are both set
+        assert self.rds_username, 'BIOINDEX_RDS_USERNAME is not set in the environment'
+        assert self.rds_password, 'BIOINDEX_RDS_PASSWORD is not set in the environment'
+
+        # use the instance name to look up information
+        instance = describe_rds_instance(self.rds_instance)
+
+        # return the configuration
+        return {
+            'username': self.rds_username,
+            'password': self.rds_password,
+            **instance,
+        }
 
     @property
     @config_var()
@@ -65,8 +103,23 @@ class Config:
 
     @property
     @config_var()
+    def rds_secret(self):
+        return 'BIOINDEX_RDS_SECRET'
+
+    @property
+    @config_var()
     def rds_instance(self):
         return 'BIOINDEX_RDS_INSTANCE'
+
+    @property
+    @config_var()
+    def rds_username(self):
+        return 'BIOINDEX_RDS_USERNAME'
+
+    @property
+    @config_var()
+    def rds_password(self):
+        return 'BIOINDEX_RDS_PASSWORD'
 
     @property
     @config_var()
@@ -79,7 +132,7 @@ class Config:
         return 'BIOINDEX_BIO_SCHEMA'
 
     @property
-    @config_var(default='portal')
+    @config_var()
     def portal_schema(self):
         return 'BIOINDEX_PORTAL_SCHEMA'
 

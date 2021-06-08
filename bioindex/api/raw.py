@@ -1,9 +1,9 @@
 import fastapi
 
-from ..lib import aws
+from .utils import *
+
 from ..lib import config
 from ..lib import s3
-
 from ..lib.auth import verify_permissions
 
 
@@ -13,8 +13,12 @@ CONFIG = config.Config()
 # create web server
 router = fastapi.APIRouter()
 
-# connect to database
-engine = aws.connect_to_rds(CONFIG.rds_instance, schema=CONFIG.portal_schema)
+# optionally connect to the portal/metadata schema
+portal = connect_to_portal(CONFIG)
+
+# if there is no portal schema defined, then patch the router
+if not portal:
+    monkey_patch_router(router)
 
 
 @router.get('/plot/dataset/{dataset}/{file:path}')
@@ -22,7 +26,7 @@ async def api_raw_plot_dataset(dataset: str, file: str, req: fastapi.Request):
     """
     Returns a raw, image plot for a dataset.
     """
-    if not verify_permissions(engine, req, dataset=dataset):
+    if not verify_permissions(portal, req, dataset=dataset):
         raise fastapi.HTTPException(status_code=401)
 
     # load the object from s3

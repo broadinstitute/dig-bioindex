@@ -1,9 +1,10 @@
 import logging
 import sqlalchemy
+import sys
 
 from sqlalchemy import Column, DateTime, Index, Integer, String, Table
 
-from .aws import connect_to_rds
+from .aws import connect_to_db
 from .index import Index
 
 
@@ -17,14 +18,24 @@ def migrate(config):
     Ensure all tables exist for the BioIndex to function. Returns
     the SQLAlchemy Engine object connected to the database.
     """
-    logging.info('Connecting to %s/%s...', config.rds_instance, config.bio_schema)
-    engine = connect_to_rds(config.rds_instance, schema=config.bio_schema)
+    rds_config = config.rds_config
+    name = rds_config['name']
 
-    # create all tables
-    create_indexes_table(engine)
-    create_keys_table(engine)
+    # indicate what's being connected to and try
+    logging.info('Connecting to %s/%s...', name, config.bio_schema)
 
-    return engine
+    try:
+        engine = connect_to_db(**rds_config, schema=config.bio_schema)
+
+        # create all tables
+        create_indexes_table(engine)
+        create_keys_table(engine)
+
+        return engine
+
+    except sqlalchemy.exc.OperationalError as ex:
+        logging.error(ex.orig)
+        sys.exit(-1)
 
 
 def create_indexes_table(engine):

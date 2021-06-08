@@ -232,7 +232,7 @@ class Index:
             # lambda function event data
             payload = {
                 'index': self.name,
-                'rds_instance': config.rds_instance,
+                'rds_secret': config.rds_secret,
                 'rds_schema': config.bio_schema,
                 's3_bucket': config.s3_bucket,
                 's3_obj': obj,

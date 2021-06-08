@@ -34,12 +34,19 @@ The following are the environment variables that can be set in the `.bioindex` f
 
 ```ini
 BIOINDEX_S3_BUCKET       # S3 bucket to index/read from
-BIOINDEX_RDS_INSTANCE    # RDS MySQL instance indexes are written to/read from
-BIOINDEX_LAMBDA_FUNCTION # Lambda function that can be used for indexing remotely
+BIOINDEX_RDS_SECRET      # AWS SecretID used to connect to the RDS instance (*)
+BIOINDEX_RDS_INSTANCE    # RDS instance name; used if no secret specified (*)
+BIOINDEX_RDS_USERNAME    # RDS instance login; used if no secret specified (**)
+BIOINDEX_RDS_PASSWORD    # RDS instance credentials; used if no secret specified (**)
 BIOINDEX_BIO_SCHEMA      # RDS MySQL schema for the bio index (default=bio)
-BIOINDEX_PORTAL_SCHEMA   # RDS MySQL schema for the portal (default=portal)
-BIOINDEX_RESPONSE_LIMIT  # number of bytes to read from S3 per request (default = 1MB)
-BIOINDEX_MATCH_LIMIT     # number of matches to return per request (default = 1000)
+BIOINDEX_PORTAL_SCHEMA   # RDS MySQL schema for the portal (optional)
+BIOINDEX_LAMBDA_FUNCTION # Lambda function that can be used for indexing remotely (optional)
+BIOINDEX_GRAPHQL_SCHEMA  # File the GraphQL schema is written to and read from (optional)
+BIOINDEX_RESPONSE_LIMIT  # Number of bytes to read from S3 per request (default=2 MB)
+BIOINDEX_MATCH_LIMIT     # Number of matches to return per request (default=100)
+
+(*)  - Either BIOINDEX_RDS_SECRET or BIOINDEX_RDS_INSTANCE is required
+(**) - If BIOINDEX_RDS_INSTANCE is used, then username and password are required
 ```
 
 Additionally, one can set a single environment variable (`BIOINDEX_ENVIRONMENT`), which should be the name of an AWS secret. If set, the BioIndex will read that secret as JSON and expects it to contain the rest of the environment setup.
@@ -62,6 +69,8 @@ $ BIOINDEX_S3_BUCKET=bio-test bioindex query gene SLC30A8
 ```
 
 The S3 bucket used will be "bio-test".
+
+_NOTE: The only environment variable that **must** be set are `BIOINDEX_S3_BUCKET` and either the `BIOINDEX_RDS_SECRET` or other `BIOINDEX_RDS_*` variables. These will tell the BioIndex both where the data is located and where to write/read the index data._
 
 ## Creating Indexes
 
@@ -107,7 +116,7 @@ The rules of indexing are as follows:
 * Key columns can only be cardinal values and are matched exactly.
 * Interchangeable keys may be separated with `|`.
 * Locus must be last.
-* Locus must be a position (`chr:pos`), region (`chr:start-stop`), or field template (`varId=$chr:$pos`)
+* Locus must be a position (`chr:pos`), region (`chr:start-stop`), or field template (`varId=$chr:$pos`) where the field can be parsed as a position/region, but is matched exactly by the field value as if it were a key column.
 
 ## Preparing S3 Objects
 
@@ -179,7 +188,7 @@ In addition to a CLI, Bio-Index is also a [FastAPI][fastapi] server that allows 
 $ bioindex build-schema --save
 ```
 
-If you don't pass `--save`, then the schema is simply printed out. By default it is written to `schema.graphql`, but you can change the destination by either providing `--out <filename>` or simply redirecting the output somewhere else.
+If you don't pass `--save`, then the schema is simply printed out. By default it is written to the filename specified by the `BIOINDEX_GRAPHQL_SCHEMA` environment variable (defaulted to `schema.graphql`), but you can change the destination by either providing `--out <filename>` or simply redirecting the output somewhere else.
 
 Once the schema has been saved, you can then start the server.
 
@@ -241,20 +250,34 @@ If the `continutation` value is non-null, then it is a string, which is a token 
 
 If the `continuation` is followed to download more records, then the `page` count is increased each subsequent call.
 
-# Dependencies
+# Using Docker
 
-* [Python 3.6+][python]
-* [setuptools][setuptools]
-* [python-dotenv][dotenv]
-* [click][click]
-* [fastapi][fastapi]
-* [aiofiles][aiofiles]
-* [uvicorn][uvicorn]
-* [pydantic][pydantic]
-* [boto3][boto3]
-* [sqlalchemy][sqlalchemy]
-* [mysqlclient][mysqlclient]
-* [rich][rich]
+In the `image/` subfolder is a `Dockerfile` that can be used to build a [Docker][docker] image. Or a pre-built image can be pulled from [DockerHub][hub].
+
+## Building the Image
+
+To build the image from scratch, run the following:
+
+```bash
+$ docker build -t broadinstitute/bioindex:latest image
+```
+
+Once built, running `docker images` should show it ready for use.
+
+## Executing Using Docker
+
+When running the BioIndex from the docker image, it's best to pass the environment data through with `--env-file` and if you want to make use of the GraphQL API, then a volume needs to be mounted that will point to where the `BIOINDEX_GRAPHQL_SCHEMA` file is located.
+
+```bash
+$ # list all indexes
+$ docker run --env-file ./my.bioindex -rm broadinstitute/bioindex bioindex list
+
+$ # build the schema and output it to stdout
+$ docker run --env-file ./my-bioindex -v .:. -rm broadinstitute/bioindex bioindex build-schema
+
+$ # start the server
+$ docker run --env-file ./my-bioindex -v .:. -rm broadinstitute/bioindex bioindex serve
+```
 
 # fin.
 
@@ -278,3 +301,5 @@ If the `continuation` is followed to download more records, then the `page` coun
 [pyspark]: https://spark.apache.org/docs/latest/api/python/pyspark.html
 [json-lines]: http://jsonlines.org/examples/
 [aiofiles]: https://pypi.org/project/aiofiles/
+[docker]: https://docker.com/
+[hub]: https://hub.docker.com/repository/docker/broadinstitute/dig-bioindex

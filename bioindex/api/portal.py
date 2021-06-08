@@ -1,11 +1,10 @@
 import fastapi
 
-from ..lib import aws
-from ..lib import config
+from .utils import *
 
+from ..lib import config
 from ..lib.auth import restrictions
 from ..lib.utils import nonce, profile
-
 
 # load dot files and configuration
 CONFIG = config.Config()
@@ -13,8 +12,12 @@ CONFIG = config.Config()
 # create web server
 router = fastapi.APIRouter()
 
-# connect to database
-portal = aws.connect_to_rds(CONFIG.rds_instance, schema=CONFIG.portal_schema)
+# optionally connect to the portal/metadata schema
+portal = connect_to_portal(CONFIG)
+
+# if there is no portal schema defined, then patch the router
+if not portal:
+    monkey_patch_router(router)
 
 
 @router.get('/groups', response_class=fastapi.responses.ORJSONResponse)
