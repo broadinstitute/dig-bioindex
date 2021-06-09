@@ -42,7 +42,7 @@ async def api_raw_plot_phenotype(phenotype: str, file: str, req: fastapi.Request
     """
     Returns a raw, image plot for the bottom-line analysis of a phenotype.
     """
-    if not verify_permissions(engine, req, phenotype=phenotype):
+    if not verify_permissions(portal, req, phenotype=phenotype):
         raise fastapi.HTTPException(status_code=401)
 
     # load the object from s3
