@@ -60,8 +60,7 @@ class Config:
             if not os.getenv(k):
                 os.environ[k] = v
 
-    @property
-    @functools.cache
+    @functools.cached_property
     def rds_config(self):
         """
         Builds the RDS configuration from the environment.
