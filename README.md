@@ -270,13 +270,13 @@ When running the BioIndex from the docker image, it's best to pass the environme
 
 ```bash
 $ # list all indexes
-$ docker run --env-file ./my.bioindex -rm broadinstitute/bioindex bioindex list
+$ docker run --env-file ./my-bioindex.env -rm broadinstitute/bioindex bioindex list
 
 $ # build the schema and output it to stdout
-$ docker run --env-file ./my-bioindex -v .:. -rm broadinstitute/bioindex bioindex build-schema
+$ docker run --env-file ./my-bioindex.env -v .:. -rm broadinstitute/bioindex bioindex build-schema
 
 $ # start the server
-$ docker run --env-file ./my-bioindex -v .:. -rm broadinstitute/bioindex bioindex serve
+$ docker run --env-file ./my-bioindex.env -v .:. -rm broadinstitute/bioindex bioindex serve
 ```
 
 # fin.
