@@ -82,4 +82,4 @@ def create_keys_table(engine):
 
     # build the index if not present
     if not any(map(lambda r: r[2] == 'key_idx', rows)):
-        Index('key_idx', table_columns[1:3], unique=True).create(engine)
+        Index('key_idx', 'index', 'key', unique=True).create(engine)
