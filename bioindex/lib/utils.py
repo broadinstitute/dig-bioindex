@@ -1,5 +1,9 @@
+import csv
+import gzip
+import http.cookies
 import re
 import secrets
+import smart_open
 import time
 
 
@@ -56,3 +60,23 @@ def nonce(length=20):
     log file).
     """
     return secrets.token_urlsafe()
+
+
+def read_gff(uri):
+    """
+    Open a GFF3 file (possibly remote) and read it line-by-line, looking
+    for specific features or sources and yielding those values.
+    """
+    with smart_open.smart_open(uri, mode='rb', encoding='utf-8') as fp:
+        r = csv.reader(fp, dialect='excel', delimiter='\t')
+
+        # read each record, split it into columns
+        for chromosome, source, typ, start, end, score, strand, frame, attr in r:
+            yield (
+                chromosome.upper(),
+                source if source and source != '.' else None,
+                typ if typ and typ != '.' else None,
+                int(start),
+                int(end),
+                {k: m.value for k, m in http.cookies.SimpleCookie(attr).items()},
+            )

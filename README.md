@@ -42,6 +42,7 @@ BIOINDEX_BIO_SCHEMA      # RDS MySQL schema for the bio index (default=bio)
 BIOINDEX_PORTAL_SCHEMA   # RDS MySQL schema for the portal (optional)
 BIOINDEX_LAMBDA_FUNCTION # Lambda function that can be used for indexing remotely (optional)
 BIOINDEX_GRAPHQL_SCHEMA  # File the GraphQL schema is written to and read from (optional)
+BIOINDEX_GENES_URI       # Location of a GTF gene source (default=genes/genes.gtf)
 BIOINDEX_RESPONSE_LIMIT  # Number of bytes to read from S3 per request (default=2 MB)
 BIOINDEX_MATCH_LIMIT     # Number of matches to return per request (default=100)
 
@@ -279,6 +280,24 @@ $ # start the server
 $ docker run --env-file ./my-bioindex.env -v .:. -rm broadinstitute/bioindex bioindex serve
 ```
 
+## Genes URI
+
+When executing queries, it's often more convenient to use a gene name instead of trying to pass a specific region. Since gene names are specific to species and assemblies, the gene names are configurable using a [GFF3][gff] file. This can be a local file (and by default is the one located in this repository), but can also be a remote, hosted file. It is expected that the `attributes` column contains either the `ID` or `Name` field set to the gene name to use. If the `Alias` attribute is also present, it is assumed to be a comma-separated list of alternate names for the gene, and those will also be included in the map.
+
+Here is an example of the first few lines of the default GTF in this repository:
+
+```
+19  .  protein_coding  58856544  58864865  .  +  .  Name=A1BG
+10  .  protein_coding  52559169  52645435  .  +  .  Name=A1CF
+12  .  protein_coding  9220260   9268825   .  +  .  Name=A2M
+12  .  protein_coding  8975068   9039597   .  +  .  Name=A2ML1
+1   .  protein_coding  33772367  33786699  .  +  .  Name=A3GALT2
+```
+
+_NOTE: It's important that GTF files tab-delimited! The spacing shown above is only for readability._
+
+The GFF file is only downloaded/parsed if needed. It is loaded on-demand (only once per execution) if a query requiring a locus is provided something other than a known, region format (e.g. `chromosome:start-end`) and then assumes what was provided should be interpreted as a gene name.
+
 # fin.
 
 [python]: https://www.python.org/
@@ -303,3 +322,4 @@ $ docker run --env-file ./my-bioindex.env -v .:. -rm broadinstitute/bioindex bio
 [aiofiles]: https://pypi.org/project/aiofiles/
 [docker]: https://docker.com/
 [hub]: https://hub.docker.com/repository/docker/broadinstitute/dig-bioindex
+[gff]: http://gmod.org/wiki/GFF3

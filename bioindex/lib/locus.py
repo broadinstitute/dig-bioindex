@@ -137,7 +137,7 @@ def parse_chromosome(s):
     """
     Parse and normalize a chromosome string, which may be prefixed with 'chr'.
     """
-    match = re.fullmatch(r'(?:chr)?([1-9]|1\d|2[0-2]|x|y|xy|mt)', s, re.IGNORECASE)
+    match = re.fullmatch(r'(?:chr)?([1-9]|1\d|2[0-2]|x|y|xy|mt?)', s, re.IGNORECASE)
 
     if not match:
         raise ValueError(f'Failed to match chromosome against {s}')
@@ -203,7 +203,7 @@ def parse_locus_builder(s):
     return (RegionLocus if stop else SNPLocus), (chromosome, start, stop)
 
 
-def parse_region_string(s, gene_lookup_engine=False):
+def parse_region_string(s, config):
     """
     Parse a locus string and return the chromosome, start, stop, and
     optional exact locus id.
@@ -211,9 +211,10 @@ def parse_region_string(s, gene_lookup_engine=False):
     match = re.fullmatch(r'(?:chr)?([1-9]|1\d|2[0-2]|x|y|xy|mt):([\d,]+)(?:([+/-])([\d,]+))?', s, re.IGNORECASE)
 
     if not match:
-        if not gene_lookup_engine:
+        region = config.genes_dict.get(s.upper())
+        if not region:
             raise ValueError(f'Failed to match locus against {s}')
-        return request_gene_locus(gene_lookup_engine, s)
+        return region.chromosome.upper(), region.start, region.stop
 
     chromosome, start, adjust, end = match.groups()
     cur_locale = locale.getlocale()
@@ -268,16 +269,3 @@ def build_region_str(gene=None, chromosome=None, position=None, start=None, end=
         raise ValueError('Either position or start and end must be specified')
 
     return f'{chromosome}:{start}-{end}'
-
-
-def request_gene_locus(engine, q):
-    """
-    Use the __Genes table to lookup the region of a gene.
-    """
-    sql = 'SELECT `chromosome`, `start`, `end` FROM `__Genes` WHERE `name` = %s'
-    gene = engine.execute(sql, q).fetchone()
-
-    if gene:
-        return gene[0], gene[1], gene[2]
-
-    raise ValueError(f'Invalid locus or gene name: {q}')

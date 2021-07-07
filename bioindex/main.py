@@ -127,7 +127,7 @@ def cli_query(cfg, index_name, q):
     i = index.Index.lookup(engine, index_name)
 
     # query the index
-    reader = query.fetch(engine, cfg.s3_bucket, i, q)
+    reader = query.fetch(cfg, engine, i, q)
 
     # dump all the records
     for record in reader.records:
@@ -142,7 +142,7 @@ def cli_all(cfg, index_name):
     idx = index.Index.lookup(engine, index_name)
 
     # read all records
-    reader = query.fetch_all(cfg.s3_bucket, idx.s3_prefix)
+    reader = query.fetch_all(cfg, idx.s3_prefix)
 
     # lookup the table class from the schema
     for record in reader.records:
@@ -158,7 +158,7 @@ def cli_count(cfg, index_name, q):
     i = index.Index.lookup(engine, index_name)
 
     # query the index
-    count = query.count(engine, cfg.s3_bucket, i, q)
+    count = query.count(cfg, engine, i, q)
     console.print(count)
 
 
@@ -172,7 +172,7 @@ def cli_match(cfg, index_name, q):
 
     # lookup the table class from the schema
     try:
-        for obj in query.match(engine, i, q):
+        for obj in query.match(cfg, engine, i, q):
             console.print(obj)
     except AssertionError:
         console.log(f'Index {index_name} is not indexed by value!')
@@ -187,7 +187,7 @@ def cli_build_schema(cfg, save, out, indexes):
     engine = migrate.migrate(cfg)
 
     # attempt to build the graphql object class for this index
-    schema = ql.build_schema(engine, cfg.s3_bucket, subset=indexes)
+    schema = ql.build_schema(cfg, engine, subset=indexes)
 
     # file the output the schema to
     out_file = out or cfg.graphql_schema

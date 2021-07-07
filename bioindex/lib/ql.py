@@ -17,7 +17,7 @@ LocusInput = graphql.GraphQLInputObjectType('Locus', {
 })
 
 
-def load_schema(engine, bucket, schema_file):
+def load_schema(config, engine, schema_file):
     """
     Attempt to load a GraphQL schema file from disk.
     """
@@ -30,12 +30,12 @@ def load_schema(engine, bucket, schema_file):
 
     # add resolvers for each index
     for i in Index.list_indexes(engine):
-        schema.query_type.fields[i.table.name].resolve = ql_resolver(engine, bucket, i)
+        schema.query_type.fields[i.table.name].resolve = ql_resolver(config, engine, i)
 
     return schema
 
 
-def build_schema(engine, bucket, subset=None):
+def build_schema(config, engine, subset=None):
     """
     Build the object types for all the indexes. Subset is a list of
     index names that the schema should include. If no subset is
@@ -46,8 +46,8 @@ def build_schema(engine, bucket, subset=None):
     for i in Index.list_indexes(engine):
         if not subset or i.name in subset:
             try:
-                output_type, args = build_index_type(engine, bucket, i)
-                resolver = ql_resolver(engine, bucket, i)
+                output_type, args = build_index_type(config, engine, i)
+                resolver = ql_resolver(config, engine, i)
 
                 # create the field for this table, with arguments and resolver
                 fields[f'{i.table.name}'] = graphql.GraphQLField(
@@ -65,7 +65,7 @@ def build_schema(engine, bucket, subset=None):
     return graphql.GraphQLSchema(query=root)
 
 
-def build_index_type(engine, bucket, index, n=5000):
+def build_index_type(config, engine, index, n=5000):
     """
     Examine records from the index to build GraphQL objects and input
     types for querying the index.
@@ -73,7 +73,7 @@ def build_index_type(engine, bucket, index, n=5000):
     logging.info('Building object type for %s...', index.name)
 
     # grab a single object from the index to build the schema object from
-    reader = fetch_all(bucket, index.s3_prefix, key_limit=5)
+    reader = fetch_all(config, index.s3_prefix, key_limit=5)
 
     # read up to N records to get a good approx of all available fields
     records = [r for _, r in zip(range(n), reader.records)]
@@ -177,7 +177,7 @@ def ql_type(parent_name, field, xs):
     raise ValueError(f'Cannot define GraphQL type for {field}')
 
 
-def ql_resolver(engine, bucket, index):
+def ql_resolver(config, engine, index):
     """
     Returns a resolver function for a given index.
     """
@@ -200,7 +200,7 @@ def ql_resolver(engine, bucket, index):
                 #q.append(build_region_str(**kwargs['locus']))
 
         # execute the query, get the resulting reader
-        reader = fetch(engine, bucket, index, q)
+        reader = fetch(config, engine, index, q)
 
         # materialize all the records
         return list(reader.records)

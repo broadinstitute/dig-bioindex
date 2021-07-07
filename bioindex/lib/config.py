@@ -2,8 +2,11 @@ import functools
 import logging
 import os
 import sys
+import urllib
 
 from .aws import describe_rds_instance, secret_lookup
+from .locus import RegionLocus
+from .utils import read_gff
 
 
 def config_var(type=str, default=None):
@@ -91,6 +94,40 @@ class Config:
             **instance,
         }
 
+    @functools.cached_property
+    def genes_dict(self):
+        """
+        Builds a dictionary of genes.
+        """
+        genes = dict()
+        logging.info('Building gene dictionary...')
+
+        if not self.genes_uri:
+            logging.warn('No BIOINDEX_GENES_URI; no gene dictionary built...')
+            return genes
+
+        # if a local file, just use the path, otherwise the entire uri
+        uri = urllib.parse.urlparse(self.genes_uri)
+        if not uri.scheme or uri.scheme == 'file':
+            uri = uri.path
+
+        # open the file, which may be remote
+        for chromosome, source, typ, start, end, attributes in read_gff(uri):
+            region = RegionLocus(chromosome, start, end)
+            symbol = attributes.get('ID') or attributes.get('Name')
+            alias = attributes.get('Alias')
+
+            # add to the gene dictionary
+            if symbol:
+                genes[symbol] = region
+
+            # add any aliases as well
+            if alias:
+                for symbol in alias.split(','):
+                    genes[symbol] = region
+
+        return genes
+
     @property
     @config_var()
     def bioindex_env(self):
@@ -160,3 +197,8 @@ class Config:
     @config_var(default=10, type=float)
     def script_timeout(self):
         return 'BIOINDEX_SCRIPT_TIMEOUT'
+
+    @property
+    @config_var(default='genes/genes.gff.gz')
+    def genes_uri(self):
+        return 'BIOINDEX_GENES_URI'
