@@ -42,7 +42,7 @@ BIOINDEX_BIO_SCHEMA      # RDS MySQL schema for the bio index (default=bio)
 BIOINDEX_PORTAL_SCHEMA   # RDS MySQL schema for the portal (optional)
 BIOINDEX_LAMBDA_FUNCTION # Lambda function that can be used for indexing remotely (optional)
 BIOINDEX_GRAPHQL_SCHEMA  # File the GraphQL schema is written to and read from (optional)
-BIOINDEX_GENES_URI       # Location of a GTF gene source (default=genes/genes.gtf)
+BIOINDEX_GENES_URI       # Location of a GTF gene source (default=genes/genes.gff.gz)
 BIOINDEX_RESPONSE_LIMIT  # Number of bytes to read from S3 per request (default=2 MB)
 BIOINDEX_MATCH_LIMIT     # Number of matches to return per request (default=100)
 
