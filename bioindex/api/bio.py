@@ -40,7 +40,7 @@ gql_schema = None
 
 # if the graphql schema file exists, load it
 if CONFIG.graphql_schema:
-    gql_schema = ql.load_schema(engine, CONFIG.s3_bucket, CONFIG.graphql_schema)
+    gql_schema = ql.load_schema(CONFIG, engine, CONFIG.graphql_schema)
 
 
 class Query(BaseModel):
@@ -104,7 +104,7 @@ async def api_match(index: str, req: fastapi.Request, q: str, limit: int = None)
         qs = _parse_query(q)
 
         # execute the query
-        keys, query_s = profile(query.match, engine, i, qs)
+        keys, query_s = profile(query.match, CONFIG, engine, i, qs)
 
         # allow an upper limit on the total number of keys returned
         if limit is not None:
@@ -129,7 +129,7 @@ async def api_count_index(index: str, req: fastapi.Request, q: str=None):
         qs = _parse_query(q)
 
         # lookup the schema for this index and perform the query
-        count, query_s = profile(query.count, engine, CONFIG.s3_bucket, i, qs)
+        count, query_s = profile(query.count, CONFIG, engine, i, qs)
 
         return {
             'profile': {
@@ -163,7 +163,7 @@ async def api_all(index: str, req: fastapi.Request, fmt: str='row'):
         # lookup the schema for this index and perform the query
         reader, query_s = profile(
             query.fetch_all,
-            CONFIG.s3_bucket,
+            CONFIG,
             i.s3_prefix,
             restricted=restricted,
         )
@@ -193,7 +193,7 @@ async def api_test_all(index: str, req: fastapi.Request):
         # lookup the schema for this index and perform the query
         reader, query_s = profile(
             query.fetch_all,
-            CONFIG.s3_bucket,
+            CONFIG,
             i.s3_prefix,
         )
 
@@ -222,8 +222,8 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
         # lookup the schema for this index and perform the query
         reader, query_s = profile(
             query.fetch,
+            CONFIG,
             engine,
-            CONFIG.s3_bucket,
             i,
             qs,
             restricted=restricted,
