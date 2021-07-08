@@ -287,11 +287,11 @@ When executing queries, it's often more convenient to use a gene name instead of
 Here is an example of the first few lines of the default GTF in this repository:
 
 ```
-19  .  protein_coding  58856544  58864865  .  +  .  Name=A1BG
-10  .  protein_coding  52559169  52645435  .  +  .  Name=A1CF
-12  .  protein_coding  9220260   9268825   .  +  .  Name=A2M
-12  .  protein_coding  8975068   9039597   .  +  .  Name=A2ML1
-1   .  protein_coding  33772367  33786699  .  +  .  Name=A3GALT2
+19  .  protein_coding  58856544  58864865  .  +  .  Name=A1BG;Alias=ENSG00000121410,HGNC:5,uc002qsd.5,MGI:2152878
+10  .  protein_coding  52559169  52645435  .  +  .  Name=A1CF;Alias=ENSG00000148584,HGNC:24086,uc057tgv.1,MGI:1917115
+12  .  protein_coding  9220260   9268825   .  +  .  Name=A2M;Alias=ENSG00000175899,HGNC:7,uc001qvk.2,MGI:2449119
+12  .  protein_coding  8975068   9039597   .  +  .  Name=A2ML1;Alias=ENSG00000166535,HGNC:23336,uc001quz.6
+1   .  protein_coding  33772367  33786699  .  +  .  Name=A3GALT2;Alias=ENSG00000184389,HGNC:30005,uc031plq.1,MGI:2685279
 ```
 
 _NOTE: GFF files are tab-delimited! The spacing shown above is only for readability._

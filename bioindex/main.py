@@ -243,7 +243,14 @@ def main():
     pymysql.install_as_MySQLdb()
 
     # run
-    cli()
+    try:
+        cli()
+    except ValueError as ex:
+        logging.error(ex)
+    except RuntimeError as ex:
+        logging.error(ex)
+    except AssertionError as ex:
+        logging.error(ex)
 
 
 if __name__ == '__main__':

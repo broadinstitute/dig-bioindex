@@ -213,7 +213,7 @@ def parse_region_string(s, config):
     if not match:
         region = config.genes_dict.get(s.upper())
         if not region:
-            raise ValueError(f'Failed to match locus against {s}')
+            raise ValueError(f'Failed to parse locus "{s}" and no such gene')
         return region.chromosome.upper(), region.start, region.stop
 
     chromosome, start, adjust, end = match.groups()
