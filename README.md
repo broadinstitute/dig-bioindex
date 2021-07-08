@@ -294,7 +294,7 @@ Here is an example of the first few lines of the default GTF in this repository:
 1   .  protein_coding  33772367  33786699  .  +  .  Name=A3GALT2
 ```
 
-_NOTE: It's important that GTF files tab-delimited! The spacing shown above is only for readability._
+_NOTE: GFF files are tab-delimited! The spacing shown above is only for readability._
 
 The GFF file is only downloaded/parsed if needed. It is loaded on-demand (only once per execution) if a query requiring a locus is provided something other than a known, region format (e.g. `chromosome:start-end`) and then assumes what was provided should be interpreted as a gene name.
 
