@@ -64,8 +64,17 @@ def nonce(length=20):
 
 def read_gff(uri):
     """
-    Open a GFF3 file (possibly remote) and read it line-by-line, looking
-    for specific features or sources and yielding those values.
+    Open a GFF3 file (possibly remote) and read it line-by-line,
+    yielding those records as a list of:
+
+     * Chromosome
+     * Source
+     * Type
+     * Start
+     * End
+     * Attribute dictionary
+
+    Score, strand, and frame are ignored as they are not needed.
     """
     with smart_open.smart_open(uri, mode='rb', encoding='utf-8') as fp:
         r = csv.reader(fp, dialect='excel', delimiter='\t')
