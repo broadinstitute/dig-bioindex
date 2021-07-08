@@ -119,12 +119,12 @@ class Config:
 
             # add to the gene dictionary
             if symbol:
-                genes[symbol] = region
+                genes[symbol.upper()] = region
 
             # add any aliases as well
             if alias:
                 for symbol in alias.split(','):
-                    genes[symbol] = region
+                    genes[symbol.strip().upper()] = region
 
         return genes
 
