@@ -10,5 +10,6 @@ pydantic
 pymysql
 requests
 rich
+smart_open
 sqlalchemy
 uvicorn[standard]

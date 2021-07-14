@@ -25,6 +25,7 @@ setup(
         'python-dotenv>=0.15',
         'requests>=2.25',
         'rich>=10.0',
+        'smart_open>=3.0',
         'sqlalchemy>=1.4',
         'uvicorn>=0.13',
     ],
