@@ -2,10 +2,10 @@ aiofiles==0.6
 botocore==1.20
 boto3==1.17
 click==7.0
-fastapi==0.60
+fastapi==0.65.2
 graphql-core==3.0
 orjson==3.5
-pydantic==1.4
+pydantic==1.6.2
 pymysql==0.10
 python-dotenv==0.15
 requests==2.25
