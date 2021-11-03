@@ -4,6 +4,24 @@ Bio-Index is a tool that indexes genomic data stored in [AWS S3][s3] "tables" (t
 
 The Bio-Index has two entry points: a CLI used for basic CRUD operations and a simple HTTP server and REST API for pure querying.
 
+## Prerequisites
+
+### Python 3.8+
+
+```bash
+$ sudo amazon-linux-extras install python3.8
+```
+Make sure `python3` and `pip3` are on the path.  You may need to do something like:
+```bash
+$ sudo ln -s `which python3.8` /usr/bin/python3
+$ sudo ln -s /usr/local/bin/pip3 /usr/bin/pip3
+```
+
+Upgrade pip, otherwise installing deps later won't work:
+```bash
+sudo python3 -m pip install --upgrade pip
+```
+
 ## Setup
 
 First clone the git repository:
@@ -12,18 +30,16 @@ First clone the git repository:
 $ git clone https://github.com/broadinstitute/dig-bioindex.git
 ```
 
-Then, `cd` into the directory created and install it using setup tools:
+Then, `cd` into the directory created and install needed requirements
 
 ```bash
-$ python ./setup.py install
+$ sudo pip3 install -r requirements.txt
 ```
 
-At this point, the BioIndex is installed on your system and you can run it with the `bioindex` command.
-
-Alternately, if you do not want to install BioIndex, you can just run it locally with `python -m main`:
+At this point, the BioIndex is installed on your system and you can run it with `python3 -m bioindex.main`:
 
 ```bash
-$ python -m bioindex.main [--env-file <environment overrides>] <command> [args]
+$ python3 -m bioindex.main [--env-file <environment overrides>] <command> [args]
 ```
 
 ## Configuring the BioIndex
@@ -66,7 +82,7 @@ For example, consider the following setup:
 When run, the S3 bucket will be set to "bio-index-dev". Likewise, if the command line is run like so:
 
 ```bash
-$ BIOINDEX_S3_BUCKET=bio-test bioindex query gene SLC30A8
+$ BIOINDEX_S3_BUCKET=bio-test python3 -m bioindex.main query gene SLC30A8
 ```
 
 The S3 bucket used will be "bio-test".
@@ -78,7 +94,7 @@ _NOTE: The only environment variable that **must** be set are `BIOINDEX_S3_BUCKE
 To create a new index, use the `create` command. Example:
 
 ```bash
-$ bioindex create my-index prefix/key/to/files/ phenotype,chrom:pos
+$ python3 -m bioindex.main create my-index prefix/key/to/files/ phenotype,chrom:pos
 ```
 
 The above would create a new (or overwrite the existing) index named `my-index`. It indicates that all the files to index in the S3 bucket are located in `prefix/key/to/files/` recursively, and that the schema used to index the files should be done by `phenotype` first and then by locus: `chrom:pos`.
@@ -138,7 +154,7 @@ The above code would write out many part files to the bucket/path, each perfectl
 Once an index has been created, simply use the `index` command and pass long a comma-separated list of indexes to build.
 
 ```bash
-$ bioindex index my-index,another-index
+$ python3 -m bioindex.main index my-index,another-index
 ```
 
 _NOTE: You can also pass `*` as to build all indexes!_
@@ -150,7 +166,7 @@ You can also build indexes "remotely" using an AWS Lambda Function. To do this, 
 Once you've built an index, you can then query it and retrieve all the records that match various input keys and/or overlap the given region. For example, to query all records in the `genes` key space that overlap a given region:
 
 ```bash
-$ bioindex query genes chr3:983248-1180000
+$ python3 -m bioindex.main query genes chr3:983248-1180000
 {'chromosome': '3', 'end': 1445901, 'name': 'CNTN6', 'source': 'symbol', 'start': 1134260, 'type': 'protein_coding'}
 ```
 
@@ -159,10 +175,10 @@ _NOTE: If you'd like to limit the output, just pipe it to `head -n`._
 In addition to querying, there are also commands to `count` records, fetch `all` records, and `match` keys. Examples:
 
 ```bash
-$ bioindex count genes 8:100000000-200000000
+$ python3 -m bioindex.main count genes 8:100000000-200000000
 1587
 
-$ bioindex match gene SLC30A
+$ python3 -m bioindex.main match gene SLC30A
 SLC30A1
 SLC30A10
 SLC30A2
@@ -186,7 +202,7 @@ In addition to a CLI, Bio-Index is also a [FastAPI][fastapi] server that allows 
 [GraphQL][graphql] requires a schema to process queries. The schema is inferred from the data, and build with the `build-schema` CLI option:
 
 ```
-$ bioindex build-schema --save
+$ python3 -m bioindex.main build-schema --save
 ```
 
 If you don't pass `--save`, then the schema is simply printed out. By default it is written to the filename specified by the `BIOINDEX_GRAPHQL_SCHEMA` environment variable (defaulted to `schema.graphql`), but you can change the destination by either providing `--out <filename>` or simply redirecting the output somewhere else.
