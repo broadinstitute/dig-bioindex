@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+from bioindex.lib.region_set import Region, RegionSet
 import fastapi
 import graphql
 import itertools
@@ -16,6 +17,7 @@ from ..lib import ql
 from ..lib import query
 from ..lib.auth import restricted_keywords
 from ..lib.utils import nonce, profile, profile_async
+from ..lib.region_set import RegionSet, Variant
 
 # load dot files and configuration
 CONFIG = config.Config()
@@ -48,7 +50,9 @@ class Query(BaseModel):
     fmt: Optional[str] = 'row'
     limit: Optional[int] = None
 
-
+class RegionMembershipQuery(BaseModel):
+  limit: int
+  variants: List[str]
 
 def _load_indexes():
     """
@@ -61,6 +65,7 @@ def _load_indexes():
 # initialize with all the indexes, get them all, whether built or not
 INDEXES = _load_indexes()
 
+REGION_SET = RegionSet(config.regions_dir)
 
 @router.get('/indexes', response_class=fastapi.responses.ORJSONResponse)
 async def api_list_indexes():
@@ -450,3 +455,15 @@ def _fetch_records(reader, index, qs, fmt, page=1, query_s=None):
         'continuation': token,
         'nonce': nonce(),
     }
+
+@router.post('/regions/containing', response_class=fastapi.responses.ORJSONResponse)
+async def api_query_region_membership(query: RegionMembershipQuery):
+  try:
+      return {
+        'data': REGION_SET.regions_containing(query.variants),
+        'nonce': nonce()
+      }
+  except asyncio.TimeoutError:
+      raise fastapi.HTTPException(status_code=408, detail=f'Query execution timed out after {CONFIG.script_timeout} seconds')
+  except ValueError as e:
+      raise fastapi.HTTPException(status_code=400, detail=str(e))

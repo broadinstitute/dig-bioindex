@@ -202,3 +202,8 @@ class Config:
     @config_var(default='genes/genes.gff.gz')
     def genes_uri(self):
         return 'BIOINDEX_GENES_URI'
+
+    @property
+    @config_var(default='s3://dig-analysis-data/out/ldsc/regions/merged/')
+    def regions_dir(self):
+        return 'BIOINDEX_REGIONS_DIR'
