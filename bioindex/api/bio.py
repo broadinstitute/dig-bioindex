@@ -65,7 +65,7 @@ def _load_indexes():
 # initialize with all the indexes, get them all, whether built or not
 INDEXES = _load_indexes()
 
-REGION_SET = RegionSet(config.regions_dir)
+REGION_SET = RegionSet(config.regions_dir())
 
 @router.get('/indexes', response_class=fastapi.responses.ORJSONResponse)
 async def api_list_indexes():
