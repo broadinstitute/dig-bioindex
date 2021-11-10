@@ -2,6 +2,7 @@ import boto3
 import functools
 from functools import reduce
 import glob
+import logging
 from ncls import NCLS
 import pandas as pd
 from timeit import default_timer as timer
@@ -14,7 +15,7 @@ def time(func):
         result = func(*args, **kwargs)
         end = timer()
         elapsed = end - start
-        print(f"{func.__name__!r} took {elapsed:.4f} secs")
+        logging.debug(f"{func.__name__!r} took {elapsed:.4f} secs")
 
         return result
     return wrapper
@@ -103,7 +104,7 @@ class RegionSet:
 
     #@time
     def do_build():
-      print("Building trees")
+      logging.info("Building trees")
 
       regions = regions_df()
 
@@ -112,7 +113,7 @@ class RegionSet:
 
         tree = NCLS(filtered["start"], filtered["end"], filtered["idx"])
 
-        print("Loaded %s intervals for chrom '%s'" % (len(tree.intervals()), chrom))
+        logging.info("Loaded %s intervals for chrom '%s'" % (len(tree.intervals()), chrom))
 
         return tree
 
@@ -142,7 +143,7 @@ class RegionSet:
             yield file.key
 
     def read(key):
-      print("Reading from '%s'" % key)
+      logging.info("Reading from '%s'" % key)
 
       response = client.get_object(Bucket=self.bucketName, Key=key)
 
@@ -157,7 +158,7 @@ class RegionSet:
 
     regions["idx"] = range(1, len(regions) + 1)
 
-    print("Found %s total regions" % len(regions))
+    logging.info("Found %s total regions" % len(regions))
 
     return regions
 
@@ -187,7 +188,7 @@ class RegionSet:
     all_files = glob.glob("data/regions/csvs/*.csv")
 
     def read(f):
-      print("Reading from '%s'" % f)
+      logging.info("Reading from '%s'" % f)
 
       return self.__read_region_df(f)
 
@@ -195,6 +196,6 @@ class RegionSet:
 
     regions["idx"] = range(1, len(regions) + 1)
 
-    print("Found %s total regions" % len(regions))
+    logging.info("Found %s total regions" % len(regions))
 
     return regions
