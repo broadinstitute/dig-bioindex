@@ -2,6 +2,8 @@
 
 The script `run-bioindex-processor-and-reindex.sh` runs the individual stages of the Bioindex Aggregator Processor (that transforms data produced by upstream Aggregator Processors into formats suitable for being indexed and served up by the Bioindex) and interleaves re-indexing operations on the resulting data.  This is done to minimize disruption to the Dev Bioindex data.  It's possible to run all the Bioindex Processor Stages up front, and re-index everything when that's done.  But that would mean that the data underlying the Dev Bioindex would be out of sync with the indexes for up to the time it takes for all the Aggregator Stages to run: 1-2 days.  Rebuilding each index after the data being referred to by the index changes means that individual indexes will only be broken or wonky for as long as it takes for their data to be re-built and re-indexed, on the order of minutes or hours, not days.
 
+See `Processor-to-Index Correspondence` section to see which indexes need to be rebuilt after which Bioindex processor stages get run.
+
 `run-bioindex-processor-and-reindex.sh` Runs from some machine, and runs commands to remotely execute the various aggregator stages on the Aggregator EC2 instance, and the Dev Bioindex EC2 instance.  This happens in detached screen sessions on the remote hosts, so that even if the host machine running `run-bioindex-processor-and-reindex.sh` dies, the remote operations will continue.  Unfortunately, it's not possible to pick up when one left off in a case like that without commenting out parts of the script.  See the `Future Work` section.
 
 The screen sessions on the remote hosts are named `automation`, and may be re-attached to if necessary.  Output from the last operation is logged to a file in `~ec2-user/automation/`.
@@ -34,3 +36,23 @@ Host bioindex
 
 # Future Work
 This is a classic case for Loamstream automation, as LS provides a lot of things that are missing from these scripts that is either re-invented here in a less-robust fashion or missing, like being able to resume midway.
+
+# Processor-to-Index Correspondence
+| STAGE | INDEX_NAMES |
+| ---   | ---         |
+| GenesStage | gene,genes |
+| GeneVariantsStage | gene-variants |
+| GeneLinksStage | gene-links |
+| VariantsStage | variant |
+| AnnotatedRegionsStage | annotated-regions,regions,tissue-regions |
+| GlobalEnrichmentStage | global-enrichment |
+| TranscriptionsStage | transcript-consequences,transcription-factors |
+| CredibleSetsStage | credible-regions,credible-sets,credible-variants |
+| ClumpedVariantsStage | clumped-matrix,clumped-variants |
+| AssociationsStage | associations |
+| TopAssociationsStage | top-associations,global-associations |
+| PhewasAssociationsStage | phewas-associations |
+| DatasetAssociationsStage | dataset-associations |
+| VariantAssociationsStage | variant-dataset-associations |
+| GeneAssociationsStage | gene-associations,gene-associations-52k,gene-finder |
+| BurdenStage | burden |
