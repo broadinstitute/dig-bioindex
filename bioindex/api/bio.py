@@ -1,11 +1,13 @@
 import asyncio
 import concurrent.futures
-from bioindex.lib.region_set import Region, RegionSet
+from bioindex.lib.region_set import Region, RegionSet, Variant
 import fastapi
 import graphql
 import itertools
+import re
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Json
+from pydantic.validators import str_validator
 from typing import List, Optional
 
 from .utils import *
@@ -49,6 +51,19 @@ class Query(BaseModel):
     q: List[str]
     fmt: Optional[str] = 'row'
     limit: Optional[int] = None
+
+__VARIANT_DELIM = ':'
+
+def __variant_from_str(s): 
+  if s is None or s.strip() == '':
+    raise ValueError("Can't parse variant string '%s'" % s)
+
+  parts = s.split(__VARIANT_DELIM)
+
+  try:
+    return Variant(parts[0], int(parts[1]))
+  except:
+    raise ValueError("Can't parse variant string '%s'" % s)
 
 class RegionMembershipQuery(BaseModel):
   limit: int
@@ -456,14 +471,37 @@ def _fetch_records(reader, index, qs, fmt, page=1, query_s=None):
         'nonce': nonce(),
     }
 
-@router.post('/regions/containing', response_class=fastapi.responses.ORJSONResponse)
+@router.post('/regions-variants', response_class=fastapi.responses.ORJSONResponse)
 async def api_query_region_membership(query: RegionMembershipQuery):
-  try:
+  def fetch_data(page=0):
+    try:
+      parsed_variants = [__variant_from_str(v) for v in query.variants]
+
+      result = REGION_SET.regions_containing(parsed_variants)
+
+      num_to_drop = page * query.limit
+
+      after_dropped = itertools.islice(result, num_to_drop, None)
+
+      to_return = list(itertools.islice(after_dropped, query.limit))
+
+      no_more_pages = len(to_return) == 0 or len(to_return) <= query.limit
+
+      # create a continuation if there is more data
+      token = None if no_more_pages else continuation.make_continuation(
+          callback=lambda cont: fetch_data(page=page + 1),
+      )
+
       return {
-        'data': REGION_SET.regions_containing(query.variants),
-        'nonce': nonce()
+        'page': page,
+        'continuation': token,
+        'nonce': nonce(),
+        'data': to_return
       }
-  except asyncio.TimeoutError:
-      raise fastapi.HTTPException(status_code=408, detail=f'Query execution timed out after {CONFIG.script_timeout} seconds')
-  except ValueError as e:
-      raise fastapi.HTTPException(status_code=400, detail=str(e))
+    except asyncio.TimeoutError:
+        raise fastapi.HTTPException(status_code=408, detail=f'Query execution timed out after {CONFIG.script_timeout} seconds')
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
+
+  return fetch_data()
+
