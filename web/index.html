@@ -257,7 +257,7 @@
             },
             actions: {
                 async queryIndexes({ commit }) {
-                    let json = await fetch(`/api/bio/indexes`)
+                    let json = await fetch(`./api/bio/indexes`)
                         .then(resp => resp.json());
 
                     commit('setIndexes', json.data);
