@@ -181,10 +181,12 @@ async def api_portal_datasets(req: fastapi.Request, q: str=None):
         '       `community`, '
         '       `phenotypes`, '
         '       `ancestry`, '
+        '       `ancestry_name`, '
         '       `tech`, '
         '       `subjects`, '
         '       `access`, '
         '       `new`, '
+        '       `pmid`, '
         '       `added` '
         'FROM Datasets'
     )
@@ -208,6 +210,8 @@ async def api_portal_datasets(req: fastapi.Request, q: str=None):
             'access': r[7],
             'new': r[8] != 0,
             'added': r[9],
+            'pmid': r[10],
+            'ancestry_name': r[11],
         }
 
         if len(ps) > 0:
