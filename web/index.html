@@ -36,7 +36,7 @@
                     <div style="font-size: xx-large; font-weight: bold">
                         HuGe BioIndex
                     </div>
-                    <a style="font-size: smaller" href="/docs" target="_blank">
+                    <a style="font-size: smaller" href="./docs" target="_blank">
                         REST API
                     </a>
                 </div>
@@ -257,7 +257,7 @@
             },
             actions: {
                 async queryIndexes({ commit }) {
-                    let json = await fetch(`/api/bio/indexes`)
+                    let json = await fetch(`./api/bio/indexes`)
                         .then(resp => resp.json());
 
                     commit('setIndexes', json.data);
@@ -274,7 +274,7 @@
                     context.commit('setCall', {href, link});
                     context.commit('startLoading', 'Submitting query script');
 
-                    let resp = await fetch('/api/bio/query', {
+                    let resp = await fetch('./api/bio/query', {
                         method: 'POST',
                         body: script,
                         headers: {
@@ -298,8 +298,8 @@
                     let i = context.state.index.index;
 
                     // don't url encode the query parameter for the example call
-                    let href = `/api/bio/${action}/${i}?q=${p}`;
-                    let link = `/api/bio/${action}/${i}?q=${q}`;
+                    let href = `./api/bio/${action}/${i}?q=${p}`;
+                    let link = `./api/bio/${action}/${i}?q=${q}`;
 
                     context.commit('setCall', {href, link});
                     context.commit('startLoading', `Searching ${i}`);
@@ -316,7 +316,7 @@
                 },
 
                 async loadMore(context) {
-                    let href = `/api/bio/cont?token=${context.state.results.continuation}`;
+                    let href = `./api/bio/cont?token=${context.state.results.continuation}`;
 
                     context.commit('startLoading', 'Fetching more');
 
