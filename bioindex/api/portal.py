@@ -257,6 +257,52 @@ async def api_portal_documentation(q: str, group: str = None):
     }
 
 
+@router.get('/systems', response_class=fastapi.responses.ORJSONResponse)
+async def api_portal_systems(req: fastapi.Request):
+    """
+    Returns system-disease-phenotype for all systems.
+    """
+
+    # fetch all systems, join to diseases and phenotype groups
+    sql = (
+        """
+        SELECT s.system, d.disease, g.group, p.name as phenotype
+            FROM SystemToDisease stod
+            JOIN DiseaseToGroup dtog ON stod.diseaseId = dtog.diseaseId
+            JOIN GroupToPhenotype gtop ON dtog.groupId = gtop.groupId
+            JOIN Systems s ON s.id = stod.systemId
+            JOIN Diseases d ON d.id = stod.diseaseId
+            JOIN PhenotypeGroups g ON g.id = dtog.groupId
+            JOIN Phenotypes p ON p.id = gtop.phenotypeId
+        ORDER BY s.system, d.disease, g.group, p.name
+        """
+    )
+
+    # get all datasets
+    resp, query_s = profile(portal.execute, sql)
+    systems = []
+
+    # filter all the datasets
+    for r in resp:
+        system = {
+            'system': r[0],
+            'disease': r[1],
+            'group': r[2],
+            'phenotype': r[3]
+        }
+
+        systems.append(system)
+
+    return {
+        'profile': {
+            'query': query_s,
+        },
+        'data': systems,
+        'count': len(systems),
+        'nonce': nonce(),
+    }
+
+
 @router.get('/links', response_class=fastapi.responses.ORJSONResponse)
 async def api_portal_links(q: str = None, group: str = None):
     """
