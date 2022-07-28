@@ -278,11 +278,11 @@ async def api_portal_systems(req: fastapi.Request):
         """
     )
 
-    # get all datasets
+    # get all systems
     resp, query_s = profile(portal.execute, sql)
     systems = []
 
-    # filter all the datasets
+    # filter all the systems
     for r in resp:
         system = {
             'system': r[0],
