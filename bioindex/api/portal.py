@@ -266,7 +266,7 @@ async def api_portal_systems(req: fastapi.Request):
     # fetch all systems, join to diseases and phenotype groups
     sql = (
         """
-        SELECT s.system, d.disease, g.group, p.name as phenotype
+        SELECT s.system, s.portals, d.disease, g.group, p.name as phenotype
             FROM SystemToDisease stod
             JOIN DiseaseToGroup dtog ON stod.diseaseId = dtog.diseaseId
             JOIN GroupToPhenotype gtop ON dtog.groupId = gtop.groupId
@@ -286,9 +286,10 @@ async def api_portal_systems(req: fastapi.Request):
     for r in resp:
         system = {
             'system': r[0],
-            'disease': r[1],
-            'group': r[2],
-            'phenotype': r[3]
+            'portals': r[1],
+            'disease': r[2],
+            'group': r[3],
+            'phenotype': r[4]
         }
 
         systems.append(system)
