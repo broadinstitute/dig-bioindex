@@ -51,3 +51,19 @@ async def api_raw_plot_phenotype(phenotype: str, file: str, req: fastapi.Request
         raise fastapi.HTTPException(status_code=404)
 
     return fastapi.Response(content=content.read(), media_type='image/png')
+
+
+@router.get('/plot/phenotype/{phenotype}/{ancestry}/{file:path}')
+async def api_raw_plot_phenotype_ancestry(phenotype: str, ancestry: str, file: str, req: fastapi.Request):
+    """
+    Returns a raw, image plot for the bottom-line analysis of a phenotype.
+    """
+    if not verify_permissions(portal, req, phenotype=phenotype):
+        raise fastapi.HTTPException(status_code=401)
+
+    # load the object from s3
+    content = s3.read_object(CONFIG.s3_bucket, f'plot/phenotype/{phenotype}/{ancestry}/{file}')
+    if content is None:
+        raise fastapi.HTTPException(status_code=404)
+
+    return fastapi.Response(content=content.read(), media_type='image/png')
