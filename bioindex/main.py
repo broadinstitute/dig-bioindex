@@ -95,7 +95,7 @@ def cli_index(cfg, index_name, use_lambda, rebuild, workers):
         assert cfg.lambda_function, 'BIOINDEX_LAMBDA_FUNCTION not set; cannot use --use-lambda'
 
     # discover which indexes will be indexes
-    i = index.Index.lookup(engine, index_name)
+    idxs = index.Index.lookup_all(engine, index_name)
 
     # optional build arguments for build/rebuild function
     build_kwargs = {
@@ -106,14 +106,17 @@ def cli_index(cfg, index_name, use_lambda, rebuild, workers):
 
     # build each index specified
     try:
-        logging.info(f'{"Rebuilding" if rebuild else "Updating"} index {i.name}')
+        for i in idxs:
+            logging.info(f'Preparing index {i.name} with arity {i.arity}')
+            i.prepare(engine, rebuild=rebuild)
+        for i in idxs:
+            logging.info(f'{"Rebuilding" if rebuild else "Updating"} index {i.name} with arity {i.arity}')
 
-        # prepare and build the index
-        i.prepare(engine, rebuild=rebuild)
-        i.build(cfg, engine, **build_kwargs)
+            # build the index
+            i.build(cfg, engine, **build_kwargs)
 
-        # finished building all indexes
-        logging.info('Done')
+            # finished building all indexes
+            logging.info('Done')
     except AssertionError as e:
         logging.error(f'Failed to build index %s: %s', i.name, e)
 
@@ -124,7 +127,7 @@ def cli_index(cfg, index_name, use_lambda, rebuild, workers):
 @click.pass_obj
 def cli_query(cfg, index_name, q):
     engine = migrate.migrate(cfg)
-    i = index.Index.lookup(engine, index_name)
+    i = index.Index.lookup(engine, index_name, len(q))
 
     # query the index
     reader = query.fetch(cfg, engine, i, q)
@@ -139,14 +142,15 @@ def cli_query(cfg, index_name, q):
 @click.pass_obj
 def cli_all(cfg, index_name):
     engine = migrate.migrate(cfg)
-    idx = index.Index.lookup(engine, index_name)
+    idxs = index.Index.lookup_all(engine, index_name)
 
     # read all records
-    reader = query.fetch_all(cfg, idx.s3_prefix)
+    for idx in idxs:
+        reader = query.fetch_all(cfg, idx.s3_prefix)
 
-    # lookup the table class from the schema
-    for record in reader.records:
-        console.print(orjson.dumps(record).decode('utf-8'))
+        # lookup the table class from the schema
+        for record in reader.records:
+            console.print(orjson.dumps(record).decode('utf-8'))
 
 
 @click.command(name='count')
@@ -155,7 +159,7 @@ def cli_all(cfg, index_name):
 @click.pass_obj
 def cli_count(cfg, index_name, q):
     engine = migrate.migrate(cfg)
-    i = index.Index.lookup(engine, index_name)
+    i = index.Index.lookup(engine, index_name, len(q))
 
     # query the index
     count = query.count(cfg, engine, i, q)
@@ -168,7 +172,7 @@ def cli_count(cfg, index_name, q):
 @click.pass_obj
 def cli_match(cfg, index_name, q):
     engine = migrate.migrate(cfg)
-    i = index.Index.lookup(engine, index_name)
+    i = index.Index.lookup(engine, index_name, len(q))
 
     # lookup the table class from the schema
     try:

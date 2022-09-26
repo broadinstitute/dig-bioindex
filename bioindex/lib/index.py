@@ -22,7 +22,7 @@ class Index:
     An index definition that can be built or queried.
     """
 
-    def __init__(self, name, table_name, s3_prefix, schema_string, built_date):
+    def __init__(self, name, table_name, s3_prefix, schema_string, arity, built_date):
         """
         Initialize the index with everything needed to build keys and query.
         """
@@ -31,6 +31,7 @@ class Index:
         self.name = name
         self.built = built_date
         self.s3_prefix = s3_prefix
+        self.arity = arity
 
     @staticmethod
     def create(engine, name, s3_prefix, schema):
@@ -62,7 +63,7 @@ class Index:
         """
         Return an iterator of all the indexes.
         """
-        sql = 'SELECT `name`, `table`, `prefix`, `schema`, `built` FROM `__Indexes`'
+        sql = 'SELECT `name`, `table`, `prefix`, `schema`, `arity`, `built` FROM `__Indexes`'
 
         # convert all rows to an index definition
         indexes = map(lambda r: Index(*r), engine.execute(sql))
@@ -74,24 +75,44 @@ class Index:
         return indexes
 
     @staticmethod
-    def lookup(engine, name):
+    def lookup(engine, name, arity):
         """
         Lookup an index in the database, return its table name, s3 prefix,
         schema, etc.
         """
         sql = (
-            'SELECT `name`, `table`, `prefix`, `schema`, `built` '
+            'SELECT `name`, `table`, `prefix`, `schema`, `arity`, `built` '
             'FROM `__Indexes` '
-            'WHERE `name` = %s '
+            'WHERE `name` = %s AND `arity` == %s'
         )
 
         # lookup the index
-        row = engine.execute(sql, name).fetchone()
+        rows = engine.execute(sql, name, arity).fetchone()
 
         if row is None:
             raise KeyError(f'No such index: {name}')
 
         return Index(*row)
+
+    @staticmethod
+    def lookup_all(engine, name):
+        """
+        Lookup an index in the database, return its table name, s3 prefix,
+        schema, etc.
+        """
+        sql = (
+            'SELECT `name`, `table`, `prefix`, `schema`, `arity`, `built` '
+            'FROM `__Indexes` '
+            'WHERE `name` = %s'
+        )
+
+        # lookup the index
+        rows = engine.execute(sql, name).fetchall()
+
+        if len(rows) == 0:
+            raise KeyError(f'No such index: {name}')
+
+        return [Index(*row) for row in rows]
 
     def prepare(self, engine, rebuild=False):
         """
@@ -444,8 +465,8 @@ class Index:
         key -> {id, version}. The version will be None if the key hasn't been
         completely indexed.
         """
-        sql = 'SELECT `id`, `key`, `version`, `built` FROM `__Keys` WHERE `index` = %s '
-        rows = engine.execute(sql, self.name).fetchall()
+        sql = 'SELECT `id`, `key`, `version`, `built` FROM `__Keys` WHERE `index` = %s AND `key` LIKE %s'
+        rows = engine.execute(sql, self.name, f'{self.s3_prefix}%').fetchall()
 
         return {key: {'id': id, 'version': built and ver} for id, key, ver, built in rows}
 

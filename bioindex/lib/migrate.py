@@ -2,7 +2,8 @@ import logging
 import sqlalchemy
 import sys
 
-from sqlalchemy import Column, DateTime, Index, Integer, String, Table
+from sqlalchemy import Column, DateTime, Index, Integer, String, Table, FetchedValue
+from sqlalchemy.orm import Session
 
 from .aws import connect_to_db
 
@@ -28,6 +29,7 @@ def migrate(config):
 
         # create all tables
         create_indexes_table(engine)
+        index_migration_1(engine)
         create_keys_table(engine)
 
         return engine
@@ -37,13 +39,17 @@ def migrate(config):
         sys.exit(-1)
 
 
+def arity(context):
+    return len(context.get_current_parameters()['schema'].split(','))
+
+
 def create_indexes_table(engine):
     """
     Create the __Indexes table if it doesn't already exist.
     """
     table_columns = [
         Column('id', Integer, primary_key=True),
-        Column('name', String(200, collation='ascii_bin'), index=True),
+        Column('name', String(200, collation='ascii_bin')),
         Column('table', String(200, collation='ascii_bin')),
         Column('prefix', String(1024, collation='ascii_bin')),
         Column('schema', String(200, collation='utf8_bin')),
@@ -56,6 +62,22 @@ def create_indexes_table(engine):
     # create the index table (drop any existing table already there)
     logging.info('Migrating __Indexes...')
     __Indexes.create(engine, checkfirst=True)
+
+
+def index_migration_1(engine):
+    with Session(engine) as session:
+        indexes = engine.execute('SHOW INDEXES FROM `__Indexes`').fetchall()
+        # drop name_UNIQUE index if present
+        maybe_name_idx = [r[2] == 'name_UNIQUE' for r in indexes]
+        if any(maybe_name_idx):
+            session.execute('ALTER TABLE __Indexes DROP INDEX `name_UNIQUE`')
+
+        # create name_arity index if not present
+        maybe_name_arity_idx = [r[2] != 'name_arity_idx' for r in indexes]
+        if all(maybe_name_arity_idx):
+            session.execute('CREATE UNIQUE INDEX `name_arity_idx` ON __Indexes '
+                           '(name, (LENGTH(`schema`) - LENGTH(REPLACE(`schema`, ",", "")) + 1))')
+        session.commit()
 
 
 def create_keys_table(engine):
