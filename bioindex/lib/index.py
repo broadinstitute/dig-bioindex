@@ -22,7 +22,7 @@ class Index:
     An index definition that can be built or queried.
     """
 
-    def __init__(self, name, table_name, s3_prefix, schema_string, arity, built_date):
+    def __init__(self, name, table_name, s3_prefix, schema_string, built_date):
         """
         Initialize the index with everything needed to build keys and query.
         """
@@ -31,10 +31,9 @@ class Index:
         self.name = name
         self.built = built_date
         self.s3_prefix = s3_prefix
-        self.arity = arity
 
     @staticmethod
-    def create(engine, name, s3_prefix, schema):
+    def create(engine, name, rds_table_name, s3_prefix, schema):
         """
         Create a new record in the __Index table and return True if
         successful. Will overwrite any existing index with the same
@@ -54,7 +53,7 @@ class Index:
         )
 
         # add to the database
-        row = engine.execute(sql, name, cap_case_str(name), s3_prefix, schema)
+        row = engine.execute(sql, name, rds_table_name, s3_prefix, schema)
 
         return row and row.lastrowid is not None
 
@@ -63,7 +62,7 @@ class Index:
         """
         Return an iterator of all the indexes.
         """
-        sql = 'SELECT `name`, `table`, `prefix`, `schema`, `arity`, `built` FROM `__Indexes`'
+        sql = 'SELECT `name`, `table`, `prefix`, `schema`, `built` FROM `__Indexes`'
 
         # convert all rows to an index definition
         indexes = map(lambda r: Index(*r), engine.execute(sql))
@@ -81,13 +80,13 @@ class Index:
         schema, etc.
         """
         sql = (
-            'SELECT `name`, `table`, `prefix`, `schema`, `arity`, `built` '
+            'SELECT `name`, `table`, `prefix`, `schema`, `built` '
             'FROM `__Indexes` '
-            'WHERE `name` = %s AND `arity` == %s'
+            'WHERE `name` = %s AND LENGTH(`schema`) - LENGTH(REPLACE(`schema`, \',\', \'\')) + 1 = %s'
         )
 
         # lookup the index
-        rows = engine.execute(sql, name, arity).fetchone()
+        row = engine.execute(sql, name, arity).fetchone()
 
         if row is None:
             raise KeyError(f'No such index: {name}')
@@ -101,7 +100,7 @@ class Index:
         schema, etc.
         """
         sql = (
-            'SELECT `name`, `table`, `prefix`, `schema`, `arity`, `built` '
+            'SELECT `name`, `table`, `prefix`, `schema`, `built` '
             'FROM `__Indexes` '
             'WHERE `name` = %s'
         )
@@ -253,6 +252,7 @@ class Index:
             # lambda function event data
             payload = {
                 'index': self.name,
+                'arity': self.schema.arity,
                 'rds_secret': config.rds_secret,
                 'rds_schema': config.bio_schema,
                 's3_bucket': config.s3_bucket,

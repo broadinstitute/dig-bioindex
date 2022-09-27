@@ -44,16 +44,17 @@ def cli_serve(port):
 
 @click.command(name='create')
 @click.argument('index_name')
+@click.argument('rds_table_name')
 @click.argument('s3_prefix')
 @click.argument('index_schema')
 @click.confirmation_option(prompt='This will create/update an index; continue?')
 @click.pass_obj
-def cli_create(cfg, index_name, s3_prefix, index_schema):
+def cli_create(cfg, index_name, rds_table_name, s3_prefix, index_schema):
     engine = migrate.migrate(cfg)
 
     # parse the schema to ensure validity; create the index
     try:
-        index.Index.create(engine, index_name, s3_prefix, index_schema)
+        index.Index.create(engine, index_name, rds_table_name, s3_prefix, index_schema)
 
         # successfully completed
         logging.info('Done; build with `index %s`', index_name)
@@ -107,10 +108,10 @@ def cli_index(cfg, index_name, use_lambda, rebuild, workers):
     # build each index specified
     try:
         for i in idxs:
-            logging.info(f'Preparing index {i.name} with arity {i.arity}')
+            logging.info(f'Preparing index {i.name} with arity {i.schema.arity}')
             i.prepare(engine, rebuild=rebuild)
         for i in idxs:
-            logging.info(f'{"Rebuilding" if rebuild else "Updating"} index {i.name} with arity {i.arity}')
+            logging.info(f'{"Rebuilding" if rebuild else "Updating"} index {i.name} with arity {i.schema.arity}')
 
             # build the index
             i.build(cfg, engine, **build_kwargs)

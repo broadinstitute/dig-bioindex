@@ -54,7 +54,7 @@ def _load_indexes():
     Create a cache of the indexes in the database.
     """
     indexes = index.Index.list_indexes(engine, filter_built=False)
-    return dict(((i.name, int(i.arity)), i) for i in indexes)
+    return dict(((i.name, int(i.schema.arity)), i) for i in indexes)
 
 
 # initialize with all the indexes, get them all, whether built or not

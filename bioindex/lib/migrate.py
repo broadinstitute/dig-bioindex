@@ -39,17 +39,13 @@ def migrate(config):
         sys.exit(-1)
 
 
-def arity(context):
-    return len(context.get_current_parameters()['schema'].split(','))
-
-
 def create_indexes_table(engine):
     """
     Create the __Indexes table if it doesn't already exist.
     """
     table_columns = [
         Column('id', Integer, primary_key=True),
-        Column('name', String(200, collation='ascii_bin')),
+        Column('name', String(200, collation='ascii_bin'), index=True),
         Column('table', String(200, collation='ascii_bin')),
         Column('prefix', String(1024, collation='ascii_bin')),
         Column('schema', String(200, collation='utf8_bin')),
