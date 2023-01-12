@@ -33,7 +33,7 @@ class Index:
         self.s3_prefix = s3_prefix
 
     @staticmethod
-    def create(engine, name, s3_prefix, schema):
+    def create(engine, name, rds_table_name, s3_prefix, schema):
         """
         Create a new record in the __Index table and return True if
         successful. Will overwrite any existing index with the same
@@ -53,7 +53,7 @@ class Index:
         )
 
         # add to the database
-        row = engine.execute(sql, name, cap_case_str(name), s3_prefix, schema)
+        row = engine.execute(sql, name, rds_table_name, s3_prefix, schema)
 
         return row and row.lastrowid is not None
 
@@ -74,7 +74,7 @@ class Index:
         return indexes
 
     @staticmethod
-    def lookup(engine, name):
+    def lookup(engine, name, arity):
         """
         Lookup an index in the database, return its table name, s3 prefix,
         schema, etc.
@@ -82,16 +82,36 @@ class Index:
         sql = (
             'SELECT `name`, `table`, `prefix`, `schema`, `built` '
             'FROM `__Indexes` '
-            'WHERE `name` = %s '
+            'WHERE `name` = %s AND LENGTH(`schema`) - LENGTH(REPLACE(`schema`, \',\', \'\')) + 1 = %s'
         )
 
         # lookup the index
-        row = engine.execute(sql, name).fetchone()
+        row = engine.execute(sql, name, arity).fetchone()
 
         if row is None:
             raise KeyError(f'No such index: {name}')
 
         return Index(*row)
+
+    @staticmethod
+    def lookup_all(engine, name):
+        """
+        Lookup an index in the database, return its table name, s3 prefix,
+        schema, etc.
+        """
+        sql = (
+            'SELECT `name`, `table`, `prefix`, `schema`, `built` '
+            'FROM `__Indexes` '
+            'WHERE `name` = %s'
+        )
+
+        # lookup the index
+        rows = engine.execute(sql, name).fetchall()
+
+        if len(rows) == 0:
+            raise KeyError(f'No such index: {name}')
+
+        return [Index(*row) for row in rows]
 
     def prepare(self, engine, rebuild=False):
         """
@@ -232,6 +252,7 @@ class Index:
             # lambda function event data
             payload = {
                 'index': self.name,
+                'arity': self.schema.arity,
                 'rds_secret': config.rds_secret,
                 'rds_schema': config.bio_schema,
                 's3_bucket': config.s3_bucket,
@@ -444,8 +465,8 @@ class Index:
         key -> {id, version}. The version will be None if the key hasn't been
         completely indexed.
         """
-        sql = 'SELECT `id`, `key`, `version`, `built` FROM `__Keys` WHERE `index` = %s '
-        rows = engine.execute(sql, self.name).fetchall()
+        sql = 'SELECT `id`, `key`, `version`, `built` FROM `__Keys` WHERE `index` = %s AND `key` LIKE %s'
+        rows = engine.execute(sql, self.name, f'{self.s3_prefix}%').fetchall()
 
         return {key: {'id': id, 'version': built and ver} for id, key, ver, built in rows}
 
