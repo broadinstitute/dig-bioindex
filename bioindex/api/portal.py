@@ -20,12 +20,12 @@ if not portal:
     monkey_patch_router(router)
 
 
-@router.get('/groups', response_class=fastapi.responses.ORJSONResponse)
+@router.get("/groups", response_class=fastapi.responses.ORJSONResponse)
 async def api_portal_groups():
     """
     Returns the list of portals available.
     """
-    sql = 'SELECT `name`, `title`, `description`, `default`, `portalGroup` FROM DiseaseGroups'
+    sql = "SELECT `name`, `title`, `description`, `default`, `portalGroup` FROM DiseaseGroups"
 
     # run the query
     resp, query_s = profile(portal.execute, sql)
@@ -33,25 +33,27 @@ async def api_portal_groups():
 
     # transform response
     for name, title, desc, default, portalGroup in resp:
-        disease_groups.append({
-            'name': name,
-            'default': default != 0,
-            'description': desc,
-            'title': title,
-            'portalGroup': portalGroup,
-        })
+        disease_groups.append(
+            {
+                "name": name,
+                "default": default != 0,
+                "description": desc,
+                "title": title,
+                "portalGroup": portalGroup,
+            }
+        )
 
     return {
-        'profile': {
-            'query': query_s,
+        "profile": {
+            "query": query_s,
         },
-        'data': disease_groups,
-        'count': len(disease_groups),
-        'nonce': nonce(),
+        "data": disease_groups,
+        "count": len(disease_groups),
+        "nonce": nonce(),
     }
 
 
-@router.get('/restrictions', response_class=fastapi.responses.ORJSONResponse)
+@router.get("/restrictions", response_class=fastapi.responses.ORJSONResponse)
 async def api_portal_restrictions(req: fastapi.Request):
     """
     Returns all restrictions for the current user.
@@ -59,92 +61,104 @@ async def api_portal_restrictions(req: fastapi.Request):
     keyword_restrictions, query_s = profile(restrictions, portal, req)
 
     return {
-        'profile': {
-            'query': query_s,
+        "profile": {
+            "query": query_s,
         },
-        'data': keyword_restrictions,
-        'nonce': nonce(),
+        "data": keyword_restrictions,
+        "nonce": nonce(),
     }
 
 
-
-@router.get('/phenotypes', response_class=fastapi.responses.ORJSONResponse)
+@router.get("/phenotypes", response_class=fastapi.responses.ORJSONResponse)
 async def api_portal_phenotypes(q: str = None):
     """
     Returns all available phenotypes or just those for a given
     disease group.
     """
-    sql = 'SELECT `name`, `description`, `group`, `dichotomous` FROM Phenotypes'
+    sql = "SELECT `name`, `description`, `group`, `dichotomous` FROM Phenotypes"
 
     # groups to match
     groups = None
 
     # optionally filter by disease group
-    if q and q != '':
-        resp = portal.execute('SELECT `groups` FROM DiseaseGroups WHERE `name` = %s', q)
-        rows = resp.fetchone() or ['']
+    if q and q != "":
+        resp = portal.execute("SELECT `groups` FROM DiseaseGroups WHERE `name` = %s", q)
+        rows = resp.fetchone() or [""]
 
         # groups are a comma-separated set
-        groups = rows[0].split(',')
+        groups = rows[0].split(",")
 
     # collect phenotype groups by union
     if groups is not None:
-        sql = ' UNION '.join(f'({sql} WHERE FIND_IN_SET(%s, Phenotypes.`group`))' for _ in groups)
+        sql = " UNION ".join(
+            f"({sql} WHERE FIND_IN_SET(%s, Phenotypes.`group`))" for _ in groups
+        )
 
     # run the query
-    resp, query_s = profile(portal.execute, sql, *groups) if groups else profile(portal.execute, sql)
+    resp, query_s = (
+        profile(portal.execute, sql, *groups)
+        if groups
+        else profile(portal.execute, sql)
+    )
     phenotypes = []
 
     # transform response
     for name, desc, group, dichotomous in resp:
-        phenotypes.append({
-            'name': name,
-            'description': desc,
-            'group': group,
-            'dichotomous': dichotomous,
-        })
+        phenotypes.append(
+            {
+                "name": name,
+                "description": desc,
+                "group": group,
+                "dichotomous": dichotomous,
+            }
+        )
 
     return {
-        'profile': {
-            'query': query_s,
+        "profile": {
+            "query": query_s,
         },
-        'data': phenotypes,
-        'count': len(phenotypes),
-        'nonce': nonce(),
+        "data": phenotypes,
+        "count": len(phenotypes),
+        "nonce": nonce(),
     }
 
 
-
-@router.get('/complications', response_class=fastapi.responses.ORJSONResponse)
+@router.get("/complications", response_class=fastapi.responses.ORJSONResponse)
 async def api_portal_complications(q: str = None):
     """
     Returns all available complication phenotype pairs.
     """
     sql = (
-        'SELECT Complications.`name`, Phenotypes.`group`, Complications.`phenotype`, Complications.`withComplication` '
-        'FROM Complications '
-        'JOIN Phenotypes '
-        'ON Phenotypes.`name` = Complications.`name` '
+        "SELECT Complications.`name`, Phenotypes.`group`, Complications.`phenotype`, Complications.`withComplication` "
+        "FROM Complications "
+        "JOIN Phenotypes "
+        "ON Phenotypes.`name` = Complications.`name` "
     )
 
     # groups to match
     groups = None
 
     # optionally filter by disease group
-    if q and q != '':
-        resp = portal.execute('SELECT `groups` FROM DiseaseGroups WHERE `name` = %s', q)
-        rows = resp.fetchone() or ['']
+    if q and q != "":
+        resp = portal.execute("SELECT `groups` FROM DiseaseGroups WHERE `name` = %s", q)
+        rows = resp.fetchone() or [""]
 
         # groups are a comma-separated set
-        groups = rows[0].split(',')
+        groups = rows[0].split(",")
 
     # collect phenotype groups by union
     if groups is not None:
-        sql = ' UNION '.join(f'({sql} WHERE FIND_IN_SET(%s, Phenotypes.`group`))' for _ in groups)
+        sql = " UNION ".join(
+            f"({sql} WHERE FIND_IN_SET(%s, Phenotypes.`group`))" for _ in groups
+        )
 
     # run the query
     if sql:
-        resp, query_s = profile(portal.execute, sql, *groups) if groups else profile(portal.execute, sql)
+        resp, query_s = (
+            profile(portal.execute, sql, *groups)
+            if groups
+            else profile(portal.execute, sql)
+        )
 
     # distinct complications
     complications = {}
@@ -154,41 +168,41 @@ async def api_portal_complications(q: str = None):
         complications.setdefault(name, dict())[phenotype] = with_complication
 
     return {
-        'profile': {
-            'query': query_s,
+        "profile": {
+            "query": query_s,
         },
-        'data': [{'name': k, 'phenotypes': v} for k, v in complications.items()],
-        'count': len(complications),
-        'nonce': nonce(),
+        "data": [{"name": k, "phenotypes": v} for k, v in complications.items()],
+        "count": len(complications),
+        "nonce": nonce(),
     }
 
 
-@router.get('/datasets', response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_datasets(req: fastapi.Request, q: str=None):
+@router.get("/datasets", response_class=fastapi.responses.ORJSONResponse)
+async def api_portal_datasets(req: fastapi.Request, q: str = None):
     """
     Returns all available datasets for a given disease group.
     """
     resp = await api_portal_phenotypes(q)
 
     # map all the phenotypes for this portal group
-    phenotypes = set(p['name'] for p in resp['data'])
-    query_p = resp['profile']['query']
+    phenotypes = set(p["name"] for p in resp["data"])
+    query_p = resp["profile"]["query"]
 
     # query for datasets
     sql = (
-        'SELECT `name`, '
-        '       `description`, '
-        '       `community`, '
-        '       `phenotypes`, '
-        '       `ancestry`, '
-        '       `ancestry_name`, '
-        '       `tech`, '
-        '       `subjects`, '
-        '       `access`, '
-        '       `new`, '
-        '       `pmid`, '
-        '       `added` '
-        'FROM Datasets'
+        "SELECT `name`, "
+        "       `description`, "
+        "       `community`, "
+        "       `phenotypes`, "
+        "       `ancestry`, "
+        "       `ancestry_name`, "
+        "       `tech`, "
+        "       `subjects`, "
+        "       `access`, "
+        "       `new`, "
+        "       `pmid`, "
+        "       `added` "
+        "FROM Datasets"
     )
 
     # get all datasets
@@ -197,103 +211,103 @@ async def api_portal_datasets(req: fastapi.Request, q: str=None):
 
     # filter all the datasets
     for r in resp:
-        ps = [p for p in r[3].split(',') if p in phenotypes]
+        ps = [p for p in r[3].split(",") if p in phenotypes]
 
         dataset = {
-            'name': r[0],
-            'description': r[1],
-            'community': r[2],
-            'phenotypes': ps,
-            'ancestry': r[4],
-            'ancestry_name': r[5],
-            'tech': r[6],
-            'subjects': r[7],
-            'access': r[8],
-            'new': r[9] != 0,
-            'pmid': r[10],
-            'added': r[11],
+            "name": r[0],
+            "description": r[1],
+            "community": r[2],
+            "phenotypes": ps,
+            "ancestry": r[4],
+            "ancestry_name": r[5],
+            "tech": r[6],
+            "subjects": r[7],
+            "access": r[8],
+            "new": r[9] != 0,
+            "pmid": r[10],
+            "added": r[11],
         }
 
         if len(ps) > 0:
             datasets.append(dataset)
 
     return {
-        'profile': {
-            'query': query_p + query_s,
+        "profile": {
+            "query": query_p + query_s,
         },
-        'data': datasets,
-        'count': len(datasets),
-        'nonce': nonce(),
+        "data": datasets,
+        "count": len(datasets),
+        "nonce": nonce(),
     }
 
 
-@router.get('/documentation', response_class=fastapi.responses.ORJSONResponse)
+@router.get("/documentation", response_class=fastapi.responses.ORJSONResponse)
 async def api_portal_documentation(q: str, group: str = None):
     """
     Returns all available phenotypes or just those for a given
     portal group.
     """
-    sql = 'SELECT `group`, `content` FROM Documentation WHERE `name` = %s '
+    sql = "SELECT `group`, `content` FROM Documentation WHERE `name` = %s "
     params = [q]
 
     # additionally get the the group
     if group is not None:
-        sql += 'AND `group` = %s '
+        sql += "AND `group` = %s "
         params.append(group)
 
     # run the query
     resp, query_s = profile(portal.execute, sql, *params)
 
     # transform results
-    data = [{'group': group, 'content': content} for group, content in resp.fetchall()]
+    data = [{"group": group, "content": content} for group, content in resp.fetchall()]
 
     return {
-        'profile': {
-            'query': query_s,
+        "profile": {
+            "query": query_s,
         },
-        'data': data,
-        'count': len(data),
-        'nonce': nonce(),
+        "data": data,
+        "count": len(data),
+        "nonce": nonce(),
     }
 
-#Returns all documentation for a given group, if no group is specified, returns all documentation for group md
-@router.get('/documentations', response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_documentations(q: str = None):
 
-    sql = 'SELECT `name`, `content` FROM Documentation '
+# Returns all documentations for a given group, if no group is specified, returns all documentations for group md
+@router.get("/documentations", response_class=fastapi.responses.ORJSONResponse)
+async def api_portal_documentations(q: str = None):
+    sql = "SELECT `name`, `content` FROM Documentation "
     params = [q]
 
     # if no group is specified, return all documentation for group md
     if q is None:
-        q = 'md'
+        q = "md"
 
-    sql += 'WHERE `name` = %s'
+    sql += "WHERE `name` = %s"
     params.append(q)
 
     # run the query
     resp, query_s = profile(portal.execute, sql, *params)
 
     # transform results
-    data = [{'name': name, 'content': content} for name, content in resp.fetchall()]
+    data = [{"name": name, "content": content} for name, content in resp.fetchall()]
 
     return {
-        'profile': {
-            'query': query_s,
+        "profile": {
+            "query": query_s,
         },
-        'data': data,
-        'count': len(data),
-        'nonce': nonce(),
+        "data": data,
+        "count": len(data),
+        "nonce": nonce(),
     }
 
-@router.get('/systems', response_class=fastapi.responses.ORJSONResponse)
+
+@router.get("/systems", response_class=fastapi.responses.ORJSONResponse)
 async def api_portal_systems(req: fastapi.Request):
     """
     Returns system-disease-phenotype for all systems.
     """
 
     # fetch all systems, join to diseases and phenotype groups
-    sql = (
-        """
+    sql = """
         SELECT s.system, s.portals, d.disease, g.group, p.name as phenotype
             FROM SystemToDisease stod
             JOIN DiseaseToGroup dtog ON stod.diseaseId = dtog.diseaseId
@@ -304,7 +318,6 @@ async def api_portal_systems(req: fastapi.Request):
             JOIN Phenotypes p ON p.id = gtop.phenotypeId
         ORDER BY s.system, d.disease, g.group, p.name
         """
-    )
 
     # get all systems
     resp, query_s = profile(portal.execute, sql)
@@ -313,39 +326,39 @@ async def api_portal_systems(req: fastapi.Request):
     # filter all the systems
     for r in resp:
         system = {
-            'system': r[0],
-            'portals': r[1],
-            'disease': r[2],
-            'group': r[3],
-            'phenotype': r[4]
+            "system": r[0],
+            "portals": r[1],
+            "disease": r[2],
+            "group": r[3],
+            "phenotype": r[4],
         }
 
         systems.append(system)
 
     return {
-        'profile': {
-            'query': query_s,
+        "profile": {
+            "query": query_s,
         },
-        'data': systems,
-        'count': len(systems),
-        'nonce': nonce(),
+        "data": systems,
+        "count": len(systems),
+        "nonce": nonce(),
     }
 
 
-@router.get('/links', response_class=fastapi.responses.ORJSONResponse)
+@router.get("/links", response_class=fastapi.responses.ORJSONResponse)
 async def api_portal_links(q: str = None, group: str = None):
     """
     Returns one - or all - redirect links.
     """
-    sql = 'SELECT `path`, `group`, `redirect`, `description` FROM Links '
+    sql = "SELECT `path`, `group`, `redirect`, `description` FROM Links "
     tests = []
     data = []
 
     # create conditionals
     if q:
-        tests += [('%s LIKE `path`', q)]
+        tests += [("%s LIKE `path`", q)]
     if group:
-        tests += [('`group` = %s', group)]
+        tests += [("`group` = %s", group)]
 
     # add all the tests
     if tests:
@@ -356,18 +369,20 @@ async def api_portal_links(q: str = None, group: str = None):
 
     # transform results
     for path, group, redirect, description in resp:
-        data.append({
-            'path': path,
-            'group': group,
-            'redirect': redirect,
-            'description': description,
-        })
+        data.append(
+            {
+                "path": path,
+                "group": group,
+                "redirect": redirect,
+                "description": description,
+            }
+        )
 
     return {
-        'profile': {
-            'query': query_s,
+        "profile": {
+            "query": query_s,
         },
-        'data': data,
-        'count': len(data),
-        'nonce': nonce(),
+        "data": data,
+        "count": len(data),
+        "nonce": nonce(),
     }
