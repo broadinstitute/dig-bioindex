@@ -281,7 +281,7 @@ async def api_portal_documentations(q: str = None):
     if q is None:
         q = "md"
 
-    sql += "WHERE `name` = %s"
+    sql += "WHERE `group` = %s"
     params.append(q)
 
     # run the query
