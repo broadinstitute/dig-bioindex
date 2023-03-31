@@ -256,6 +256,34 @@ async def api_portal_documentation(q: str, group: str = None):
         'nonce': nonce(),
     }
 
+#Returns all documentation for a given group, if no group is specified, returns all documentation for group md
+@router.get('/documentations', response_class=fastapi.responses.ORJSONResponse)
+async def api_portal_documentations(q: str = None):
+
+    sql = 'SELECT `name`, `content` FROM Documentation '
+    params = [q]
+
+    # if no group is specified, return all documentation for group md
+    if q is None:
+        q = 'md'
+
+    sql += 'WHERE `name` = %s'
+    params.append(q)
+
+    # run the query
+    resp, query_s = profile(portal.execute, sql, *params)
+
+    # transform results
+    data = [{'name': name, 'content': content} for name, content in resp.fetchall()]
+
+    return {
+        'profile': {
+            'query': query_s,
+        },
+        'data': data,
+        'count': len(data),
+        'nonce': nonce(),
+    }
 
 @router.get('/systems', response_class=fastapi.responses.ORJSONResponse)
 async def api_portal_systems(req: fastapi.Request):
