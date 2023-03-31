@@ -289,7 +289,10 @@ async def api_portal_documentations(q: str):
     resp, query_s = profile(portal.execute, sql, *params)
 
     # transform results
-    data = [{"name": name, "content": content} for name, content in resp.fetchall()]
+    data = [
+        {"group": group, "name": name, "content": content}
+        for group, name, content in resp.fetchall()
+    ]
 
     return {
         "profile": {
