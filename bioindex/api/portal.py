@@ -274,7 +274,7 @@ async def api_portal_documentation(q: str, group: str = None):
 # Returns all documentations for a given group, and any modification to default group md
 @router.get("/documentations", response_class=fastapi.responses.ORJSONResponse)
 async def api_portal_documentations(q: str):
-    sql = "SELECT `group`, `name`, `content` FROM Documentation"
+    sql = "SELECT `group`, `name`, `content` FROM Documentation "
 
     # if q is not equal to md, then add md to group, else add q to group
     if q != "md":
