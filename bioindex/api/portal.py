@@ -273,14 +273,10 @@ async def api_portal_documentation(q: str, group: str = None):
 
 # Returns all documentations for a given group, if no group is specified, returns all documentations for group md
 @router.get("/documentations", response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_documentations(q: str = None):
-    # if no q is specified, q is set to md
-    if q is None:
-        q = "md"
-
+async def api_portal_documentations(q: str):
     sql = "SELECT `name`, `content` FROM Documentation WHERE `group` = %s"
     params = [q]
-    params.append(q)
+    # params.append(q)
 
     # run the query
     resp, query_s = profile(portal.execute, sql, *params)
