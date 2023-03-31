@@ -278,7 +278,7 @@ async def api_portal_documentations(q: str):
 
     # if q is not equal to md, then add md to group, else add q to group
     if q != "md":
-        sql += "WHERE `group` IN (%s, 'md')"
+        sql += "WHERE `group` IN ({0}, 'md')".format("%s")
     else:
         sql += "WHERE `group` IN ('md')"
 
