@@ -280,9 +280,9 @@ async def api_portal_documentations(q: str):
     if q != "md":
         sql += "WHERE `group` IN (%s, 'md')"
     else:
-        sql += "WHERE `group` IN (%s)"
+        sql += "WHERE `group` IN ('md')"
 
-    params = q
+    params = [q]
     # params.append(q)
 
     # run the query
