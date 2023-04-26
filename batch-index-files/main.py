@@ -34,4 +34,4 @@ def bg_index_file(bucket_name, file):
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])
