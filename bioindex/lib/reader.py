@@ -1,3 +1,5 @@
+import subprocess
+
 import botocore.exceptions
 import dataclasses
 import itertools
@@ -84,18 +86,14 @@ class RecordReader:
                 continue
 
             try:
-                content = read_object(
-                    self.bucket,
-                    source.key,
-                    offset=source.start,
-                    length=source.end - source.start,
-                )
+                command = ['bgzip', '-b', f"{source.start}", '-s', f"{source.end - source.start}", f"s3://{self.bucket}/{source.key}.gz"]
+                content = subprocess.run(command, capture_output=True, check=True).stdout
 
                 # handle a bad case where the content failed to be read
                 if content is None:
                     raise FileNotFoundError(source.key)
 
-                for line in content.iter_lines():
+                for line in content.splitlines():
                     self.bytes_read += len(line) + 1  # eol character
 
                     # parse the record
