@@ -33,13 +33,13 @@ def fetch_multi(executor, config, engine, index, queries, restricted=None):
     return MultiRecordReader(readers)
 
 
-def fetch_all(config, s3_prefix, restricted=None, key_limit=None):
+def fetch_all(config, index, restricted=None, key_limit=None):
     """
     Scans for all the S3 files in the schema and creates a dummy cursor
     to read all the records from all the files. Returns a RecordReader
     of the results.
     """
-    s3_objects = list_objects(config.s3_bucket, s3_prefix, max_keys=key_limit)
+    s3_objects = list_objects(config.s3_bucket, index.s3_prefix, max_keys=key_limit)
 
     # arbitrarily limit the number of keys
     if key_limit:
@@ -49,14 +49,14 @@ def fetch_all(config, s3_prefix, restricted=None, key_limit=None):
     sources = [RecordSource.from_s3_object(obj) for obj in s3_objects]
 
     # create the reader object, begin reading the records
-    return RecordReader(config.s3_bucket, sources, restricted=restricted)
+    return RecordReader(config, sources, index, restricted=restricted)
 
 
 def count(config, engine, index, q):
     """
     Estimate the number of records that will be returned by a query.
     """
-    reader = fetch_all(config, index.s3_prefix) if len(q) == 0 else _run_query(config, engine, index, q, None)
+    reader = fetch_all(config, index) if len(q) == 0 else _run_query(config, engine, index, q, None)
 
     # read a couple hundred records to get the total bytes read
     records = list(zip(range(500), reader.records))
@@ -177,8 +177,9 @@ def _run_query(config, engine, index, q, restricted):
 
     # create the reader
     return RecordReader(
-        config.s3_bucket,
+        config,
         sources,
+        index,
         record_filter=record_filter,
         restricted=restricted,
     )

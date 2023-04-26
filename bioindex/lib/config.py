@@ -20,7 +20,10 @@ def config_var(type=str, default=None):
             val = os.environ.get(key, default)
 
             # cast to the appropriate type
-            return val and type(val)
+            if type == list:
+                return val.split(',') if val else []
+            else:
+                return val and type(val)
 
         return wrapper
     return decorator
@@ -202,3 +205,8 @@ class Config:
     @config_var(default='genes/genes.gff.gz')
     def genes_uri(self):
         return 'BIOINDEX_GENES_URI'
+
+    @property
+    @config_var(type=list)
+    def compressed_indices(self):
+        return 'BIOINDEX_COMPRESSED_INDICES'

@@ -147,7 +147,7 @@ def cli_all(cfg, index_name):
 
     # read all records
     for idx in idxs:
-        reader = query.fetch_all(cfg, idx.s3_prefix)
+        reader = query.fetch_all(cfg, idx)
 
         # lookup the table class from the schema
         for record in reader.records:
