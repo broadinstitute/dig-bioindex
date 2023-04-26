@@ -1,0 +1,26 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Simple Lambda function deployed using AWS SAM
+
+Resources:
+  MyLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handler
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: arn:aws:s3:::dig-bio-index/*
+      Runtime: python3.8
+      CodeUri: .
+      Timeout: 118
+      Events:
+        MyApi:
+          Type: Api
+          Properties:
+            Path: /bgzip-file-compressor
+            Method: post

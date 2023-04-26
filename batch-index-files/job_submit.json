@@ -1,0 +1,17 @@
+{
+  "jobName": "block_gz_index",
+  "jobQueue": "vep-test",
+  "jobDefinition": "block_gz_indexer",
+  "containerOverrides": {
+    "environment": [
+      {
+        "name": "bucket",
+        "value": "dig-bio-index"
+      },
+      {
+        "name": "path",
+        "value": "regions/gene_expression_drew"
+      }
+    ]
+  }
+}

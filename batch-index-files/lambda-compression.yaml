@@ -1,0 +1,38 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Deploy an AWS Lambda function to compress json files in an S3 path
+Resources:
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        Policies:
+          - PolicyName: S3ReadWritePolicy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - s3:GetObject
+                    - s3:PutObject
+                  Resource: 'arn:aws:s3:::*/*'
+  LambdaFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+          FunctionName: dig-indexer
+          Handler: handler.main
+          Role: !GetAtt LambdaRole.Arn
+          Runtime: python3.8
+          Timeout: 900
+          Code:
+            S3Bucket: dig-lambda-code
+            S3Key: dig-indexer.zip

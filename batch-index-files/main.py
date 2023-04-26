@@ -9,6 +9,8 @@ import click
 @click.option('--bucket', '-b', type=str)
 @click.option('--path', '-p', type=str)
 def main(bucket, path):
+    print(f'bucket = {bucket}')
+    print(path)
     s3 = boto3.client('s3')
 
     response = s3.list_objects(Bucket=bucket, Prefix=path)
