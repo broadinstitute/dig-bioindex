@@ -1,6 +1,6 @@
 {
   "jobName": "block_gz_index",
-  "jobQueue": "vep-test",
+  "jobQueue": "default_queue",
   "jobDefinition": "block_gz_indexer",
   "containerOverrides": {
     "environment": [
@@ -10,7 +10,7 @@
       },
       {
         "name": "path",
-        "value": "regions/gene_expression_drew"
+        "value": "associations/phenotype/trans-ethnic"
       }
     ]
   }
