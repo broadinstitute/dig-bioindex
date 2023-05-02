@@ -1,52 +1,41 @@
-import sys
-import boto3
-import subprocess
 import concurrent.futures
+import subprocess
+
+import boto3
 import click
-import sqlalchemy
+
+import bioindex.lib.s3 as s3
 
 
 @click.command()
 @click.option('--bucket', '-b', type=str)
 @click.option('--path', '-p', type=str)
-def main(bucket, path):
-    print(f'bucket = {bucket}')
-    print(path)
-    s3 = boto3.client('s3')
-    engine = get_engine()
-    with engine.connect() as conn:
-        rows = conn.execute("select distinct k.key from Associations a join __Keys k on k.id = a.key")
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=60) as executor:
-            futures = []
-            for row in rows:
-                futures.append(executor.submit(bg_index_file, bucket, row[0], s3))
-        # get the results of the tasks as they complete
-            for future in concurrent.futures.as_completed(futures):
-                future.result()
+@click.option('--delete', '-d', type=bool, default=False)
+def main(bucket, path, delete):
+    s3_objects = list(s3.list_objects(bucket, path, only='*.json'))
+    boto_s3 = boto3.client('s3')
+    print(f"will compress {len(s3_objects)} files")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=60) as executor:
+        futures = []
+        for file in s3_objects:
+            futures.append(executor.submit(bg_compress_and_index_file, bucket, file['Key'], boto_s3, delete))
+        # wait for all futures to complete
+        for future in concurrent.futures.as_completed(futures):
+            future.result()
 
 
-def get_engine():
-    uri = 'mysql+pymysql://digduguser:kpnteam@dig-bio-index.cxrzznxifeib.us-east-1.rds.amazonaws.com/bio'
-
-    # create the connection pool
-    engine = sqlalchemy.create_engine(uri, pool_recycle=3600)
-
-    # test the engine by making a single connection
-    with engine.connect():
-        return engine
-
-
-def bg_index_file(bucket_name, file, s3):
+def bg_compress_and_index_file(bucket_name, file, boto_s3, delete_json_file):
     error_messaage = None
-    results = s3.list_objects(Bucket=bucket_name, Prefix=file + ".gz")
+    results = boto_s3.list_objects(Bucket=bucket_name, Prefix=file + ".gz")
     if results.get('Contents', None) and len(results.get('Contents')) == 2:
         print(f"Compressed index file already exists: {file}")
         return
     print(f"starting {file}")
     command = ['bgzip', '-i', f"s3://{bucket_name}/{file}"]
     try:
-        subprocess.run(command, check=True, timeout=118)
+        subprocess.run(command, check=True, timeout=120)
+        if delete_json_file:
+            boto_s3.delete_object(Bucket=bucket_name, Key=file)
     except subprocess.CalledProcessError as e:
         error_messaage = f"Error: Command exited with non-zero status: {e.returncode}"
     except subprocess.TimeoutExpired as e:
