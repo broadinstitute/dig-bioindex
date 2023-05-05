@@ -1,3 +1,5 @@
+import subprocess
+
 import botocore.exceptions
 import dataclasses
 import itertools
@@ -6,6 +8,9 @@ import orjson
 
 from .auth import verify_record
 from .s3 import read_object
+# from . import config
+
+# CONFIG = config.Config()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -43,13 +48,14 @@ class RecordReader:
     from a list of RecordSource objects for a given S3 bucket.
     """
 
-    def __init__(self, bucket, sources, record_filter=None, restricted=None):
+    def __init__(self, config, sources, index, record_filter=None, restricted=None):
         """
         Initialize the RecordReader with a list of RecordSource objects.
         """
-        self.bucket = bucket
+        self.config = config
         self.sources = sources
         self.restricted = restricted
+        self.index = index
         self.bytes_total = 0
         self.bytes_read = 0
         self.count = 0
@@ -69,6 +75,11 @@ class RecordReader:
             self.records = filter(record_filter, self.records)
 
     def _readall(self):
+        def get_lines(str_content, use_str_split):
+            if use_str_split:
+                return str_content.splitlines()
+            else:
+                return str_content.iter_lines()
         """
         A generator that reads each of the records from S3 for the sources.
         """
@@ -84,18 +95,19 @@ class RecordReader:
                 continue
 
             try:
-                content = read_object(
-                    self.bucket,
-                    source.key,
-                    offset=source.start,
-                    length=source.end - source.start,
-                )
+                compression_on = self.index.name in self.config.compressed_indices
+                if compression_on:
+                    command = ['bgzip', '-b', f"{source.start}", '-s', f"{source.end - source.start}",
+                           f"s3://{self.config.s3_bucket}/{source.key}.gz"]
+                    content = subprocess.run(command, capture_output=True, check=True).stdout
+                else:
+                    content = read_object(self.config.s3_bucket, source.key, source.start, source.end)
 
                 # handle a bad case where the content failed to be read
                 if content is None:
                     raise FileNotFoundError(source.key)
 
-                for line in content.iter_lines():
+                for line in get_lines(content, compression_on):
                     self.bytes_read += len(line) + 1  # eol character
 
                     # parse the record

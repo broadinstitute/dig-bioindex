@@ -167,7 +167,7 @@ async def api_all(index: str, req: fastapi.Request, fmt: str='row'):
             reader, query_s = profile(
                 query.fetch_all,
                 CONFIG,
-                i.s3_prefix,
+                idxs[0],
                 restricted=restricted,
             )
 
@@ -202,7 +202,7 @@ async def api_all_arity(index: str, arity: int, req: fastapi.Request):
         reader, query_s = profile(
             query.fetch_all,
             CONFIG,
-            i.s3_prefix,
+            i,
             restricted=restricted,
         )
 
@@ -236,7 +236,7 @@ async def api_test_all(index: str, req: fastapi.Request):
             reader, query_s = profile(
                 query.fetch_all,
                 CONFIG,
-                i.s3_prefix,
+                idxs[0],
             )
 
             # return the total number of bytes that need to be read
@@ -264,7 +264,7 @@ async def api_test_all_arity(index: str, arity: int, req: fastapi.Request):
         reader, query_s = profile(
             query.fetch_all,
             CONFIG,
-            i.s3_prefix,
+            i,
         )
 
         # return the total number of bytes that need to be read

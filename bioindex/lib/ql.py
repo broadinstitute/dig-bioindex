@@ -73,7 +73,7 @@ def build_index_type(config, engine, index, n=5000):
     logging.info('Building object type for %s...', index.name)
 
     # grab a single object from the index to build the schema object from
-    reader = fetch_all(config, index.s3_prefix, key_limit=5)
+    reader = fetch_all(config, index, key_limit=5)
 
     # read up to N records to get a good approx of all available fields
     records = [r for _, r in zip(range(n), reader.records)]
