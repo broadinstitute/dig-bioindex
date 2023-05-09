@@ -1,8 +1,11 @@
 import concurrent.futures
+import json
 import subprocess
 
 import boto3
 import click
+import os
+from boto3 import Session
 
 import bioindex.lib.s3 as s3
 
@@ -12,6 +15,10 @@ import bioindex.lib.s3 as s3
 @click.option('--path', '-p', type=str)
 @click.option('--delete', '-d', type=bool, default=False)
 def main(bucket, path, delete):
+    keys = get_access_keys()
+    # transfer the secrets to environment variables (keep sensitive info out of source control)
+    os.environ['AWS_ACCESS_KEY_ID'] = keys['access_key_id']
+    os.environ['AWS_SECRET_ACCESS_KEY'] = keys['secret_access_key']
     s3_objects = list(s3.list_objects(bucket, path, only='*.json'))
     boto_s3 = boto3.client('s3')
     print(f"will compress {len(s3_objects)} files")
@@ -22,6 +29,11 @@ def main(bucket, path, delete):
         # wait for all futures to complete
         for future in concurrent.futures.as_completed(futures):
             future.result()
+
+
+def get_access_keys():
+    client = Session().client('secretsmanager')
+    return json.loads(client.get_secret_value(SecretId='bgzip-credentials')['SecretString'])
 
 
 def bg_compress_and_index_file(bucket_name, file, boto_s3, delete_json_file):
@@ -37,11 +49,9 @@ def bg_compress_and_index_file(bucket_name, file, boto_s3, delete_json_file):
         if delete_json_file:
             boto_s3.delete_object(Bucket=bucket_name, Key=file)
     except subprocess.CalledProcessError as e:
-        error_messaage = f"Error: Command exited with non-zero status: {e.returncode}"
+        error_messaage = f"Error: Command exited with non-zero status: {e.returncode}, {file}"
     except subprocess.TimeoutExpired as e:
         error_messaage = f"Error: Command timed out after {e.timeout} seconds"
-    except FileNotFoundError as e:
-        error_messaage = "Error: Command not found"
 
     if error_messaage:
         print(error_messaage)
