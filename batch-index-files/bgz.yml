@@ -1,0 +1,177 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description:
+  --Creates the whole AWS batch infrastructure for indexing and compressing files in the dig-bio-index bucket
+  --Assumed inputs is bucket (dig-bio-index)
+  --Outputs that will be referenced other places are job queue name (bgzip-job-queue), 
+  --job definition name (bgzip-job), and secret (bgzip-credentials)
+  --permissions seem redundant because we need the standard method for boto3 but also need to save a secret and pull it
+  --inside python for the bgzip command
+Resources:
+  EcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: bgzip-repo
+  BatchServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - batch.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole'
+  BgZipBatchComputeEnv:
+    Type: 'AWS::Batch::ComputeEnvironment'
+    Properties:
+      Type: MANAGED
+      ServiceRole: !GetAtt BatchServiceRole.Arn
+      ComputeResources:
+        Type: Fargate
+        MaxvCpus: 128
+        Subnets:
+          - subnet-ab89bbf3
+        SecurityGroupIds:
+          - sg-28485f53
+  BgZipBatchJobQueue:
+    Type: 'AWS::Batch::JobQueue'
+    Properties:
+      JobQueueName: 'bgzip-job-queue'
+      ComputeEnvironmentOrder:
+        - Order: 1
+          ComputeEnvironment: !Ref BgZipBatchComputeEnv
+      Priority: 1
+      State: ENABLED
+  BlockGzIndexerJobDefinition:
+    Type: 'AWS::Batch::JobDefinition'
+    Properties:
+      Type: 'container'
+      JobDefinitionName: 'bgzip-job'
+      PlatformCapabilities:
+        - 'FARGATE'
+      Timeout:
+        AttemptDurationSeconds: 7200
+      ContainerProperties:
+        Image: '005901288866.dkr.ecr.us-east-1.amazonaws.com/bgzip-repo'
+        Command:
+          - 'python3'
+          - 'main.py'
+          - '-b'
+          - 'Ref::bucket'
+          - '-p'
+          - 'Ref::path'
+          - '-d'
+          - 'Ref::delete'
+        JobRoleArn: !GetAtt BlockGzipRole.Arn
+        ExecutionRoleArn: !GetAtt BlockGzipRole.Arn
+        ResourceRequirements:
+          - Type: 'VCPU'
+            Value: '16.0'
+          - Type: 'MEMORY'
+            Value: '32768'
+        NetworkConfiguration:
+          AssignPublicIp: 'ENABLED'
+        FargatePlatformConfiguration:
+          PlatformVersion: 'LATEST'
+  # the bgzip command needs this user to authenticate via AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY env vars
+  BgzipCompressionUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: bgzip-compression-user
+
+  # create access key for user
+  BgzipCompressionUserAccessKey:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName: !Ref BgzipCompressionUser
+
+  # grant user access to dig-bio-index bucket
+  BgzipCompressionUserPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: bgzip-compression-bio-index-policy
+      Users:
+        - !Ref BgzipCompressionUser
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - 's3:ListBucket'
+              - 's3:GetBucketLocation'
+            Resource: 'arn:aws:s3:::dig-bio-index'
+          - Effect: Allow
+            Action:
+              - 's3:PutObject'
+              - 's3:GetObject'
+            Resource: 'arn:aws:s3:::dig-bio-index/*'
+
+  # store this so it can be retrieved by the indexing and compression job
+  BgzipCompressionSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: bgzip-credentials
+      SecretString:
+        !Sub |
+        {
+          "access_key_id": "${BgzipCompressionUserAccessKey}",
+          "secret_access_key": "${BgzipCompressionUserAccessKey.SecretAccessKey}"
+        }
+
+  # this role is referenced via the access key secret above, this is for the bgzip command which works on s3 urls
+  # but doesn't use the same auth that boto3 does
+  BlockGzipRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'ecs-tasks.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+      Policies:
+        - PolicyName: 'S3Access'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 's3:ListBucket'
+                  - 's3:GetObject'
+                  - 's3:DeleteObject'
+                Resource:
+                  - 'arn:aws:s3:::dig-bio-index'
+                  - 'arn:aws:s3:::dig-bio-index/*'
+        - PolicyName: 'ECSTaskExecution'
+          PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: 'Allow'
+                  Action:
+                    - 'ecr:GetAuthorizationToken'
+                    - 'ecr:BatchCheckLayerAvailability'
+                    - 'ecr:GetDownloadUrlForLayer'
+                    - 'ecr:BatchGetImage'
+                    - 'logs:CreateLogStream'
+                    - 'logs:PutLogEvents'
+                  Resource: '*'
+        - PolicyName: 'SecretsManagerAccess'
+          PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+              - Effect: 'Allow'
+                Action:
+                - 'secretsmanager:GetSecretValue'
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:bgzip-credentials-*'
+
+
+
+
