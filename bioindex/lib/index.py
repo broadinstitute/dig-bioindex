@@ -22,7 +22,7 @@ class Index:
     An index definition that can be built or queried.
     """
 
-    def __init__(self, name, table_name, s3_prefix, schema_string, built_date):
+    def __init__(self, name, table_name, s3_prefix, schema_string, built_date, compressed):
         """
         Initialize the index with everything needed to build keys and query.
         """
@@ -31,6 +31,7 @@ class Index:
         self.name = name
         self.built = built_date
         self.s3_prefix = s3_prefix
+        self.compressed = compressed
 
     @staticmethod
     def flag_as_compressed(engine, name, prefix):
@@ -73,7 +74,7 @@ class Index:
         """
         Return an iterator of all the indexes.
         """
-        sql = 'SELECT `name`, `table`, `prefix`, `schema`, `built` FROM `__Indexes`'
+        sql = 'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` FROM `__Indexes`'
 
         # convert all rows to an index definition
         indexes = map(lambda r: Index(*r), engine.execute(sql))

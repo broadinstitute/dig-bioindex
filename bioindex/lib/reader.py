@@ -95,7 +95,7 @@ class RecordReader:
                 continue
 
             try:
-                compression_on = self.index.name in self.config.compressed_indices
+                compression_on = self.index.compressed
                 if compression_on:
                     command = ['bgzip', '-b', f"{source.start}", '-s', f"{source.end - source.start}",
                            f"s3://{self.config.s3_bucket}/{source.key}.gz"]

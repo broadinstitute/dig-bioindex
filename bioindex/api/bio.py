@@ -80,6 +80,7 @@ async def api_list_indexes():
             'index': i.name,
             'built': i.built,
             'schema': str(i.schema),
+            'compressed': i.compressed,
             'query': {
                 'keys': i.schema.key_columns,
                 'locus': i.schema.has_locus,
