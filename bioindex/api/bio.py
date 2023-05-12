@@ -349,7 +349,7 @@ async def api_bgcompress_index(idx: str, prefix: str):
 
 @router.post('/bgcompress/mark-completed/{idx}', response_class=fastapi.responses.ORJSONResponse)
 async def api_bgcompress_mark_as_compressed(idx: str, prefix: str):
-    index.Index.flag_as_compressed(engine, idx)
+    index.Index.flag_as_compressed(engine, idx, prefix)
     return fastapi.responses.Response(content=None, status_code=200)
 
 
