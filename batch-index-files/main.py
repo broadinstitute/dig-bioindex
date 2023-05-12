@@ -33,7 +33,7 @@ def main(index, bucket, path, delete):
         print(f"remaining files after second pass {len(files_to_retry)}")
     if len(files_to_retry) == 0:
         bio_idx_host = 'http://ec2-18-215-38-136.compute-1.amazonaws.com:5001'
-        requests.post(f"{bio_idx_host}/bgcompress/mark-completed/{index}?prefix={path}")
+        requests.post(f"{bio_idx_host}/api/bio/bgcompress/mark-completed/{index}?prefix={path}")
 
 
 def process_files_concurrently(boto_s3, bucket, delete, files):
