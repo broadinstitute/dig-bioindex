@@ -119,7 +119,7 @@ async def api_match(index: str, req: fastapi.Request, q: str, limit: int = None)
 
 
 @router.get('/count/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_count_index(index: str, req: fastapi.Request, q: str=None):
+async def api_count_index(index: str, req: fastapi.Request, q: str = None):
     """
     Query the database and estimate how many records will be returned.
     """
@@ -147,7 +147,7 @@ async def api_count_index(index: str, req: fastapi.Request, q: str=None):
 
 
 @router.get('/all/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_all(index: str, req: fastapi.Request, fmt: str='row'):
+async def api_all(index: str, req: fastapi.Request, fmt: str = 'row'):
     """
     Query the database and return ALL records for a given index. If the
     total number of bytes read exceeds a pre-configured server limit, then
@@ -277,7 +277,7 @@ async def api_test_all_arity(index: str, arity: int, req: fastapi.Request):
 
 
 @router.get('/query/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', limit: int=None):
+async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', limit: int = None):
     """
     Query the database for records matching the query parameter and
     read the records from s3.
@@ -326,12 +326,39 @@ async def api_schema(req: fastapi.Request):
     return graphql.utilities.print_schema(gql_schema)
 
 
+@router.get('/bgcompress/poll/{job_id}', response_class=fastapi.responses.ORJSONResponse)
+async def api_bgcompress_job_status(job_id: str):
+    status = aws.get_bgzip_job_status(job_id)
+    if not status:
+        raise fastapi.HTTPException(status_code=404, detail=f"Could not find job {job_id}")
+    return {
+        'status': status
+    }
+
+
+@router.post('/bgcompress/{idx}', response_class=fastapi.responses.ORJSONResponse)
+async def api_bgcompress_index(idx: str, prefix: str):
+    selected_index = [idx for idx in index.Index.lookup_all(engine, idx) if idx.s3_prefix == prefix]
+    if len(selected_index) != 1:
+        raise fastapi.HTTPException(status_code=404, detail=f"Could not find a unique index {idx} and prefix {prefix} "
+                                                            f"combination")
+    return {
+        'job_id': aws.start_bgzip_compression_job(selected_index[0].name, selected_index[0].s3_prefix)
+    }
+
+
+@router.post('/bgcompress/mark-completed/{idx}', response_class=fastapi.responses.ORJSONResponse)
+async def api_bgcompress_mark_as_compressed(idx: str, prefix: str):
+    index.Index.flag_as_compressed(engine, idx)
+    return fastapi.responses.Response(content=None, status_code=200)
+
+
 @router.post('/query', response_class=fastapi.responses.ORJSONResponse)
 async def api_query_gql(req: fastapi.Request):
     """
     Treat the body of the POST as a GraphQL query to be resolved.
     """
-    #restricted, auth_s = profile(restricted_keywords, portal, req)
+    # restricted, auth_s = profile(restricted_keywords, portal, req)
     body = await req.body()
 
     # ensure the graphql schema is loaded
@@ -367,7 +394,8 @@ async def api_query_gql(req: fastapi.Request):
             'nonce': nonce(),
         }
     except asyncio.TimeoutError:
-        raise fastapi.HTTPException(status_code=408, detail=f'Query execution timed out after {CONFIG.script_timeout} seconds')
+        raise fastapi.HTTPException(status_code=408,
+                                    detail=f'Query execution timed out after {CONFIG.script_timeout} seconds')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 

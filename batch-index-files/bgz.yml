@@ -60,6 +60,8 @@ Resources:
         Command:
           - 'python3'
           - 'main.py'
+          - '-i'
+          - 'Ref::index'
           - '-b'
           - 'Ref::bucket'
           - '-p'

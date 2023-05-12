@@ -8,13 +8,15 @@ import os
 from boto3 import Session
 
 import bioindex.lib.s3 as s3
+import requests
 
 
 @click.command()
+@click.option('--index', '-i', type=str)
 @click.option('--bucket', '-b', type=str)
 @click.option('--path', '-p', type=str)
 @click.option('--delete', '-d', type=bool, default=False)
-def main(bucket, path, delete):
+def main(index, bucket, path, delete):
     keys = get_access_keys()
     # transfer the secrets to environment variables (keep sensitive info out of source control)
     os.environ['AWS_ACCESS_KEY_ID'] = keys['access_key_id']
@@ -22,13 +24,27 @@ def main(bucket, path, delete):
     s3_objects = list(s3.list_objects(bucket, path, only='*.json'))
     boto_s3 = boto3.client('s3')
     print(f"will compress {len(s3_objects)} files")
+    files_to_retry = process_files_concurrently(boto_s3, bucket, delete, [file['Key'] for file in s3_objects])
+    if len(files_to_retry) > 0:
+        print(f"retrying {len(files_to_retry)} files")
+        files_to_retry = process_files_concurrently(boto_s3, bucket, delete, files_to_retry)
+        print(f"remaining files after second pass {len(files_to_retry)}")
+    if len(files_to_retry) == 0:
+        bio_idx_host = 'http://ec2-18-215-38-136.compute-1.amazonaws.com:5001'
+        requests.post(f"{bio_idx_host}/bgcompress/mark-completed/{index}")
+
+
+def process_files_concurrently(boto_s3, bucket, delete, files):
+    files_to_retry = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=60) as executor:
         futures = []
-        for file in s3_objects:
-            futures.append(executor.submit(bg_compress_and_index_file, bucket, file['Key'], boto_s3, delete))
+        for file in files:
+            futures.append(executor.submit(bg_compress_and_index_file, bucket, file, boto_s3, delete,
+                                           files_to_retry))
         # wait for all futures to complete
         for future in concurrent.futures.as_completed(futures):
             future.result()
+    return files_to_retry
 
 
 def get_access_keys():
@@ -36,11 +52,13 @@ def get_access_keys():
     return json.loads(client.get_secret_value(SecretId='bgzip-credentials')['SecretString'])
 
 
-def bg_compress_and_index_file(bucket_name, file, boto_s3, delete_json_file):
-    error_messaage = None
+def bg_compress_and_index_file(bucket_name, file, boto_s3, delete_json_file, files_to_retry):
+    error_message = None
     results = boto_s3.list_objects(Bucket=bucket_name, Prefix=file + ".gz")
     if results.get('Contents', None) and len(results.get('Contents')) == 2:
         print(f"Compressed index file already exists: {file}")
+        if delete_json_file:
+            boto_s3.delete_object(Bucket=bucket_name, Key=file)
         return
     print(f"starting {file}")
     command = ['bgzip', '-i', f"s3://{bucket_name}/{file}"]
@@ -49,12 +67,13 @@ def bg_compress_and_index_file(bucket_name, file, boto_s3, delete_json_file):
         if delete_json_file:
             boto_s3.delete_object(Bucket=bucket_name, Key=file)
     except subprocess.CalledProcessError as e:
-        error_messaage = f"Error: Command exited with non-zero status: {e.returncode}, {file}"
+        error_message = f"Error: Command exited with non-zero status: {e.returncode}, {file}"
     except subprocess.TimeoutExpired as e:
-        error_messaage = f"Error: Command timed out after {e.timeout} seconds"
+        error_message = f"Error: Command timed out after {e.timeout} seconds"
 
-    if error_messaage:
-        print(error_messaage)
+    if error_message:
+        print(error_message)
+        files_to_retry.append(file)
     else:
         print(f"finished {file}")
 

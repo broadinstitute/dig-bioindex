@@ -2,7 +2,7 @@ import logging
 import sqlalchemy
 import sys
 
-from sqlalchemy import Column, DateTime, Index, Integer, String, Table, FetchedValue
+from sqlalchemy import Column, DateTime, Index, Integer, String, Table, FetchedValue, Boolean
 from sqlalchemy.orm import Session
 
 from .aws import connect_to_db
@@ -50,6 +50,7 @@ def create_indexes_table(engine):
         Column('prefix', String(1024, collation='ascii_bin')),
         Column('schema', String(200, collation='utf8_bin')),
         Column('built', DateTime, nullable=True),
+        Column('compressed', Boolean, nullable=False, default=False),
     ]
 
     # define the __Indexes table

@@ -33,6 +33,17 @@ class Index:
         self.s3_prefix = s3_prefix
 
     @staticmethod
+    def flag_as_compressed(engine, name, prefix):
+        with engine.connect() as conn:
+            conn.execute(
+                sqlalchemy.text(
+                    'UPDATE `__Indexes` SET compressed = true WHERE `name` = :name and prefix = :prefix'
+                ),
+                name=name, prefix=prefix
+            )
+
+
+    @staticmethod
     def create(engine, name, rds_table_name, s3_prefix, schema):
         """
         Create a new record in the __Index table and return True if
