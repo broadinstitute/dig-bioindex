@@ -131,7 +131,7 @@ class Index:
         Builds the index table for objects in S3.
         """
         logging.info('Finding keys in %s...', self.s3_prefix)
-        s3_objects = list(list_objects(config.s3_bucket, self.s3_prefix, only='.json$'))
+        s3_objects = list(list_objects(config.s3_bucket, self.s3_prefix, exclude='_SUCCESS'))
 
         # delete all stale keys; get the list of objects left to index
         objects = self.delete_stale_keys(engine, s3_objects, console=console)
@@ -199,32 +199,39 @@ class Index:
         """
         logging.info('Finding stale keys...')
         keys = self.lookup_keys(engine)
-        key_dict = {k['key']: k for k in keys}
-        # if the file in s3 is not the db, it's new and we need to index
-        # if a file in s3 is in the db but the version is different, we need to index
-        new_or_updated_files = [o for o in objects if o['Key'] not in key_dict
-                                or key_dict[o['Key']]['version'] != o['ETag'].strip('"')]
 
+        # all keys are considered stale initially
+        stale_ids = set(map(lambda k: k['id'], keys.values()))
+        indexed_keys = set()
 
+        # loop over all the valid objects to be indexed
+        for obj in objects:
+            key, version = obj['Key'], obj['ETag'].strip('"')
+            k = keys.get(key)
+
+            # is this key already built and match versions?
+            if k and k['version'] == version:
+                stale_ids.remove(k['id'])
+                indexed_keys.add(key)
 
         # delete stale keys
-        if new_or_updated_files:
+        if stale_ids:
             # if all the keys are stale, just drop the table
-            if not len(keys) == len(new_or_updated_files):
+            if not indexed_keys:
                 logging.info(f'Deleting table...')
                 self.prepare(engine, rebuild=True)
             else:
                 with rich.progress.Progress(console=console) as progress:
-                    task = progress.add_task('[red]Deleting...[/]', total=len(new_or_updated_files))
+                    task = progress.add_task('[red]Deleting...[/]', total=len(stale_ids))
                     n = 0
 
                     # delete all the keys from the table
-                    for kid in new_or_updated_files:
+                    for kid in stale_ids:
                         sql = f'DELETE FROM {self.table.name} WHERE `key` = %s'
-                        n += engine.execute(sql, kid['Key']).rowcount
+                        n += engine.execute(sql, kid).rowcount
 
                         # remove the key from the __Keys table
-                        self.delete_key(engine, kid['Key'])
+                        self.delete_key(engine, key)
                         progress.advance(task)
 
                     # show what was done
@@ -233,7 +240,7 @@ class Index:
             logging.info('No stale keys; delete skipped')
 
         # filter the objects that still need to be indexed
-        return new_or_updated_files
+        return [o for o in objects if o['Key'] not in indexed_keys]
 
     def index_objects_remote(self, config, engine, pool, objects, progress=None, overall=None):
         """
