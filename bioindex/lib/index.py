@@ -92,7 +92,7 @@ class Index:
         schema, etc.
         """
         sql = (
-            'SELECT `name`, `table`, `prefix`, `schema`, `built` '
+            'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` '
             'FROM `__Indexes` '
             'WHERE `name` = %s AND LENGTH(`schema`) - LENGTH(REPLACE(`schema`, \',\', \'\')) + 1 = %s'
         )
@@ -112,7 +112,7 @@ class Index:
         schema, etc.
         """
         sql = (
-            'SELECT `name`, `table`, `prefix`, `schema`, `built` '
+            'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` '
             'FROM `__Indexes` '
             'WHERE `name` = %s'
         )
