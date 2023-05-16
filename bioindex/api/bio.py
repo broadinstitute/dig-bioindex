@@ -345,6 +345,7 @@ async def api_bgcompress_job_status(job_id: str):
 
 @router.post('/bgcompress/{idx}/{job_type}', response_class=fastapi.responses.ORJSONResponse)
 async def api_bgcompress_job(idx: str, job_type: BgzipJob, prefix: str):
+    job_id = None
     selected_index = [idx for idx in index.Index.lookup_all(engine, idx) if idx.s3_prefix == prefix]
     if len(selected_index) != 1:
         raise fastapi.HTTPException(status_code=404, detail=f"Could not find a unique index {idx} and prefix {prefix}")

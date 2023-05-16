@@ -20,7 +20,7 @@ def main(index, bucket, path):
                                                       bg_compress_and_index_file)
     if len(files_to_retry) > 0:
         print(f"retrying {len(files_to_retry)} files")
-        files_to_retry = utils.process_files_concurrently(boto_s3, bucket, files_to_retry)
+        files_to_retry = utils.process_files_concurrently(boto_s3, bucket, files_to_retry, bg_compress_and_index_file)
         print(f"remaining files after second pass {len(files_to_retry)}")
     return len(files_to_retry)
 
