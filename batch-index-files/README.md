@@ -1,5 +1,5 @@
 # AWS batch support for bgzip and the bio-index
-The core logic for this endeavor lives in [Dockerfile](./Dockerfile) and [main.py](./main.py).  
+The core logic for this endeavor lives in [Dockerfile](./Dockerfile) and [compress.py](./compress_json_files.py).  
 
 Given an S3 path, use bgzip to compress any *.json files that live within that path while also creating .gzi index files so that data
 can be read out of the compressed files without fully decompressing them.

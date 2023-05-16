@@ -1,14 +1,14 @@
 import asyncio
 import concurrent.futures
-import fastapi
-import graphql
 import itertools
-
-from pydantic import BaseModel
+from enum import Enum
 from typing import List, Optional
 
-from .utils import *
+import fastapi
+import graphql
+from pydantic import BaseModel
 
+from .utils import *
 from ..lib import config
 from ..lib import continuation
 from ..lib import index
@@ -47,6 +47,12 @@ class Query(BaseModel):
     q: List[str]
     fmt: Optional[str] = 'row'
     limit: Optional[int] = None
+
+
+class BgzipJob(Enum):
+    COMPRESS = 'bgzip-job'
+    DECOMPRESS = 'unbgzip-job'
+    DELETE_JSON = 'json-delete-job'
 
 
 def _load_indexes():
@@ -337,14 +343,19 @@ async def api_bgcompress_job_status(job_id: str):
     }
 
 
-@router.post('/bgcompress/{idx}', response_class=fastapi.responses.ORJSONResponse)
-async def api_bgcompress_index(idx: str, prefix: str):
+@router.post('/bgcompress/{idx}/{job_type}', response_class=fastapi.responses.ORJSONResponse)
+async def api_bgcompress_job(idx: str, job_type: BgzipJob, prefix: str):
     selected_index = [idx for idx in index.Index.lookup_all(engine, idx) if idx.s3_prefix == prefix]
     if len(selected_index) != 1:
-        raise fastapi.HTTPException(status_code=404, detail=f"Could not find a unique index {idx} and prefix {prefix} "
-                                                            f"combination")
+        raise fastapi.HTTPException(status_code=404, detail=f"Could not find a unique index {idx} and prefix {prefix}")
+    if job_type == BgzipJob.COMPRESS:
+        job_id = aws.start_compress_job(selected_index[0].name, selected_index[0].s3_prefix)
+    elif job_type == BgzipJob.DELETE_JSON:
+        job_id = aws.start_file_deletion_job(selected_index[0].name, selected_index[0].s3_prefix)
+    elif job_type == BgzipJob.DECOMPRESS:
+        job_id = aws.start_decompress_job(selected_index[0].name, selected_index[0].s3_prefix)
     return {
-        'job_id': aws.start_bgzip_compression_job(selected_index[0].name, selected_index[0].s3_prefix)
+        'job_id': job_id
     }
 
 
