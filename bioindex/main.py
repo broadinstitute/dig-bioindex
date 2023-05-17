@@ -31,6 +31,34 @@ def cli(ctx, env_file):
     ctx.obj = config.Config()
 
 
+SERVER_LOGGING_CONFIG = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": "access.log",
+            "maxBytes": 1024 * 1024 * 100,  # 100 MB
+            "backupCount": 3,  # keep 3 backup files
+        }
+    },
+    "root": {"level": "INFO", "handlers": ["file"]},
+    "loggers": {
+        "uvicorn.access": {
+            "level": "INFO",
+            "handlers": ["file"],
+            "propagate": True,
+            "formatter": "apache",
+        },
+    },
+    "formatters": {
+        "apache": {
+            "format": '%(message)s "%(status)d" %(bytes)d',
+        },
+    },
+}
+
+
 @click.command(name='serve')
 @click.option('--port', '-p', type=int, default=5000)
 def cli_serve(port):
@@ -39,6 +67,7 @@ def cli_serve(port):
         host='0.0.0.0',
         port=port,
         log_level='info',
+        log_config=SERVER_LOGGING_CONFIG
     )
 
 
