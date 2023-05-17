@@ -334,7 +334,7 @@ async def api_schema(req: fastapi.Request):
 
 
 @router.get('/bgcompress/poll/{job_id}', response_class=fastapi.responses.ORJSONResponse)
-async def api_bgcompress_job_status(job_id: str):
+async def api_batch_job_status(job_id: str):
     status = aws.get_bgzip_job_status(job_id)
     if not status:
         raise fastapi.HTTPException(status_code=404, detail=f"Could not find job {job_id}")
@@ -344,7 +344,7 @@ async def api_bgcompress_job_status(job_id: str):
 
 
 @router.post('/bgcompress/{idx}/{job_type}', response_class=fastapi.responses.ORJSONResponse)
-async def api_bgcompress_job(idx: str, job_type: BgzipJob, prefix: str):
+async def api_start_bgcompress_job(idx: str, job_type: BgzipJob, prefix: str):
     job_id = None
     selected_index = [idx for idx in index.Index.lookup_all(engine, idx) if idx.s3_prefix == prefix]
     if len(selected_index) != 1:
@@ -360,9 +360,9 @@ async def api_bgcompress_job(idx: str, job_type: BgzipJob, prefix: str):
     }
 
 
-@router.post('/bgcompress/mark-completed/{idx}', response_class=fastapi.responses.ORJSONResponse)
-async def api_bgcompress_mark_as_compressed(idx: str, prefix: str):
-    index.Index.flag_as_compressed(engine, idx, prefix)
+@router.post('/bgcompress/set-compressed/{idx}', response_class=fastapi.responses.ORJSONResponse)
+async def api_set_compressed(idx: str, prefix: str, compressed: bool):
+    index.Index.set_compressed(engine, idx, prefix, compressed)
     return fastapi.responses.Response(content=None, status_code=200)
 
 

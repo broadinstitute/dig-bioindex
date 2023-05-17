@@ -34,13 +34,13 @@ class Index:
         self.compressed = compressed
 
     @staticmethod
-    def flag_as_compressed(engine, name, prefix):
+    def set_compressed(engine, name, prefix, compressed):
         with engine.connect() as conn:
             conn.execute(
                 sqlalchemy.text(
-                    'UPDATE `__Indexes` SET compressed = true WHERE `name` = :name and prefix = :prefix'
+                    'UPDATE `__Indexes` SET compressed = :compressed WHERE `name` = :name and prefix = :prefix'
                 ),
-                name=name, prefix=prefix
+                name=name, prefix=prefix, compressed=compressed
             )
 
 
