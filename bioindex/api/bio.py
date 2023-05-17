@@ -360,8 +360,8 @@ async def api_start_bgcompress_job(idx: str, job_type: BgzipJob, prefix: str):
     }
 
 
-@router.post('/bgcompress/set-compressed/{idx}', response_class=fastapi.responses.ORJSONResponse)
-async def api_set_compressed(idx: str, prefix: str, compressed: bool):
+@router.post('/bgcompress/set-compressed/{idx}/{compressed}', response_class=fastapi.responses.ORJSONResponse)
+async def api_set_compressed(idx: str, compressed: bool, prefix: str):
     index.Index.set_compressed(engine, idx, prefix, compressed)
     return fastapi.responses.Response(content=None, status_code=200)
 
