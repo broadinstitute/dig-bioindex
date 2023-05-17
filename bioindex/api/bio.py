@@ -49,10 +49,10 @@ class Query(BaseModel):
     limit: Optional[int] = None
 
 
-class BgzipJob(Enum):
-    COMPRESS = 'bgzip-job'
-    DECOMPRESS = 'unbgzip-job'
-    DELETE_JSON = 'json-delete-job'
+class BgzipJob(str, Enum):
+    COMPRESS = 'compress'
+    DECOMPRESS = 'decompress'
+    DELETE_JSON = 'remove-json'
 
 
 def _load_indexes():
