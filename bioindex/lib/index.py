@@ -131,7 +131,7 @@ class Index:
         Builds the index table for objects in S3.
         """
         logging.info('Finding keys in %s...', self.s3_prefix)
-        s3_objects = list(list_objects(config.s3_bucket, self.s3_prefix, only='.json$'))
+        s3_objects = list(list_objects(config.s3_bucket, self.s3_prefix, only='*.json'))
 
         # delete all stale keys; get the list of objects left to index
         objects = self.delete_stale_keys(engine, s3_objects, console=console)
@@ -209,26 +209,21 @@ class Index:
 
         # delete stale keys
         if new_or_updated_files:
-            # if all the keys are stale, just drop the table
-            if not len(keys) == len(new_or_updated_files):
-                logging.info(f'Deleting table...')
-                self.prepare(engine, rebuild=True)
-            else:
-                with rich.progress.Progress(console=console) as progress:
-                    task = progress.add_task('[red]Deleting...[/]', total=len(new_or_updated_files))
-                    n = 0
+            with rich.progress.Progress(console=console) as progress:
+                task = progress.add_task('[red]Deleting...[/]', total=len(new_or_updated_files))
+                n = 0
 
-                    # delete all the keys from the table
-                    for kid in new_or_updated_files:
-                        sql = f'DELETE FROM {self.table.name} WHERE `key` = %s'
-                        n += engine.execute(sql, kid['Key']).rowcount
+                # delete all the keys from the table
+                for kid in new_or_updated_files:
+                    sql = f'DELETE FROM {self.table.name} WHERE `key` = %s'
+                    n += engine.execute(sql, kid['Key']).rowcount
 
-                        # remove the key from the __Keys table
-                        self.delete_key(engine, kid['Key'])
-                        progress.advance(task)
+                    # remove the key from the __Keys table
+                    self.delete_key(engine, kid['Key'])
+                    progress.advance(task)
 
-                    # show what was done
-                    logging.info(f'Deleted {n:,} records')
+                # show what was done
+                logging.info(f'Deleted {n:,} records')
         else:
             logging.info('No stale keys; delete skipped')
 
