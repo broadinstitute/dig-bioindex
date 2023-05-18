@@ -1,3 +1,6 @@
+import time
+from enum import Enum
+
 import click
 import dotenv
 import graphql.utilities
@@ -9,7 +12,7 @@ import rich.logging
 import rich.table
 import uvicorn
 
-from .lib import config
+from .lib import config, aws
 from .lib import index
 from .lib import migrate
 from .lib import ql
@@ -122,6 +125,79 @@ def cli_index(cfg, index_name, use_lambda, rebuild, workers):
         logging.error(f'Failed to build index %s: %s', i.name, e)
 
 
+class BgzipJobType(str, Enum):
+    COMPRESS = 'bgzip-job'
+    DECOMPRESS = 'unbgzip-job'
+    DELETE_JSON = 'json-delete-job'
+
+
+@click.command(name='compress')
+@click.argument('index_name')
+@click.argument('prefix')
+@click.pass_obj
+def cli_compress(cfg, index_name, prefix):
+    check_index_and_launch_job(cfg, index_name, prefix, BgzipJobType.COMPRESS)
+
+
+@click.command(name='decompress')
+@click.argument('index_name')
+@click.argument('prefix')
+@click.pass_obj
+def cli_decompress(cfg, index_name, prefix):
+    check_index_and_launch_job(cfg, index_name, prefix, BgzipJobType.DECOMPRESS)
+
+
+@click.command(name='remove-uncompressed-files')
+@click.argument('index_name')
+@click.argument('prefix')
+@click.pass_obj
+def cli_remove_uncompressed_files(cfg, index_name, prefix):
+    check_index_and_launch_job(cfg, index_name, prefix, BgzipJobType.DELETE_JSON)
+
+
+def is_index_prefix_valid(cfg, idx: str, prefix: str):
+    engine = migrate.migrate(cfg)
+    selected_index = [i for i in index.Index.lookup_all(engine, idx) if i.s3_prefix == prefix]
+    return len(selected_index) == 1
+
+
+def check_index_and_launch_job(cfg, index_name, prefix, job_type):
+    if is_index_prefix_valid(cfg, index_name, prefix):
+        start_and_monitor_aws_batch_job(job_type, index_name, prefix)
+    else:
+        console.print(f'Could not find unique index with name {index_name} and prefix {prefix}, quitting')
+
+
+def start_and_monitor_aws_batch_job(job_type: BgzipJobType, index_name: str, s3_path: str,
+                                    initial_wait: int = 90, check_interval: int = 30):
+    job_id = aws.start_batch_job(index_name, s3_path, job_type.value)
+    console.print(f'{job_type} started with id {job_id}')
+    time.sleep(initial_wait)
+    while True:
+        status = aws.get_bgzip_job_status(job_id)
+        console.print(f'{job_type} job, id: {job_id} status: {status}')
+        if status == 'SUCCEEDED':
+            console.print(f'{job_type} job {job_id} succeeded')
+            break
+        elif status == 'FAILED':
+            console.print(f'{job_type} job {job_id} failed')
+            break
+        time.sleep(check_interval)
+
+
+@click.command(name='update-compressed-status')
+@click.argument('index_name')
+@click.argument('prefix')
+@click.option('--compressed', '-c', is_flag=True)
+@click.pass_obj
+def update_compressed_status(cfg, index_name, prefix, compressed):
+    if not is_index_prefix_valid(cfg, index_name, prefix):
+        console.print(f'Could not find unique index with name {index_name} and prefix {prefix}, quitting')
+        return
+    console.print(f'Updating compressed status of index {index_name} with prefix {prefix} to {compressed}')
+    index.Index.set_compressed(migrate.migrate(cfg), index_name, prefix, compressed)
+
+
 @click.command(name='query')
 @click.argument('index_name')
 @click.argument('q', nargs=-1)
@@ -225,6 +301,10 @@ cli.add_command(cli_all)
 cli.add_command(cli_count)
 cli.add_command(cli_match)
 cli.add_command(cli_build_schema)
+cli.add_command(cli_compress)
+cli.add_command(update_compressed_status)
+cli.add_command(cli_decompress)
+cli.add_command(cli_remove_uncompressed_files)
 
 
 def main():

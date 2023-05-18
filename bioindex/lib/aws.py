@@ -25,18 +25,6 @@ def get_bgzip_job_status(job_id: str):
     return None
 
 
-def start_decompress_job(index_name: str, s3_path: str):
-    return start_batch_job(index_name, s3_path, 'unbgzip-job')
-
-
-def start_file_deletion_job(index_name: str, s3_path: str):
-    return start_batch_job(index_name, s3_path, 'json-delete-job')
-
-
-def start_compress_job(index_name: str, s3_path: str):
-    return start_batch_job(index_name, s3_path, 'bgzip-job')
-
-
 def start_batch_job(index_name: str, s3_path: str, job_definition: str):
     batch_client = boto3.client('batch')
     parameters = {'index': index_name, 'path': s3_path, 'bucket': 'dig-bio-index'}

@@ -49,12 +49,6 @@ class Query(BaseModel):
     limit: Optional[int] = None
 
 
-class BgzipJob(str, Enum):
-    COMPRESS = 'compress'
-    DECOMPRESS = 'decompress'
-    DELETE_JSON = 'remove-json'
-
-
 def _load_indexes():
     """
     Create a cache of the indexes in the database.
@@ -331,39 +325,6 @@ async def api_schema(req: fastapi.Request):
         raise fastapi.HTTPException(status_code=503, detail='GraphQL Schema not built')
 
     return graphql.utilities.print_schema(gql_schema)
-
-
-@router.get('/bgcompress/poll/{job_id}', response_class=fastapi.responses.ORJSONResponse)
-async def api_batch_job_status(job_id: str):
-    status = aws.get_bgzip_job_status(job_id)
-    if not status:
-        raise fastapi.HTTPException(status_code=404, detail=f"Could not find job {job_id}")
-    return {
-        'status': status
-    }
-
-
-@router.post('/bgcompress/{idx}/{job_type}', response_class=fastapi.responses.ORJSONResponse)
-async def api_start_bgcompress_job(idx: str, job_type: BgzipJob, prefix: str):
-    job_id = None
-    selected_index = [idx for idx in index.Index.lookup_all(engine, idx) if idx.s3_prefix == prefix]
-    if len(selected_index) != 1:
-        raise fastapi.HTTPException(status_code=404, detail=f"Could not find a unique index {idx} and prefix {prefix}")
-    if job_type == BgzipJob.COMPRESS:
-        job_id = aws.start_compress_job(selected_index[0].name, selected_index[0].s3_prefix)
-    elif job_type == BgzipJob.DELETE_JSON:
-        job_id = aws.start_file_deletion_job(selected_index[0].name, selected_index[0].s3_prefix)
-    elif job_type == BgzipJob.DECOMPRESS:
-        job_id = aws.start_decompress_job(selected_index[0].name, selected_index[0].s3_prefix)
-    return {
-        'job_id': job_id
-    }
-
-
-@router.post('/bgcompress/set-compressed/{idx}/{compressed}', response_class=fastapi.responses.ORJSONResponse)
-async def api_set_compressed(idx: str, compressed: bool, prefix: str):
-    index.Index.set_compressed(engine, idx, prefix, compressed)
-    return fastapi.responses.Response(content=None, status_code=200)
 
 
 @router.post('/query', response_class=fastapi.responses.ORJSONResponse)
