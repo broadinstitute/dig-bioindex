@@ -2,10 +2,18 @@
 The core logic for this endeavor lives in [Dockerfile](./Dockerfile) and the python files in this directory. Each of the three 
 *_json_files.py file contains the logic for modifying the state of the json files under an s3 path.  `compress_json_files.py` will compress
 all json files recursively under a given s3 path while also leaving the original json files in place.  This means that bioindex code 
-can still operate on the original json files. Before running the job associated with `delete_json_files.py` you should mark the index as 
-compressed using `api/bio/bgcompress/set-compressed/{idx}` end point or a sql query  This will ensure that
-the bioindex code will read from the compressed files.  Finally, if you need to backtrack `decompress_json_files.py`
+can still operate on the original json files while we're in the process of compressing them. 
+Before running the job associated with `delete_json_files.py` you should mark the index as 
+compressed using `python -m bioindex.main update-compressed-status <index_name> <s3_path> -c` or a sql query. 
+This will ensure that the bioindex code will read from the compressed files.  Finally, if you need to backtrack `decompress_json_files.py`
 will bring everything back to an uncompressed state.  
+
+Useful cli commands:
+
+1. `python -m bioindex.main compress <index_name> <s3_path_for_index>` compress json files for index, leaving originals in place
+2. `python -m bioindex.main update-compressed-status <index_name> <s3_path_for_index> -c` mark index as compressed in the database, server will try to read from compressed files after this command
+3. `python -m bioindex.main remove-uncompressed-files <index_name> <s3_path_for_index> -c` delete json files, only do this after making sure compressed files are in place and index is marked as compressed in the database.
+4. `python -m bioindex.main decompress <index_name> <s3_path_for_index>` restore uncompressed json files from their compressed versions, useful if we find bugs in the compressed code paths.
 
 
 ## Infrastructure and deployment
@@ -22,7 +30,7 @@ If you want to make changes to job's logic, edit the python code or docker file 
 
 Here's an explainer of those commands:
 1. Authenticate with our remote AWS ECR repo, step 4 will fail if you don't do this.
-2. Build a docker image from Dockerfile and the other files in this director and associate that image with the specified tag (-t). Any changes to those files will require this.
+2. Build a docker image from Dockerfile and the other files in this directory and associate that image with the specified tag (-t). Any changes to those files will require this.
 3. Associate the most recently built local image with our remote repo. Value for -t in step 2 should be reused here.
 4. Push the image to our remote repo.
 
