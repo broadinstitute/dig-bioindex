@@ -17,6 +17,27 @@ rds_client = boto3.client('rds', config=aws_config)
 secrets_client = boto3.client('secretsmanager', config=aws_config)
 
 
+def get_bgzip_job_status(job_id: str):
+    batch_client = boto3.client('batch')
+    job_response = batch_client.describe_jobs(jobs=[job_id])
+    if len(job_response['jobs']) > 0:
+        return job_response['jobs'][0]['status']
+    return None
+
+
+def start_batch_job(index_name: str, s3_path: str, job_definition: str):
+    batch_client = boto3.client('batch')
+    parameters = {'index': index_name, 'path': s3_path, 'bucket': 'dig-bio-index'}
+
+    response = batch_client.submit_job(
+        jobName=job_definition,
+        jobQueue='bgzip-job-queue',
+        jobDefinition=job_definition,
+        parameters=parameters
+    )
+    return response['jobId']
+
+
 def secret_lookup(secret_id):
     """
     Return the contents of a secret.

@@ -1,14 +1,14 @@
 import asyncio
 import concurrent.futures
-import fastapi
-import graphql
 import itertools
-
-from pydantic import BaseModel
+from enum import Enum
 from typing import List, Optional
 
-from .utils import *
+import fastapi
+import graphql
+from pydantic import BaseModel
 
+from .utils import *
 from ..lib import config
 from ..lib import continuation
 from ..lib import index
@@ -80,6 +80,7 @@ async def api_list_indexes():
             'index': i.name,
             'built': i.built,
             'schema': str(i.schema),
+            'compressed': i.compressed,
             'query': {
                 'keys': i.schema.key_columns,
                 'locus': i.schema.has_locus,
@@ -119,7 +120,7 @@ async def api_match(index: str, req: fastapi.Request, q: str, limit: int = None)
 
 
 @router.get('/count/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_count_index(index: str, req: fastapi.Request, q: str=None):
+async def api_count_index(index: str, req: fastapi.Request, q: str = None):
     """
     Query the database and estimate how many records will be returned.
     """
@@ -147,7 +148,7 @@ async def api_count_index(index: str, req: fastapi.Request, q: str=None):
 
 
 @router.get('/all/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_all(index: str, req: fastapi.Request, fmt: str='row'):
+async def api_all(index: str, req: fastapi.Request, fmt: str = 'row'):
     """
     Query the database and return ALL records for a given index. If the
     total number of bytes read exceeds a pre-configured server limit, then
@@ -277,7 +278,7 @@ async def api_test_all_arity(index: str, arity: int, req: fastapi.Request):
 
 
 @router.get('/query/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', limit: int=None):
+async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', limit: int = None):
     """
     Query the database for records matching the query parameter and
     read the records from s3.
@@ -331,7 +332,7 @@ async def api_query_gql(req: fastapi.Request):
     """
     Treat the body of the POST as a GraphQL query to be resolved.
     """
-    #restricted, auth_s = profile(restricted_keywords, portal, req)
+    # restricted, auth_s = profile(restricted_keywords, portal, req)
     body = await req.body()
 
     # ensure the graphql schema is loaded
@@ -367,7 +368,8 @@ async def api_query_gql(req: fastapi.Request):
             'nonce': nonce(),
         }
     except asyncio.TimeoutError:
-        raise fastapi.HTTPException(status_code=408, detail=f'Query execution timed out after {CONFIG.script_timeout} seconds')
+        raise fastapi.HTTPException(status_code=408,
+                                    detail=f'Query execution timed out after {CONFIG.script_timeout} seconds')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 

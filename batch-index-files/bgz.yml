@@ -59,13 +59,13 @@ Resources:
         Image: '005901288866.dkr.ecr.us-east-1.amazonaws.com/bgzip-repo'
         Command:
           - 'python3'
-          - 'main.py'
+          - 'compress_json_files.py'
+          - '-i'
+          - 'Ref::index'
           - '-b'
           - 'Ref::bucket'
           - '-p'
           - 'Ref::path'
-          - '-d'
-          - 'Ref::delete'
         JobRoleArn: !GetAtt BlockGzipRole.Arn
         ExecutionRoleArn: !GetAtt BlockGzipRole.Arn
         ResourceRequirements:
@@ -77,6 +77,71 @@ Resources:
           AssignPublicIp: 'ENABLED'
         FargatePlatformConfiguration:
           PlatformVersion: 'LATEST'
+
+  JsonDeleteFilesJobDefinition:
+    Type: 'AWS::Batch::JobDefinition'
+    Properties:
+      Type: 'container'
+      JobDefinitionName: 'json-delete-job'
+      PlatformCapabilities:
+        - 'FARGATE'
+      Timeout:
+        AttemptDurationSeconds: 7200
+      ContainerProperties:
+        Image: '005901288866.dkr.ecr.us-east-1.amazonaws.com/bgzip-repo'
+        Command:
+          - 'python3'
+          - 'delete_json_files.py'
+          - '-i'
+          - 'Ref::index'
+          - '-b'
+          - 'Ref::bucket'
+          - '-p'
+          - 'Ref::path'
+        JobRoleArn: !GetAtt BlockGzipRole.Arn
+        ExecutionRoleArn: !GetAtt BlockGzipRole.Arn
+        ResourceRequirements:
+          - Type: 'VCPU'
+            Value: '16.0'
+          - Type: 'MEMORY'
+            Value: '32768'
+        NetworkConfiguration:
+          AssignPublicIp: 'ENABLED'
+        FargatePlatformConfiguration:
+          PlatformVersion: 'LATEST'
+
+  JsonDecompressFilesJobDefinition:
+    Type: 'AWS::Batch::JobDefinition'
+    Properties:
+      Type: 'container'
+      JobDefinitionName: 'unbgzip-job'
+      PlatformCapabilities:
+        - 'FARGATE'
+      Timeout:
+        AttemptDurationSeconds: 7200
+      ContainerProperties:
+        Image: '005901288866.dkr.ecr.us-east-1.amazonaws.com/bgzip-repo'
+        Command:
+          - 'python3'
+          - 'decompress_json_files.py'
+          - '-i'
+          - 'Ref::index'
+          - '-b'
+          - 'Ref::bucket'
+          - '-p'
+          - 'Ref::path'
+        JobRoleArn: !GetAtt BlockGzipRole.Arn
+        ExecutionRoleArn: !GetAtt BlockGzipRole.Arn
+        ResourceRequirements:
+          - Type: 'VCPU'
+            Value: '16.0'
+          - Type: 'MEMORY'
+            Value: '32768'
+        NetworkConfiguration:
+          AssignPublicIp: 'ENABLED'
+        FargatePlatformConfiguration:
+          PlatformVersion: 'LATEST'
+
   # the bgzip command needs this user to authenticate via AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY env vars
   BgzipCompressionUser:
     Type: AWS::IAM::User
@@ -146,6 +211,7 @@ Resources:
                 Action:
                   - 's3:ListBucket'
                   - 's3:GetObject'
+                  - 's3:PutObject'
                   - 's3:DeleteObject'
                 Resource:
                   - 'arn:aws:s3:::dig-bio-index'

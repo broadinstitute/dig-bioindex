@@ -22,7 +22,7 @@ class Index:
     An index definition that can be built or queried.
     """
 
-    def __init__(self, name, table_name, s3_prefix, schema_string, built_date):
+    def __init__(self, name, table_name, s3_prefix, schema_string, built_date, compressed):
         """
         Initialize the index with everything needed to build keys and query.
         """
@@ -31,6 +31,18 @@ class Index:
         self.name = name
         self.built = built_date
         self.s3_prefix = s3_prefix
+        self.compressed = compressed
+
+    @staticmethod
+    def set_compressed(engine, name, prefix, compressed):
+        with engine.connect() as conn:
+            conn.execute(
+                sqlalchemy.text(
+                    'UPDATE `__Indexes` SET compressed = :compressed WHERE `name` = :name and prefix = :prefix'
+                ),
+                name=name, prefix=prefix, compressed=compressed
+            )
+
 
     @staticmethod
     def create(engine, name, rds_table_name, s3_prefix, schema):
@@ -62,7 +74,7 @@ class Index:
         """
         Return an iterator of all the indexes.
         """
-        sql = 'SELECT `name`, `table`, `prefix`, `schema`, `built` FROM `__Indexes`'
+        sql = 'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` FROM `__Indexes`'
 
         # convert all rows to an index definition
         indexes = map(lambda r: Index(*r), engine.execute(sql))
@@ -80,7 +92,7 @@ class Index:
         schema, etc.
         """
         sql = (
-            'SELECT `name`, `table`, `prefix`, `schema`, `built` '
+            'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` '
             'FROM `__Indexes` '
             'WHERE `name` = %s AND LENGTH(`schema`) - LENGTH(REPLACE(`schema`, \',\', \'\')) + 1 = %s'
         )
@@ -100,7 +112,7 @@ class Index:
         schema, etc.
         """
         sql = (
-            'SELECT `name`, `table`, `prefix`, `schema`, `built` '
+            'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` '
             'FROM `__Indexes` '
             'WHERE `name` = %s'
         )
