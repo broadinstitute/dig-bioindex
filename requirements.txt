@@ -9,7 +9,7 @@ orjson==3.5
 pydantic==1.6.2
 pymysql==0.10
 python-dotenv==0.15
-requests==2.25
+requests==2.31.0
 rich==12.0
 smart_open==5.0
 sqlalchemy==1.4
