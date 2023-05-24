@@ -101,7 +101,8 @@ class RecordReader:
                            f"s3://{self.config.s3_bucket}/{source.key}.gz"]
                     content = subprocess.run(command, capture_output=True, check=True).stdout
                 else:
-                    content = read_object(self.config.s3_bucket, source.key, source.start, source.end)
+                    content = read_object(self.config.s3_bucket, source.key, offset=source.start,
+                                          length=source.end - source.start)
 
                 # handle a bad case where the content failed to be read
                 if content is None:
