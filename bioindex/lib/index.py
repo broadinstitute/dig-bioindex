@@ -210,12 +210,13 @@ class Index:
          - hasn't been fully indexed
         """
         logging.info('Finding stale keys...')
-        keys = self.lookup_keys(engine)
-        # if a file in s3 is in the db but the version is different, we need to re-index
-        updated_or_deleted_files = [o for o in objects if keys.get(o['Key']) and keys[o['Key']]['version'] != o['ETag'].strip('"')]
-        # find files that are in the db but not in s3
-        deleted_files = set(keys) - set([o['Key'] for o in objects])
-        updated_or_deleted_files.extend([{'Key': k} for k in deleted_files])
+        db_keys = self.lookup_keys(engine)
+        # if a file in s3 is in the db but the version is different from what's in s3 we delete
+        updated_or_deleted_files = [{'id': db_keys[o['Key']]['id'], 'key': o['Key']} for o in objects if db_keys.get(o['Key']) and
+                                    db_keys[o['Key']]['version'] != o['ETag'].strip('"')]
+        # if a file is in the db but not in s3 we delete
+        s3_keys = set([o['Key'] for o in objects])
+        updated_or_deleted_files.extend([{'id': db_keys[k]['id'], 'key': k} for k in db_keys if k not in s3_keys])
 
         if updated_or_deleted_files:
             with rich.progress.Progress(console=console) as progress:
@@ -225,18 +226,18 @@ class Index:
                 # delete stale or missing keys
                 for kid in updated_or_deleted_files:
                     sql = f'DELETE FROM {self.table.name} WHERE `key` = %s'
-                    n += engine.execute(sql, kid['Key']).rowcount
+                    n += engine.execute(sql, kid['id']).rowcount
 
                     # remove the key from the __Keys table
-                    self.delete_key(engine, kid['Key'])
+                    self.delete_key(engine, kid['key'])
                     progress.advance(task)
 
                 # show what was done
                 logging.info(f'Deleted {n:,} records')
         else:
             logging.info('No stale keys; delete skipped')
-        # return new json files to s3
-        return [o for o in objects if str(o['Key']).endswith(".json") and o['Key'] not in keys]
+        # return new json files in s3 not in the db
+        return [o for o in objects if o['Key'] not in db_keys]
 
     def index_objects_remote(self, config, engine, pool, objects, progress=None, overall=None):
         """
