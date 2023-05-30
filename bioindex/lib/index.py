@@ -212,8 +212,8 @@ class Index:
         logging.info('Finding stale keys...')
         db_keys = self.lookup_keys(engine)
         # if a file in s3 is in the db but the version is different from what's in s3 we delete
-        updated_or_deleted_files = [{'id': db_keys[o['Key']]['id'], 'key': o['Key']} for o in objects if db_keys.get(o['Key']) and
-                                    db_keys[o['Key']]['version'] != o['ETag'].strip('"')]
+        updated_or_deleted_files = [{'id': db_keys[o['Key']]['id'], 'key': o['Key']} for o in objects
+                                    if db_keys.get(o['Key']) and db_keys[o['Key']]['version'] != o['ETag'].strip('"')]
         # if a file is in the db but not in s3 we delete
         s3_keys = set([o['Key'] for o in objects])
         updated_or_deleted_files.extend([{'id': db_keys[k]['id'], 'key': k} for k in db_keys if k not in s3_keys])
