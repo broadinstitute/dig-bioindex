@@ -216,7 +216,7 @@ class Index:
         new_updated_or_deleted_files = [o for o in objects if o['Key'] not in keys
                                         or keys[o['Key']]['version'] != o['ETag'].strip('"')]
         # find files that are in the db but not in s3
-        deleted_files = [k for k in keys if k not in [o['Key'] for o in objects]]
+        deleted_files = set(keys) - set([o['Key'] for o in objects])
         new_updated_or_deleted_files.extend([{'Key': k} for k in deleted_files])
 
         # delete stale keys
