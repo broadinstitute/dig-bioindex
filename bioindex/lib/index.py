@@ -211,13 +211,10 @@ class Index:
         """
         logging.info('Finding stale keys...')
         keys = self.lookup_keys(engine)
-        key_dict = {k['key']: k for k in keys}
         # if the file in s3 is not the db, it's new and we need to index
         # if a file in s3 is in the db but the version is different, we need to index
-        new_or_updated_files = [o for o in objects if o['Key'] not in key_dict
-                                or key_dict[o['Key']]['version'] != o['ETag'].strip('"')]
-
-
+        new_or_updated_files = [o for o in objects if o['Key'] not in keys
+                                or keys[o['Key']]['version'] != o['ETag'].strip('"')]
 
         # delete stale keys
         if new_or_updated_files:
