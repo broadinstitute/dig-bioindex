@@ -212,12 +212,15 @@ class Index:
         logging.info('Finding stale keys...')
         db_keys = self.lookup_keys(engine)
         # if a file in s3 is in the db but the version is different from what's in s3 we delete
-        updated_files = [{'id': db_keys[o['Key']]['id'], 'key': o['Key']} for o in objects
+        updated_files_for_db = [{'id': db_keys[o['Key']]['id'], 'key': o['Key']} for o in objects
                          if o['Key'] in db_keys and db_keys[o['Key']]['version'] != o['ETag'].strip('"')]
-        # if a file is in the db but not in s3 we delete
+        updated_files_for_return = [o for o in objects
+                                if o['Key'] in db_keys and db_keys[o['Key']]['version'] != o['ETag'].strip('"')]
         s3_keys = set([o['Key'] for o in objects])
-        updated_or_deleted_files = updated_files + [{'id': db_keys[k]['id'], 'key': k} for k in db_keys if k not in
-                                                    s3_keys]
+        deleted_files = [{'id': db_keys[k]['id'], 'key': k} for k in db_keys if k not in s3_keys]
+        new_files = [o for o in objects if o['Key'] not in db_keys]
+        # if a file is in the db but not in s3 we delete
+        updated_or_deleted_files = updated_files_for_db + deleted_files
 
         if updated_or_deleted_files:
             with rich.progress.Progress(console=console) as progress:
@@ -238,8 +241,7 @@ class Index:
         else:
             logging.info('No stale keys; delete skipped')
         # return new and updated json files
-        return [o for o in objects if o['Key'] not in db_keys] \
-            + [o for o in objects if o['Key'] in db_keys and db_keys[o['Key']]['version'] != o['ETag'].strip('"')]
+        return new_files + updated_files_for_return
 
     def index_objects_remote(self, config, engine, pool, objects, progress=None, overall=None):
         """
