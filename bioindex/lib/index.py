@@ -238,7 +238,8 @@ class Index:
         else:
             logging.info('No stale keys; delete skipped')
         # return new and updated json files
-        return [o for o in objects if o['Key'] not in db_keys] + updated_files
+        return [o for o in objects if o['Key'] not in db_keys] \
+            + [o for o in objects if o['Key'] in db_keys and db_keys[o['Key']]['version'] != o['ETag'].strip('"')]
 
     def index_objects_remote(self, config, engine, pool, objects, progress=None, overall=None):
         """
