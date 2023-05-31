@@ -210,37 +210,37 @@ class Index:
          - hasn't been fully indexed
         """
         logging.info('Finding stale keys...')
-        keys = self.lookup_keys(engine)
-        # if the file in s3 is not the db, it's new and we need to index
-        # if a file in s3 is in the db but the version is different, we need to index
-        new_updated_or_deleted_files = [o for o in objects if o['Key'] not in keys
-                                        or keys[o['Key']]['version'] != o['ETag'].strip('"')]
-        # find files that are in the db but not in s3
-        deleted_files = set(keys) - set([o['Key'] for o in objects])
-        new_updated_or_deleted_files.extend([{'Key': k} for k in deleted_files])
+        db_keys = self.lookup_keys(engine)
+        # if a file in s3 is in the db but the version is different from what's in s3 we delete
+        updated_files_for_db = [{'id': db_keys[o['Key']]['id'], 'key': o['Key']} for o in objects
+                         if o['Key'] in db_keys and db_keys[o['Key']]['version'] != o['ETag'].strip('"')]
+        updated_files_for_return = [o for o in objects if o['Key'] in set([f['key'] for f in updated_files_for_db])]
+        s3_keys = set([o['Key'] for o in objects])
+        deleted_files = [{'id': db_keys[k]['id'], 'key': k} for k in db_keys if k not in s3_keys]
+        new_files = [o for o in objects if o['Key'] not in db_keys]
+        # if a file is in the db but not in s3 we delete
+        updated_or_deleted_files = updated_files_for_db + deleted_files
 
-        # delete stale keys
-        if new_updated_or_deleted_files:
+        if updated_or_deleted_files:
             with rich.progress.Progress(console=console) as progress:
-                task = progress.add_task('[red]Deleting...[/]', total=len(new_updated_or_deleted_files))
+                task = progress.add_task('[red]Deleting...[/]', total=len(updated_or_deleted_files))
                 n = 0
 
-                # delete all the keys from the table
-                for kid in new_updated_or_deleted_files:
+                # delete stale or missing keys
+                for kid in updated_or_deleted_files:
                     sql = f'DELETE FROM {self.table.name} WHERE `key` = %s'
-                    n += engine.execute(sql, kid['Key']).rowcount
+                    n += engine.execute(sql, kid['id']).rowcount
 
                     # remove the key from the __Keys table
-                    self.delete_key(engine, kid['Key'])
+                    self.delete_key(engine, kid['key'])
                     progress.advance(task)
 
                 # show what was done
                 logging.info(f'Deleted {n:,} records')
         else:
             logging.info('No stale keys; delete skipped')
-
-        # filter the objects that still need to be indexed
-        return new_updated_or_deleted_files
+        # return new and updated json files
+        return new_files + updated_files_for_return
 
     def index_objects_remote(self, config, engine, pool, objects, progress=None, overall=None):
         """
