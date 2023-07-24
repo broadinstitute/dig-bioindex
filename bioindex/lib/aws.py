@@ -4,6 +4,8 @@ import botocore.config
 import orjson
 import sqlalchemy.engine
 
+from bioindex.lib import utils
+
 # allow lots of connections and time to read
 aws_config = botocore.config.Config(
     max_pool_connections=200,
@@ -115,3 +117,15 @@ def invoke_lambda(function_name, payload):
         raise RuntimeError(payload)
 
     return payload['body']
+
+
+def look_up_var_id(rs_id: str) -> str:
+    dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
+    table = dynamodb.Table('rsIdMapping')
+    response = table.query(
+        KeyConditionExpression=boto3.dynamodb.conditions.Key('rsId').eq(rs_id)
+    )
+    nc_prefixed = response['Items'][0]['varId']
+    chrom = nc_prefixed.split(':')[0]
+    simple_chrome = utils.CHROMOSOME_MAPPINGS.get(chrom)
+    return nc_prefixed.replace(chrom, simple_chrome)
