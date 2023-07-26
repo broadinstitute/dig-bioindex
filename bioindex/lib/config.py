@@ -147,7 +147,7 @@ class Config:
         return 'BIOINDEX_RDS_SECRET'
 
     @property
-    @config_var(default='rsIdMapping')
+    @config_var(default='rsidmapping')
     def variant_dynamodb_table(self):
         return 'BIOINDEX_VARIANT_DYNAMODB_TABLE'
 
