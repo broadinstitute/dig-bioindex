@@ -4,8 +4,6 @@ import botocore.config
 import orjson
 import sqlalchemy.engine
 
-
-
 # allow lots of connections and time to read
 aws_config = botocore.config.Config(
     max_pool_connections=200,
@@ -18,6 +16,7 @@ s3_client = boto3.client('s3', config=aws_config)
 rds_client = boto3.client('rds', config=aws_config)
 secrets_client = boto3.client('secretsmanager', config=aws_config)
 dynamo_client = boto3.resource('dynamodb', region_name='us-east-1')
+
 
 def get_bgzip_job_status(job_id: str):
     batch_client = boto3.client('batch')
@@ -122,6 +121,6 @@ def invoke_lambda(function_name, payload):
 def look_up_var_id(rs_id: str, dynamo_table) -> str:
     table = dynamo_client.Table(dynamo_table)
     response = table.query(
-        KeyConditionExpression=boto3.dynamodb.conditions.Key('rsId').eq(rs_id)
+        KeyConditionExpression=boto3.dynamodb.conditions.Key('rsid').eq(rs_id)
     )
     return response['Items'][0]
