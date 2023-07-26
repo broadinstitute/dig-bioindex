@@ -118,7 +118,7 @@ def invoke_lambda(function_name, payload):
     return payload['body']
 
 
-def look_up_var_id(rs_id: str, dynamo_table) -> str:
+def look_up_var_id(rs_id: str, dynamo_table) -> dict:
     table = dynamo_client.Table(dynamo_table)
     response = table.query(
         KeyConditionExpression=boto3.dynamodb.conditions.Key('rsid').eq(rs_id)
