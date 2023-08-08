@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import itertools
+import re
 from enum import Enum
 from typing import List, Optional
 
@@ -277,6 +278,23 @@ async def api_test_all_arity(index: str, arity: int, req: fastapi.Request):
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
+@router.get('/varIdLookup/{rsid}', response_class=fastapi.responses.ORJSONResponse)
+async def api_lookup_variant_for_rs_id(rsid: str):
+    """
+    Lookup the variant ID for a given rsID.
+    """
+    dynamodb_table = CONFIG.variant_dynamodb_table
+    data, fetch_s = profile(aws.look_up_var_id, rsid, dynamodb_table)
+    return {
+        'profile': {
+          'dynamo_fetch': fetch_s
+        },
+        'index': dynamodb_table,
+        'q': rsid,
+        'data': data
+    }
+
+
 @router.get('/query/{index}', response_class=fastapi.responses.ORJSONResponse)
 async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', limit: int = None):
     """
@@ -289,7 +307,8 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
 
         # discover what the user doesn't have access to see
         restricted, auth_s = profile(restricted_keywords, portal, req) if portal else (None, 0)
-
+        if index == 'variant-new' and re.match(r'rs\d+', q):
+            qs[0] = aws.look_up_var_id(q, CONFIG.variant_dynamodb_table).get('varid')
         # lookup the schema for this index and perform the query
         reader, query_s = profile(
             query.fetch,

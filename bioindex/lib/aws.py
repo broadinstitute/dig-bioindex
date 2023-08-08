@@ -15,6 +15,7 @@ lambda_client = boto3.client('lambda', config=aws_config)
 s3_client = boto3.client('s3', config=aws_config)
 rds_client = boto3.client('rds', config=aws_config)
 secrets_client = boto3.client('secretsmanager', config=aws_config)
+dynamo_client = boto3.resource('dynamodb', region_name='us-east-1')
 
 
 def get_bgzip_job_status(job_id: str):
@@ -115,3 +116,11 @@ def invoke_lambda(function_name, payload):
         raise RuntimeError(payload)
 
     return payload['body']
+
+
+def look_up_var_id(rs_id: str, dynamo_table) -> dict:
+    table = dynamo_client.Table(dynamo_table)
+    response = table.query(
+        KeyConditionExpression=boto3.dynamodb.conditions.Key('rsid').eq(rs_id)
+    )
+    return response['Items'][0]
