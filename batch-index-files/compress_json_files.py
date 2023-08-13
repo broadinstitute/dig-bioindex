@@ -36,7 +36,7 @@ def bg_compress_and_index_file(bucket_name, file, boto_s3, files_to_retry, print
         print(f"Compressing {file}")
     command = ['bgzip', '-i', f"s3://{bucket_name}/{file}"]
     try:
-        subprocess.run(command, check=True, timeout=120, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(command, check=True, timeout=600, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except subprocess.CalledProcessError as e:
         error_message = f"Error: Command exited with non-zero status: {e.returncode}, {file}"
     except subprocess.TimeoutExpired as e:

@@ -161,6 +161,20 @@ _NOTE: You can also pass `*` as to build all indexes!_
 
 You can also build indexes "remotely" using an AWS Lambda Function. To do this, see the [DIG Indexer][indexer] project, which is a [Serverless][serverless] project that can be used to deploy a Lambda Function to AWS. Once deployed, set the `BIOINDEX_LAMBDA_FUNCTION` environment variable and pass `--use-lambda` on the CLI for the `index` command. You can also adjust the number of workers (`--workers`) to use, which is the number of Lambda functions that will execute in parallel.
 
+## Block Gzip Compression
+
+Once you've indexed plain json files, you can compress them using bgzip and mark the index as compressed in the db.  
+To see about the steps for compressing the plain json see [README.md](./batch-index-files/README.md). Setting the compressed field in __Indexes will cause the bio index
+server to retrieve the relevant data with the bgzip command.  To install bgzip on AWS Linux follow these steps (it is necessary to build from source in order to enable seamless s3 support as of 06/2023):
+1. `sudo yum install -y gcc make zlib-devel bzip2-devel xz-devel curl-devel ncurses-devel openssl-devel`
+2. `wget https://github.com/samtools/htslib/releases/download/1.17/htslib-1.17.tar.bz2` (replace with latest version from https://github.com/samtools/htslib/releases if you want)
+3. `tar -xvf htslib-1.17.tar.bz2`
+4. `cd htslib-1.17`
+5. `./configure --enable-s3 --enable-libcurl`
+6. `make`
+7. `sudo make install`
+
+
 ## Querying Indexes
 
 Once you've built an index, you can then query it and retrieve all the records that match various input keys and/or overlap the given region. For example, to query all records in the `genes` key space that overlap a given region:
