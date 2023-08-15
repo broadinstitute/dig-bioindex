@@ -207,6 +207,11 @@ SLC30A9
 
 _NOTE: The `count` command is an approximation. It reads the first 500 records and divides the total number of bytes to read from S3 by the average byte size per record._
 
+## RsId => VariantId Index
+This is an index that will look up variant id that most frequently corresponds to a specified rsid.  We use a dynamo db table for this index.  You can access this index 
+via `/api/bio/varIdLookup/<rsid>` e.g. `curl http://localhost:5000/api/bio/varIdLookup/rs1294894678`  You can find more
+info about this index and how it's created [here](s3://dig-analysis-data/scripts/variantIdLookup/README.md).
+
 # The GraphQL REST Server
 
 In addition to a CLI, Bio-Index is also a [FastAPI][fastapi] server that allows you to query records using [GraphQL][graphql] via REST calls.

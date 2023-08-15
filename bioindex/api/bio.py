@@ -307,8 +307,6 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
 
         # discover what the user doesn't have access to see
         restricted, auth_s = profile(restricted_keywords, portal, req) if portal else (None, 0)
-        if index == 'variant-new' and re.match(r'rs\d+', q):
-            qs[0] = aws.look_up_var_id(q, CONFIG.variant_dynamodb_table).get('varid')
         # lookup the schema for this index and perform the query
         reader, query_s = profile(
             query.fetch,
