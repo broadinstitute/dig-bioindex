@@ -221,7 +221,7 @@ def parse_region_string(s, config):
 
     try:
         # parse thousands-separator commas
-        locale.setlocale(locale.LC_ALL, 'en_US.UTF8')
+        locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
 
         # parse the start position
         start = locale.atoi(start)

@@ -18,7 +18,7 @@ def connect_to_bio(config):
     """
     Connect to the index schema.
     """
-    return aws.connect_to_db(**config.rds_config, schema=config.bio_schema)
+    return aws.connect_to_sqlite()
 
 
 def connect_to_portal(config):

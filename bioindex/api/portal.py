@@ -1,4 +1,5 @@
 import fastapi
+import sqlalchemy
 
 from .utils import *
 
@@ -28,7 +29,8 @@ async def api_portal_groups():
     sql = "SELECT `name`, `title`, `description`, `default`, `portalGroup` FROM DiseaseGroups"
 
     # run the query
-    resp, query_s = profile(portal.execute, sql)
+    with portal.connect() as conn:
+        resp, query_s = profile(conn.execute, sqlalchemy.text(sql))
     disease_groups = []
 
     # transform response
@@ -82,24 +84,25 @@ async def api_portal_phenotypes(q: str = None):
 
     # optionally filter by disease group
     if q and q != "":
-        resp = portal.execute("SELECT `groups` FROM DiseaseGroups WHERE `name` = %s", q)
-        rows = resp.fetchone() or [""]
+        with portal.connect() as conn:
+            group_sql = sqlalchemy.text("SELECT `groups` FROM DiseaseGroups WHERE `name` = :name")
+            resp = conn.execute(group_sql, {'name': q})
+            rows = resp.fetchone() or [""]
 
         # groups are a comma-separated set
         groups = rows[0].split(",")
 
-    # collect phenotype groups by union
-    if groups is not None:
-        sql = " UNION ".join(
-            f"({sql} WHERE FIND_IN_SET(%s, Phenotypes.`group`))" for _ in groups
-        )
-
     # run the query
-    resp, query_s = (
-        profile(portal.execute, sql, *groups)
-        if groups
-        else profile(portal.execute, sql)
-    )
+    with portal.connect() as conn:
+        if groups is not None:
+            group_dict = {f'group_{i}': group for i, group in enumerate(groups)}
+            sql = " UNION ".join(
+                f"({sql} WHERE FIND_IN_SET(:group_{i}, Phenotypes.`group`))" for i in range(len(groups))
+            )
+            resp, query_s = profile(conn.execute, sqlalchemy.text(sql), group_dict)
+        else:
+            resp, query_s = profile(conn.execute, sqlalchemy.text(sql))
+
     phenotypes = []
 
     # transform response
@@ -112,6 +115,23 @@ async def api_portal_phenotypes(q: str = None):
                 "dichotomous": dichotomous,
             }
         )
+
+    phenotypes.append(
+        {
+            "name": "T2D_quant",
+            "description": "Type 2 diabetes (T2D) risk factor",
+            "group": "GLYCEMIC",
+            "dichotomous": 0
+        }
+    )
+    phenotypes.append(
+        {
+            "name": "T2DadjBMI_quant",
+            "description": "Type 2 diabetes (T2D) risk factor adjusted for BMI",
+            "group": "GLYCEMIC",
+            "dichotomous": 0
+        }
+    )
 
     return {
         "profile": {
@@ -154,11 +174,13 @@ async def api_portal_complications(q: str = None):
 
     # run the query
     if sql:
-        resp, query_s = (
-            profile(portal.execute, sql, *groups)
-            if groups
-            else profile(portal.execute, sql)
-        )
+        sql_text = sqlalchemy.text(sql)
+        with portal.connect() as conn:
+            resp, query_s = (
+                profile(conn.execute, sql_text, *groups)
+                if groups
+                else profile(conn.execute, sql_text)
+            )
 
     # distinct complications
     complications = {}
@@ -206,7 +228,8 @@ async def api_portal_datasets(req: fastapi.Request, q: str = None):
     )
 
     # get all datasets
-    resp, query_s = profile(portal.execute, sql)
+    with portal.connect() as conn:
+        resp, query_s = profile(conn.execute, sqlalchemy.text(sql))
     datasets = []
 
     # filter all the datasets
@@ -247,16 +270,17 @@ async def api_portal_documentation(q: str, group: str = None):
     Returns all available phenotypes or just those for a given
     portal group.
     """
-    sql = "SELECT `group`, `content` FROM Documentation WHERE `name` = %s "
-    params = [q]
+    sql = "SELECT `group`, `content` FROM Documentation WHERE `name` = :name "
+    params = {'name': q}
 
     # additionally get the the group
     if group is not None:
-        sql += "AND `group` = %s "
-        params.append(group)
+        sql += "AND `group` = :group "
+        params['group'] = group
 
     # run the query
-    resp, query_s = profile(portal.execute, sql, *params)
+    with portal.connect() as conn:
+        resp, query_s = profile(conn.execute, sqlalchemy.text(sql), params)
 
     # transform results
     data = [{"group": group, "content": content} for group, content in resp.fetchall()]
@@ -286,7 +310,8 @@ async def api_portal_documentations(q: str):
     # params.append(q)
 
     # run the query
-    resp, query_s = profile(portal.execute, sql, *params)
+    with portal.connect() as conn:
+        resp, query_s = profile(conn.execute, sqlalchemy.text(sql), *params)
 
     # transform results
     data = [
@@ -324,7 +349,8 @@ async def api_portal_systems(req: fastapi.Request):
         """
 
     # get all systems
-    resp, query_s = profile(portal.execute, sql)
+    with portal.connect() as conn:
+        resp, query_s = profile(conn.execute, sqlalchemy.text(sql))
     systems = []
 
     # filter all the systems
@@ -369,7 +395,8 @@ async def api_portal_links(q: str = None, group: str = None):
         sql += f'WHERE {" AND ".join(test[0] for test in tests)}'
 
     # run the query
-    resp, query_s = profile(portal.execute, sql, *[test[1] for test in tests])
+    with portal.connect() as conn:
+        resp, query_s = profile(conn.execute, sqlalchemy.text(sql), *[test[1] for test in tests])
 
     # transform results
     for path, group, redirect, description in resp:

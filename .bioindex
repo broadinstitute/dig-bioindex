@@ -1,4 +1,4 @@
 BIOINDEX_RDS_SECRET=dig-bio-index
-BIOINDEX_S3_BUCKET=dig-bio-index
+BIOINDEX_S3_BUCKET=dig-analysis-pxs
 BIOINDEX_LAMBDA_FUNCTION=dig-indexer-dev-main
 BIOINDEX_PORTAL_SCHEMA=portal

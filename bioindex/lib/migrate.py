@@ -2,10 +2,7 @@ import logging
 import sqlalchemy
 import sys
 
-from sqlalchemy import Column, DateTime, Index, Integer, String, Table, FetchedValue, Boolean
-from sqlalchemy.orm import Session
-
-from .aws import connect_to_db
+from .aws import connect_to_sqlite
 
 
 # tables
@@ -18,14 +15,9 @@ def migrate(config):
     Ensure all tables exist for the BioIndex to function. Returns
     the SQLAlchemy Engine object connected to the database.
     """
-    rds_config = config.rds_config
-    name = rds_config['name']
-
-    # indicate what's being connected to and try
-    logging.info('Connecting to %s/%s...', name, config.bio_schema)
 
     try:
-        engine = connect_to_db(**rds_config, schema=config.bio_schema)
+        engine = connect_to_sqlite()
 
         # create all tables
         create_indexes_table(engine)
@@ -43,62 +35,52 @@ def create_indexes_table(engine):
     """
     Create the __Indexes table if it doesn't already exist.
     """
-    table_columns = [
-        Column('id', Integer, primary_key=True),
-        Column('name', String(200, collation='ascii_bin'), index=True),
-        Column('table', String(200, collation='ascii_bin')),
-        Column('prefix', String(1024, collation='ascii_bin')),
-        Column('schema', String(200, collation='utf8_bin')),
-        Column('built', DateTime, nullable=True),
-        Column('compressed', Boolean, nullable=False, default=False),
-    ]
-
-    # define the __Indexes table
-    __Indexes = Table('__Indexes', sqlalchemy.MetaData(), *table_columns)
-
     # create the index table (drop any existing table already there)
     logging.info('Migrating __Indexes...')
-    __Indexes.create(engine, checkfirst=True)
+    sql = sqlalchemy.text('CREATE TABLE IF NOT EXISTS __Indexes ('
+                          '`id` INTEGER PRIMARY KEY, '
+                          '`name` VARCHAR(200) NOT NULL, '
+                          '`table` VARCHAR(200) NOT NULL, '
+                          '`prefix` VARCHAR(1024) NOT NULL, '
+                          '`schema` VARCHAR(200) NOT NULL,'
+                          '`built` TIMESTAMP, '
+                          'compressed TINYINT(1) NOT NULL DEFAULT 0'
+                          ')')
+    with engine.connect() as conn:
+        conn.execute(sql)
 
 
 def index_migration_1(engine):
-    with Session(engine) as session:
-        indexes = engine.execute('SHOW INDEXES FROM `__Indexes`').fetchall()
+    with engine.connect() as conn:
         # drop name_UNIQUE index if present
-        maybe_name_idx = [r[2] == 'name_UNIQUE' for r in indexes]
-        if any(maybe_name_idx):
-            session.execute('ALTER TABLE __Indexes DROP INDEX `name_UNIQUE`')
+        conn.execute(sqlalchemy.text('DROP INDEX IF EXISTS `name_UNIQUE`'))
 
         # create name_arity index if not present
-        maybe_name_arity_idx = [r[2] != 'name_arity_idx' for r in indexes]
-        if all(maybe_name_arity_idx):
-            session.execute('CREATE UNIQUE INDEX `name_arity_idx` ON __Indexes '
-                           '(name, (LENGTH(`schema`) - LENGTH(REPLACE(`schema`, ",", "")) + 1))')
-        session.commit()
+        conn.execute(sqlalchemy.text(
+            'CREATE UNIQUE INDEX IF NOT EXISTS `name_arity_idx` ON __Indexes '
+            '(name, (LENGTH(`schema`) - LENGTH(REPLACE(`schema`, ",", "")) + 1))'
+        ))
+        conn.commit()
 
 
 def create_keys_table(engine):
     """
     Create the __Keys table if it doesn't already exist.
     """
-    table_columns = [
-        Column('id', Integer, primary_key=True),
-        Column('index', String(200, collation='ascii_bin'), nullable=False),
-        Column('key', String(1024, collation='ascii_bin'), nullable=False),
-        Column('version', String(32, collation='ascii_bin'), nullable=False),
-        Column('built', DateTime, nullable=True),
-    ]
-
-    # define the __Keys table
-    __Keys = Table('__Keys', sqlalchemy.MetaData(), *table_columns)
-
     # create the keys table (drop any existing table already there)
     logging.info('Migrating __Keys...')
-    __Keys.create(engine, checkfirst=True)
-
-    # create the compound index for the table
-    rows = engine.execute('SHOW INDEXES FROM `__Keys`').fetchall()
+    sql = sqlalchemy.text('CREATE TABLE IF NOT EXISTS __Keys ('
+                          '`id` INTEGER PRIMARY KEY, '
+                          '`index` VARCHAR(200) NOT NULL, '
+                          '`key` VARCHAR(1024) NOT NULL, '
+                          '`version` VARCHAR(32) NOT NULL,'
+                          '`built` TIMESTAMP '
+                          ')')
+    with engine.connect() as conn:
+        conn.execute(sql)
 
     # build the index if not present
-    if not any(map(lambda r: r[2] == 'key_idx', rows)):
-        Index('key_idx', __Keys.c.index, __Keys.c.key, unique=True).create(engine)
+    with engine.connect() as conn:
+        conn.execute(sqlalchemy.text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `key_idx` ON __Keys (`index`, `key`)"
+        ))

@@ -13,7 +13,6 @@ aws_config = botocore.config.Config(
 # create service clients
 lambda_client = boto3.client('lambda', config=aws_config)
 s3_client = boto3.client('s3', config=aws_config)
-rds_client = boto3.client('rds', config=aws_config)
 secrets_client = boto3.client('secretsmanager', config=aws_config)
 
 
@@ -84,6 +83,22 @@ def connect_to_db(schema=None, **kwargs):
 
     # build the connection uri
     uri = '{engine}://{username}:{password}@{host}/{schema}?local_infile=1'.format(schema=schema, **kwargs)
+
+    # create the connection pool
+    engine = sqlalchemy.create_engine(uri, pool_recycle=3600)
+
+    # test the engine by making a single connection
+    with engine.connect():
+        return engine
+
+
+def connect_to_sqlite():
+    """
+    Connect to a MySQL database using keyword arguments.
+    """
+
+    # build the connection uri
+    uri = 'sqlite:///PXS.db'
 
     # create the connection pool
     engine = sqlalchemy.create_engine(uri, pool_recycle=3600)

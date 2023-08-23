@@ -54,18 +54,20 @@ class Index:
         assert s3_prefix.endswith('/'), "S3 prefix must be a common prefix ending with '/'"
 
         # add the new index to the table
-        sql = (
+        sql = sqlalchemy.text(
             'INSERT INTO `__Indexes` (`name`, `table`, `prefix`, `schema`) '
-            'VALUES (%s, %s, %s, %s) '
-            'ON DUPLICATE KEY UPDATE '
-            '   `table` = VALUES(`table`), '
-            '   `prefix` = VALUES(`prefix`), '
-            '   `schema` = VALUES(`schema`), '
-            '   `built` = 0 '
+            'VALUES (:name, :table, :prefix, :schema)'
         )
 
         # add to the database
-        row = engine.execute(sql, name, rds_table_name, s3_prefix, schema)
+        with engine.connect() as conn:
+            row = conn.execute(sql, {
+                'name': name,
+                'table': rds_table_name,
+                'prefix': s3_prefix,
+                'schema': schema
+            })
+            conn.commit()
 
         return row and row.lastrowid is not None
 
@@ -74,10 +76,11 @@ class Index:
         """
         Return an iterator of all the indexes.
         """
-        sql = 'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` FROM `__Indexes`'
+        sql = sqlalchemy.text('SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` FROM `__Indexes`')
 
         # convert all rows to an index definition
-        indexes = map(lambda r: Index(*r), engine.execute(sql))
+        with engine.connect() as conn:
+            indexes = map(lambda r: Index(*r), conn.execute(sql))
 
         # remove indexes not built?
         if filter_built:
@@ -111,14 +114,15 @@ class Index:
         Lookup an index in the database, return its table name, s3 prefix,
         schema, etc.
         """
-        sql = (
+        sql = sqlalchemy.text(
             'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` '
             'FROM `__Indexes` '
-            'WHERE `name` = %s'
+            'WHERE `name` = :name'
         )
 
         # lookup the index
-        rows = engine.execute(sql, name).fetchall()
+        with engine.connect() as conn:
+            rows = conn.execute(sql, {'name': name}).fetchall()
 
         if len(rows) == 0:
             raise KeyError(f'No such index: {name}')
@@ -211,11 +215,10 @@ class Index:
         """
         logging.info('Finding stale keys...')
         keys = self.lookup_keys(engine)
-        key_dict = {k['key']: k for k in keys}
         # if the file in s3 is not the db, it's new and we need to index
         # if a file in s3 is in the db but the version is different, we need to index
-        new_or_updated_files = [o for o in objects if o['Key'] not in key_dict
-                                or key_dict[o['Key']]['version'] != o['ETag'].strip('"')]
+        new_or_updated_files = [o for o in objects if o['Key'] not in keys
+                                or keys[o['Key']]['version'] != o['ETag'].strip('"')]
 
 
 
@@ -226,13 +229,15 @@ class Index:
                 n = 0
 
                 # delete all the keys from the table
-                for kid in new_or_updated_files:
-                    sql = f'DELETE FROM {self.table.name} WHERE `key` = %s'
-                    n += engine.execute(sql, kid['Key']).rowcount
+                with engine.connect() as conn:
+                    for kid in new_or_updated_files:
+                        sql = sqlalchemy.text(f'DELETE FROM {self.table.name} WHERE `key` = :key')
+                        n += conn.execute(sql, {'key': kid['Key']}).rowcount
 
-                    # remove the key from the __Keys table
-                    self.delete_key(engine, kid['Key'])
-                    progress.advance(task)
+                        # remove the key from the __Keys table
+                        self.delete_key(conn, kid['Key'])
+                        progress.advance(task)
+                    conn.commit()
 
                 # show what was done
                 logging.info(f'Deleted {n:,} records')
@@ -367,50 +372,21 @@ class Index:
 
         # get the field names from the first record
         fieldnames = list(records[0].keys())
-        quoted_fieldnames = [f'`{field}`' for field in fieldnames]
-
-        # create a temporary file to write the CSV to
-        tmp = tempfile.NamedTemporaryFile(mode='w+t', delete=False)
-
-        try:
-            w = csv.DictWriter(tmp, fieldnames)
-
-            # write the header and the rows
-            w.writeheader()
-            w.writerows(records)
-        finally:
-            tmp.close()
-
-        try:
-            infile = tmp.name.replace('\\', '/')
-            fail_ex = None
-
-            sql = (
-                f"LOAD DATA LOCAL INFILE '{infile}' "
-                f"INTO TABLE `{self.table.name}` "
-                f"FIELDS TERMINATED BY ',' "
-                f"LINES TERMINATED BY '\\n' "
-                f"IGNORE 1 ROWS "
-                f"({','.join(quoted_fieldnames)}) "
-            )
-
-            # attempt to bulk load into the database
-            for _ in range(5):
-                try:
-                    engine.execute(sql)
-                    break
-                except sqlalchemy.exc.OperationalError as ex:
-                    fail_ex = ex
-                    if ex.code == 1213:  # deadlock; wait and try again
-                        time.sleep(1)
-            else:
-                # failed to insert the rows, die
-                raise fail_ex
+        fieldname_str = ','.join([f'`{field}`' for field in fieldnames])
+        with engine.connect() as conn:
+            for record in records:
+                value_str = ','.join(
+                    [str(record[field]) if type(record[field]) != str else f'\'{record[field]}\'' for field in fieldnames]
+                )
+                conn.execute(
+                    sqlalchemy.text(
+                        f'INSERT INTO {self.table.name} ({fieldname_str}) VALUES ({value_str})'
+                    )
+                )
+            conn.commit()
 
             # output number of records
             logging.info(f'Wrote {len(records):,} records')
-        finally:
-            os.remove(tmp.name)
 
     def insert_records_batched(self, engine, records, batch_size=5000):
         """
@@ -428,36 +404,40 @@ class Index:
         If the versions don't match, delete the existing record and create
         a new one with a new ID.
         """
-        sql = 'SELECT `id`, `version` FROM `__Keys` WHERE `index` = %s and `key` = %s'
-        row = engine.execute(sql, self.name, key).fetchone()
+        sql = sqlalchemy.text('SELECT `id`, `version` FROM `__Keys` WHERE `index` = :index and `key` = :key')
+        with engine.connect() as conn:
+            row = conn.execute(sql, {'index': self.name, 'key': key}).fetchone()
 
-        if row is not None:
-            if row[1] == version:
-                return row[0]
+            if row is not None:
+                if row[1] == version:
+                    return row[0]
 
-            # delete the existing key entry
-            engine.execute('DELETE FROM `__Keys` WHERE `id` = %s', row[0])
+                # delete the existing key entry
+                conn.execute('DELETE FROM `__Keys` WHERE `id` = %s', row[0])
 
-        # add a new entry
-        sql = 'INSERT INTO `__Keys` (`index`, `key`, `version`) VALUES (%s, %s, %s)'
-        row = engine.execute(sql, self.name, key, version)
+            # add a new entry
+            sql = sqlalchemy.text('INSERT INTO `__Keys` (`index`, `key`, `version`) VALUES (:index, :key, :version)')
+            row = conn.execute(sql, {'index': self.name, 'key': key, 'version': version})
+            conn.commit()
 
         return row.lastrowid
 
-    def delete_key(self, engine, key):
+    def delete_key(self, conn, key):
         """
         Removes all records from the index and the key from the __Keys
         table for a paritcular index/key pair.
         """
-        sql = 'DELETE FROM `__Keys` WHERE `index` = %s and `key` = %s'
-        engine.execute(sql, self.name, key)
+        sql = sqlalchemy.text('DELETE FROM `__Keys` WHERE `index` = :index and `key` = :key')
+        conn.execute(sql, {'index': self.name, 'key': key})
 
     def delete_keys(self, engine):
         """
         Removes all records from the __Keys table for a paritcular index
         by name.
         """
-        engine.execute('DELETE FROM `__Keys` WHERE `index` = %s', self.name)
+        with engine.connect() as conn:
+            conn.execute(sqlalchemy.text('DELETE FROM `__Keys` WHERE `index` = :index'), {'index': self.name})
+            conn.commit()
 
     def lookup_keys(self, engine):
         """
@@ -465,8 +445,11 @@ class Index:
         key -> {id, version}. The version will be None if the key hasn't been
         completely indexed.
         """
-        sql = 'SELECT `id`, `key`, `version`, `built` FROM `__Keys` WHERE `index` = %s AND `key` LIKE %s'
-        rows = engine.execute(sql, self.name, f'{self.s3_prefix}%').fetchall()
+        sql = sqlalchemy.text(
+            'SELECT `id`, `key`, `version`, `built` FROM `__Keys` WHERE `index` = :index AND `key` LIKE :key'
+        )
+        with engine.connect() as conn:
+            rows = conn.execute(sql, {'index': self.name, 'key': f'{self.s3_prefix}%'}).fetchall()
 
         return {key: {'id': id, 'version': built and ver} for id, key, ver, built in rows}
 
@@ -474,8 +457,10 @@ class Index:
         """
         Update the keys table to indicate the key has been built.
         """
-        sql = 'UPDATE `__Keys` SET `built` = %s WHERE `index` = %s AND `key` = %s'
-        engine.execute(sql, datetime.datetime.utcnow(), self.name, key)
+        sql = sqlalchemy.text('UPDATE `__Keys` SET `built` = :built WHERE `index` = :index AND `key` = :key')
+        with engine.connect() as conn:
+            conn.execute(sql, {'built': datetime.datetime.utcnow(), 'index': self.name, 'key': key})
+            conn.commit()
 
     def set_built_flag(self, engine, flag=True):
         """
@@ -483,7 +468,15 @@ class Index:
         """
         now = datetime.datetime.utcnow()
 
-        if flag:
-            engine.execute('UPDATE `__Indexes` SET `built` = %s WHERE `name` = %s', now, self.name)
-        else:
-            engine.execute('UPDATE `__Indexes` SET `built` = NULL WHERE `name` = %s', self.name)
+        with engine.connect() as conn:
+            if flag:
+                conn.execute(
+                    sqlalchemy.text('UPDATE `__Indexes` SET `built` = :built WHERE `name` = :name'),
+                    {'built': now, 'name': self.name}
+                )
+            else:
+                conn.execute(
+                    sqlalchemy.text('UPDATE `__Indexes` SET `built` = NULL WHERE `name` = :name'),
+                    {'name': self.name}
+                )
+            conn.commit()

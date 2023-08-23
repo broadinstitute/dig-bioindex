@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Index, Integer, BigInteger, MetaData, String, Table
 from sqlalchemy.exc import OperationalError
+import sqlalchemy
 
 from .locus import parse_locus_builder
 
@@ -132,14 +133,19 @@ class Schema:
         """
         Construct the compound index for this table.
         """
-        Index('schema_idx', *self.index_columns).create(engine)
+        with engine.connect() as conn:
+            column_str = ', '.join([f'"{a.name}"' for a in self.index_columns])
+            conn.execute(sqlalchemy.text(f'CREATE INDEX "{table.name}_schema_idx" ON "{table.name}" ({column_str})'))
+            conn.commit()
 
     def drop_index(self, engine, table):
         """
         Removes the index. This can help performance when updating.
         """
         try:
-            engine.execute(f'ALTER TABLE `{table.name}` DROP INDEX schema_idx')
+            with engine.connect() as conn:
+                conn.execute(sqlalchemy.text(f'DROP INDEX "{table.name}_schema_idx"'))
+                conn.commit()
         except OperationalError:
             pass
 
@@ -165,7 +171,7 @@ class Schema:
         Builds the query string from the index columns that can be used in a
         SQL execute statement.
         """
-        tests = 'AND'.join(map(lambda k: f'`{k}`=%s ', self.key_columns))
+        tests = 'AND'.join(map(lambda k: f'`{k}`={{}} ', self.key_columns))
 
         # if there's a locus index, append it
         if self.has_locus:
@@ -173,7 +179,7 @@ class Schema:
                 tests += 'AND '
 
             # add the chromosome and position
-            tests += '`chromosome`=%s AND `position` BETWEEN %s AND %s '
+            tests += '`chromosome`={} AND `position` BETWEEN {} AND {} '
 
         return tests
 

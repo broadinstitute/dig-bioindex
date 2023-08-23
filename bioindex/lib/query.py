@@ -1,5 +1,6 @@
 import concurrent.futures
 import re
+import sqlalchemy
 
 from .locus import Locus, parse_region_string
 from .reader import MultiRecordReader, RecordReader, RecordSource
@@ -137,8 +138,8 @@ def _run_query(config, engine, index, q, restricted):
         f'INNER JOIN `__Keys` '
         f'ON `__Keys`.`id` = `{index.table}`.`key` '
         f'WHERE {index.schema.sql_filters} '
-        f'GROUP BY `key` '
-        f'ORDER BY `key` ASC'
+        f'GROUP BY `__Keys`.`key` '
+        f'ORDER BY `__Keys`.`key` ASC'
     )
 
     # query parameter list
@@ -169,8 +170,10 @@ def _run_query(config, engine, index, q, restricted):
         record_filter = overlaps
 
     # execute the query
-    cursor = engine.execute(sql, *query_params)
-    rows = cursor.fetchall()
+    with engine.connect() as conn:
+        params_with_quotes = [p if type(p) != str else f'\'{p}\'' for p in query_params]
+        cursor = conn.execute(sqlalchemy.text(sql.format(*params_with_quotes)))
+        rows = cursor.fetchall()
 
     # create a RecordSource for each entry in the database
     sources = [RecordSource(*row) for row in rows]
