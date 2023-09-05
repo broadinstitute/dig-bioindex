@@ -69,37 +69,15 @@ async def api_portal_restrictions(req: fastapi.Request):
     }
 
 
-@router.get("/phenotypes", response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_phenotypes(q: str = None):
+def fetch_added_phenotypes(include: list):
     """
-    Returns all available phenotypes or just those for a given
-    disease group.
+    Returns named phenotypes specified by include
     """
-    sql = "SELECT `name`, `description`, `group`, `dichotomous` FROM Phenotypes"
-
-    # groups to match
-    groups = None
-
-    # optionally filter by disease group
-    if q and q != "":
-        resp = portal.execute("SELECT `groups` FROM DiseaseGroups WHERE `name` = %s", q)
-        rows = resp.fetchone() or [""]
-
-        # groups are a comma-separated set
-        groups = rows[0].split(",")
-
-    # collect phenotype groups by union
-    if groups is not None:
-        sql = " UNION ".join(
-            f"({sql} WHERE FIND_IN_SET(%s, Phenotypes.`group`))" for _ in groups
-        )
+    format_strings = ','.join(['%s'] * len(include))
+    sql = f"SELECT `name`, `description`, `group`, `dichotomous` FROM Phenotypes where `name` in ({format_strings})"
 
     # run the query
-    resp, query_s = (
-        profile(portal.execute, sql, *groups)
-        if groups
-        else profile(portal.execute, sql)
-    )
+    resp, query_s = profile(portal.execute, sql, *include)
     phenotypes = []
 
     # transform response
@@ -112,6 +90,60 @@ async def api_portal_phenotypes(q: str = None):
                 "dichotomous": dichotomous,
             }
         )
+
+    return phenotypes
+
+
+@router.get("/phenotypes", response_class=fastapi.responses.ORJSONResponse)
+async def api_portal_phenotypes(q: str = None):
+    """
+    Returns all available phenotypes or just those for a given
+    disease group.
+    """
+    sql = "SELECT `name`, `description`, `group`, `dichotomous` FROM Phenotypes"
+
+    # groups to match
+    groups = None
+    include = None
+    exclude = None
+
+    # optionally filter by disease group
+    if q and q != "":
+        resp = portal.execute("SELECT `groups`, include, exclude FROM DiseaseGroups WHERE `name` = %s", q)
+        rows = resp.fetchone() or [""]
+
+        # groups are a comma-separated set
+        groups = rows[0].split(",")
+        include = rows[1].split(",") if rows[1] else None
+        exclude = rows[2].split(",") if rows[2] else None
+
+    # collect phenotype groups by union
+    if groups is not None:
+        format_strings = ','.join(['%s'] * len(groups))
+        sql = f"({sql} WHERE `group` in ({format_strings}))"
+
+    # run the query
+    resp, query_s = (
+        profile(portal.execute, sql, *groups)
+        if groups
+        else profile(portal.execute, sql)
+    )
+    phenotypes = []
+
+    # transform response
+    for name, desc, group, dichotomous in resp:
+        if exclude and name in exclude:
+            continue
+        phenotypes.append(
+            {
+                "name": name,
+                "description": desc,
+                "group": group,
+                "dichotomous": dichotomous,
+            }
+        )
+    if include:
+        phenotypes.append(fetch_added_phenotypes(include))
 
     return {
         "profile": {
