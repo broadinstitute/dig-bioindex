@@ -1,3 +1,4 @@
+import concurrent
 import time
 from enum import Enum
 
@@ -168,6 +169,47 @@ def cli_compress(cfg, index_name, prefix):
     check_index_and_launch_job(cfg, index_name, prefix, BgzipJobType.COMPRESS)
 
 
+def validate_job_type(ctx, param, value):
+    job_types = [job.name for job in BgzipJobType]
+    if value not in job_types:
+        raise click.BadParameter(f"Job type must be one of {', '.join(job_types)}")
+    return getattr(BgzipJobType, value)
+
+
+def convert_cli_arg_to_list(value):
+    if value:
+        return [item.strip() for item in value]
+    return None
+
+
+@click.command(name='bulk-compression-management')
+@click.option('--include', multiple=True, default=None,
+              help="List of index names to include for processing. E.g. --include=name1,name2")
+@click.option('--exclude', multiple=True, default=None,
+              help="List of index names to exclude from processing. E.g. --exclude=name1,name2")
+@click.option('--job-type', type=str, required=True, callback=validate_job_type,
+              help="Type of job to perform. Must be one of COMPRESS, DECOMPRESS, DELETE_JSON")
+@click.pass_obj
+def cli_bulk_compression_management(cfg, include, exclude, job_type):
+    engine = migrate.migrate(cfg)
+    indexes = index.Index.list_indexes(engine, False)
+
+    inclusion_list = convert_cli_arg_to_list(include)
+    exclusion_list = convert_cli_arg_to_list(exclude)
+
+    with (concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor):
+        futures = []
+        for i in indexes:
+            if (inclusion_list is None or i.name in inclusion_list) and (
+                exclusion_list is None or i.name not in exclusion_list):
+                futures.append(
+                    executor.submit(check_index_and_launch_job, cfg, i.name, i.s3_prefix, job_type))
+
+        # wait for all futures to complete
+        for future in concurrent.futures.as_completed(futures):
+            future.result()
+
+
 @click.command(name='decompress')
 @click.argument('index_name')
 @click.argument('prefix')
@@ -334,6 +376,7 @@ cli.add_command(cli_compress)
 cli.add_command(update_compressed_status)
 cli.add_command(cli_decompress)
 cli.add_command(cli_remove_uncompressed_files)
+cli.add_command(cli_bulk_compression_management)
 
 
 def main():
