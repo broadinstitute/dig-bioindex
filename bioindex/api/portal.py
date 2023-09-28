@@ -114,18 +114,28 @@ async def api_portal_phenotypes(q: str = None):
         if q and q != "":
             resp = conn.execute(text("SELECT `groups`, include, exclude FROM DiseaseGroups WHERE `name` = :name"),
                                 {"name": q})
-            rows = resp.fetchone() or [""]
+            rows = resp.fetchone()
+
+            if rows is None:
+                return {
+                    "profile": {
+                        "query": "",
+                    },
+                    "data": [],
+                    "count": 0,
+                    "nonce": nonce(),
+                }
 
             # groups are a comma-separated set
             groups = rows[0].split(",")
-            include = rows[1].split(",") if len(rows) > 1 else None
-            exclude = rows[2].split(",") if len(rows) > 2 else None
+            include = rows[1].split(",") if rows[1] else None
+            exclude = rows[2].split(",") if rows[2] else None
 
         # collect phenotype groups by union
         group_params = []
         if groups is not None and groups[0] != '':
-            group_params = [f":{group}" for group in groups]
-            sql = f"({sql} WHERE `group` in ({','.join(group_params)}))"
+            group_params = [f"{group.replace(' ', '')}" for group in groups]
+            sql = f"({sql} WHERE `group` in ({','.join([':' + param for param in group_params])}))"
 
         # run the query
         resp, query_s = (
