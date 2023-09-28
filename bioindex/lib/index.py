@@ -45,7 +45,6 @@ class Index:
                 name=name, prefix=prefix, compressed=compressed
             )
 
-
     @staticmethod
     def create(engine, name, rds_table_name, s3_prefix, schema):
         """
@@ -58,7 +57,7 @@ class Index:
         # add the new index to the table
         sql = (
             'INSERT INTO `__Indexes` (`name`, `table`, `prefix`, `schema`) '
-            'VALUES (%s, %s, %s, %s) '
+            'VALUES (:name, :table, :prefix, :schema) '
             'ON DUPLICATE KEY UPDATE '
             '   `table` = VALUES(`table`), '
             '   `prefix` = VALUES(`prefix`), '
@@ -67,7 +66,7 @@ class Index:
         )
 
         with engine.connect() as conn:
-            row = conn.execute(sql, name, rds_table_name, s3_prefix, schema)
+            row = conn.execute(sql, {'name': name, 'table': rds_table_name, 'prefix': s3_prefix, 'schema': schema})
 
             return row and row.lastrowid is not None
 
@@ -217,7 +216,7 @@ class Index:
         db_keys = self.lookup_keys(engine)
         # if a file in s3 is in the db but the version is different from what's in s3 we delete
         updated_files_for_db = [{'id': db_keys[o['Key']]['id'], 'key': o['Key']} for o in objects
-                         if o['Key'] in db_keys and db_keys[o['Key']]['version'] != o['ETag'].strip('"')]
+                                if o['Key'] in db_keys and db_keys[o['Key']]['version'] != o['ETag'].strip('"')]
         updated_files_for_return = [o for o in objects if o['Key'] in set([f['key'] for f in updated_files_for_db])]
         s3_keys = set([o['Key'] for o in objects])
         deleted_files = [{'id': db_keys[k]['id'], 'key': k} for k in db_keys if k not in s3_keys]
@@ -250,6 +249,7 @@ class Index:
         """
         Index the objects using a lambda function.
         """
+
         def run_function(obj):
             logging.info(f'Processing {relative_key(obj["Key"], self.s3_prefix)}...')
 
@@ -423,7 +423,7 @@ class Index:
         locking the table.
         """
         for i in range(0, len(records), batch_size):
-            self.insert_records(engine, records[i:i+batch_size])
+            self.insert_records(engine, records[i:i + batch_size])
 
     def insert_key(self, engine, key, version):
         """
