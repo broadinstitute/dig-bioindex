@@ -66,7 +66,7 @@ class Index:
         )
 
         with engine.connect() as conn:
-            row = conn.execute(sql, {'name': name, 'table': rds_table_name, 'prefix': s3_prefix, 'schema': schema})
+            row = conn.execute(text(sql), {'name': name, 'table': rds_table_name, 'prefix': s3_prefix, 'schema': schema})
 
             return row and row.lastrowid is not None
 
