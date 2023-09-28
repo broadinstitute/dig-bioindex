@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 from .aws import connect_to_db
 
-
 # tables
 __Indexes = None
 __Keys = None
@@ -62,19 +61,23 @@ def create_indexes_table(engine):
 
 
 def index_migration_1(engine):
-    with Session(engine) as session:
-        indexes = engine.execute('SHOW INDEXES FROM `__Indexes`').fetchall()
-        # drop name_UNIQUE index if present
-        maybe_name_idx = [r[2] == 'name_UNIQUE' for r in indexes]
-        if any(maybe_name_idx):
-            session.execute('ALTER TABLE __Indexes DROP INDEX `name_UNIQUE`')
+    with Session(engine) as session:  # Using Session with engine
+        with session.begin():  # Beginning the transaction explicitly
+            result = session.execute('SHOW INDEXES FROM `__Indexes`')  # Using session for executing
+            indexes = result.fetchall()
 
-        # create name_arity index if not present
-        maybe_name_arity_idx = [r[2] != 'name_arity_idx' for r in indexes]
-        if all(maybe_name_arity_idx):
-            session.execute('CREATE UNIQUE INDEX `name_arity_idx` ON __Indexes '
-                           '(name, (LENGTH(`schema`) - LENGTH(REPLACE(`schema`, ",", "")) + 1))')
-        session.commit()
+            # drop name_UNIQUE index if present
+            maybe_name_idx = [r[2] == 'name_UNIQUE' for r in indexes]
+            if any(maybe_name_idx):
+                session.execute('ALTER TABLE __Indexes DROP INDEX `name_UNIQUE`')
+
+            # create name_arity index if not present
+            maybe_name_arity_idx = [r[2] != 'name_arity_idx' for r in indexes]
+            if all(maybe_name_arity_idx):
+                session.execute(
+                    'CREATE UNIQUE INDEX `name_arity_idx` ON __Indexes '
+                    '(name, (LENGTH(`schema`) - LENGTH(REPLACE(`schema`, ",", "")) + 1))'
+                )
 
 
 def create_keys_table(engine):
