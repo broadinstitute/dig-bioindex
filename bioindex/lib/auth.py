@@ -1,5 +1,6 @@
 import orjson
 import requests
+from sqlalchemy import text
 
 
 def verify_access_token(req):
@@ -44,11 +45,9 @@ def restrictions(engine, req):
             'WHERE `email` IS NULL '
         )
 
-    # execute the query
-    cursor = engine.execute(sql, email) if email else engine.execute(sql)
-
-    # all restrictions
-    return [orjson.loads(r[0].encode('utf-8')) for r in cursor]
+    with engine.connect() as conn:
+        cursor = conn.execute(text(sql), email) if email else conn.execute(text(sql))
+        return [orjson.loads(r[0].encode('utf-8')) for r in cursor]
 
 
 def restricted_keywords(engine, req):

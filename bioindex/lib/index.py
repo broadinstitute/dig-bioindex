@@ -11,6 +11,8 @@ import sqlalchemy
 import tempfile
 import time
 
+from sqlalchemy import text
+
 from .aws import invoke_lambda
 from .s3 import list_objects, read_object, relative_key
 from .schema import Schema
@@ -64,26 +66,27 @@ class Index:
             '   `built` = 0 '
         )
 
-        # add to the database
-        row = engine.execute(sql, name, rds_table_name, s3_prefix, schema)
+        with engine.connect() as conn:
+            row = conn.execute(sql, name, rds_table_name, s3_prefix, schema)
 
-        return row and row.lastrowid is not None
+            return row and row.lastrowid is not None
 
     @staticmethod
     def list_indexes(engine, filter_built=True):
-        """
-        Return an iterator of all the indexes.
-        """
-        sql = 'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` FROM `__Indexes`'
+        with engine.connect() as conn:
+            """
+            Return an iterator of all the indexes.
+            """
+            sql = 'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` FROM `__Indexes`'
 
-        # convert all rows to an index definition
-        indexes = map(lambda r: Index(*r), engine.execute(sql))
+            # convert all rows to an index definition
+            indexes = map(lambda r: Index(*r), conn.execute(text(sql)).fetchall())
 
-        # remove indexes not built?
-        if filter_built:
-            indexes = filter(lambda i: i.built, indexes)
+            # remove indexes not built?
+            if filter_built:
+                indexes = filter(lambda i: i.built, indexes)
 
-        return indexes
+            return indexes
 
     @staticmethod
     def lookup(engine, name, arity):
@@ -97,13 +100,14 @@ class Index:
             'WHERE `name` = %s AND LENGTH(`schema`) - LENGTH(REPLACE(`schema`, \',\', \'\')) + 1 = %s'
         )
 
-        # lookup the index
-        row = engine.execute(sql, name, arity).fetchone()
+        with engine.connect() as conn:
+            # lookup the index
+            row = conn.execute(text(sql), name, arity).fetchone()
 
-        if row is None:
-            raise KeyError(f'No such index: {name}')
+            if row is None:
+                raise KeyError(f'No such index: {name}')
 
-        return Index(*row)
+            return Index(*row)
 
     @staticmethod
     def lookup_all(engine, name):
@@ -475,15 +479,16 @@ class Index:
         Update the keys table to indicate the key has been built.
         """
         sql = 'UPDATE `__Keys` SET `built` = %s WHERE `index` = %s AND `key` = %s'
-        engine.execute(sql, datetime.datetime.utcnow(), self.name, key)
+        with engine.connect() as conn:
+            conn.execute(sql, datetime.datetime.utcnow(), self.name, key)
 
     def set_built_flag(self, engine, flag=True):
         """
         Update the __Index table to indicate this index has been built.
         """
         now = datetime.datetime.utcnow()
-
-        if flag:
-            engine.execute('UPDATE `__Indexes` SET `built` = %s WHERE `name` = %s', now, self.name)
-        else:
-            engine.execute('UPDATE `__Indexes` SET `built` = NULL WHERE `name` = %s', self.name)
+        with engine.connect() as conn:
+            if flag:
+                conn.execute('UPDATE `__Indexes` SET `built` = %s WHERE `name` = %s', now, self.name)
+            else:
+                conn.execute('UPDATE `__Indexes` SET `built` = NULL WHERE `name` = %s', self.name)

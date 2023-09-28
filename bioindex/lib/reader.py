@@ -97,8 +97,12 @@ class RecordReader:
             try:
                 compression_on = self.index.compressed
                 if compression_on:
-                    command = ['bgzip', '-b', f"{source.start}", '-s', f"{source.end - source.start}",
-                           f"s3://{self.config.s3_bucket}/{source.key}.gz"]
+                    if source.key.endswith('.gz'):
+                        command = ['bgzip', '-b', f"{source.start}", '-s', f"{source.end - source.start}",
+                            f"s3://{self.config.s3_bucket}/{source.key}"]
+                    else:
+                        command = ['bgzip', '-b', f"{source.start}", '-s', f"{source.end - source.start}",
+                                   f"s3://{self.config.s3_bucket}/{source.key}.gz"]
                     content = subprocess.run(command, capture_output=True, check=True).stdout
                 else:
                     content = read_object(self.config.s3_bucket, source.key, offset=source.start,

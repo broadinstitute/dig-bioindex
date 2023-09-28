@@ -165,7 +165,7 @@ class Schema:
         Builds the query string from the index columns that can be used in a
         SQL execute statement.
         """
-        tests = 'AND'.join(map(lambda k: f'`{k}`=%s ', self.key_columns))
+        tests = 'AND'.join(map(lambda k: f'`{k}`=:{k.replace("|", "_")} ', self.key_columns))
 
         # if there's a locus index, append it
         if self.has_locus:
@@ -173,7 +173,7 @@ class Schema:
                 tests += 'AND '
 
             # add the chromosome and position
-            tests += '`chromosome`=%s AND `position` BETWEEN %s AND %s '
+            tests += '`chromosome`= :chromosome AND `position` BETWEEN :start_pos AND :end_pos '
 
         return tests
 
