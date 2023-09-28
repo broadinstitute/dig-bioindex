@@ -100,7 +100,8 @@ def create_keys_table(engine):
     __Keys.create(engine, checkfirst=True)
 
     # create the compound index for the table
-    rows = engine.execute('SHOW INDEXES FROM `__Keys`').fetchall()
+    with engine.connect() as conn:
+        rows = conn.execute(text('SHOW INDEXES FROM `__Keys`')).fetchall()
 
     # build the index if not present
     if not any(map(lambda r: r[2] == 'key_idx', rows)):
