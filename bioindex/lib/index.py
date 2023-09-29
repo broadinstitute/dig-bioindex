@@ -65,9 +65,8 @@ class Index:
             '   `built` = 0 '
         )
 
-        with engine.connect() as conn:
+        with engine.begin() as conn:
             row = conn.execute(text(sql), {'name': name, 'table': rds_table_name, 'prefix': s3_prefix, 'schema': schema})
-            conn.commit()
             return row and row.lastrowid is not None
 
     @staticmethod
@@ -487,8 +486,9 @@ class Index:
         Update the __Index table to indicate this index has been built.
         """
         now = datetime.datetime.utcnow()
-        with engine.connect() as conn:
+        with engine.begin() as conn:
             if flag:
-                conn.execute('UPDATE `__Indexes` SET `built` = %s WHERE `name` = %s', now, self.name)
+                conn.execute(text('UPDATE `__Indexes` SET `built` = :built WHERE `name` = :name'),
+                             {'name': self.name, 'built': now})
             else:
-                conn.execute('UPDATE `__Indexes` SET `built` = NULL WHERE `name` = %s', self.name)
+                conn.execute(text('UPDATE `__Indexes` SET `built` = NULL WHERE `name` = :name'), {'name': self.name})
