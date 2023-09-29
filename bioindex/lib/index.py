@@ -116,16 +116,16 @@ class Index:
         sql = (
             'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` '
             'FROM `__Indexes` '
-            'WHERE `name` = %s'
+            'WHERE `name` = :name'
         )
 
-        # lookup the index
-        rows = engine.execute(sql, name).fetchall()
+        with engine.connect() as conn:
+            rows = conn.execute(text(sql), {'name': name}).fetchall()
 
-        if len(rows) == 0:
-            raise KeyError(f'No such index: {name}')
+            if len(rows) == 0:
+                raise KeyError(f'No such index: {name}')
 
-        return [Index(*row) for row in rows]
+            return [Index(*row) for row in rows]
 
     def prepare(self, engine, rebuild=False):
         """
@@ -230,8 +230,9 @@ class Index:
 
                 # delete stale or missing keys
                 for kid in updated_or_deleted_files:
-                    sql = f'DELETE FROM {self.table.name} WHERE `key` = %s'
-                    n += engine.execute(sql, kid['id']).rowcount
+                    sql = f'DELETE FROM {self.table.name} WHERE `key` = :key'
+                    with engine.begin() as conn:
+                        n += conn.execute(text(sql), {'key': kid['id']}).rowcount
 
                     # remove the key from the __Keys table
                     self.delete_key(engine, kid['key'])
@@ -400,7 +401,8 @@ class Index:
             # attempt to bulk load into the database
             for _ in range(5):
                 try:
-                    engine.execute(sql)
+                    with engine.begin() as conn:
+                        conn.execute(text(sql))
                     break
                 except sqlalchemy.exc.OperationalError as ex:
                     fail_ex = ex
@@ -431,36 +433,39 @@ class Index:
         If the versions don't match, delete the existing record and create
         a new one with a new ID.
         """
-        sql = 'SELECT `id`, `version` FROM `__Keys` WHERE `index` = %s and `key` = %s'
-        row = engine.execute(sql, self.name, key).fetchone()
+        sql = 'SELECT `id`, `version` FROM `__Keys` WHERE `index` = :index and `key` = :key'
+        with engine.connect() as conn:
+            row = conn.execute(text(sql), {'index': self.name, 'key': key}).fetchone()
 
-        if row is not None:
-            if row[1] == version:
-                return row[0]
+            if row is not None:
+                if row[1] == version:
+                    return row[0]
 
-            # delete the existing key entry
-            engine.execute('DELETE FROM `__Keys` WHERE `id` = %s', row[0])
+                # delete the existing key entry
+                conn.execute(text('DELETE FROM `__Keys` WHERE `id` = :id'), {'id': row[0]})
 
-        # add a new entry
-        sql = 'INSERT INTO `__Keys` (`index`, `key`, `version`) VALUES (%s, %s, %s)'
-        row = engine.execute(sql, self.name, key, version)
-
-        return row.lastrowid
+            # add a new entry
+            sql = 'INSERT INTO `__Keys` (`index`, `key`, `version`) VALUES (:index, :key, :version)'
+            row = conn.execute(text(sql), {'index': self.name, 'key': key, 'version': version})
+            conn.commit()
+            return row.lastrowid
 
     def delete_key(self, engine, key):
         """
         Removes all records from the index and the key from the __Keys
         table for a paritcular index/key pair.
         """
-        sql = 'DELETE FROM `__Keys` WHERE `index` = %s and `key` = %s'
-        engine.execute(sql, self.name, key)
+        sql = 'DELETE FROM `__Keys` WHERE `index` = :index and `key` = :key'
+        with engine.begin() as conn:
+            conn.execute(text(sql), {'index': self.name, 'key': key})
 
     def delete_keys(self, engine):
         """
         Removes all records from the __Keys table for a paritcular index
         by name.
         """
-        engine.execute('DELETE FROM `__Keys` WHERE `index` = %s', self.name)
+        with engine.begin() as conn:
+            conn.execute('DELETE FROM `__Keys` WHERE `index` = :index', {'index': self.name})
 
     def lookup_keys(self, engine):
         """
@@ -468,8 +473,9 @@ class Index:
         key -> {id, version}. The version will be None if the key hasn't been
         completely indexed.
         """
-        sql = 'SELECT `id`, `key`, `version`, `built` FROM `__Keys` WHERE `index` = %s AND `key` LIKE %s'
-        rows = engine.execute(sql, self.name, f'{self.s3_prefix}%').fetchall()
+        sql = 'SELECT `id`, `key`, `version`, `built` FROM `__Keys` WHERE `index` = :index AND `key` LIKE :prefix'
+        with engine.begin() as conn:
+            rows = conn.execute(text(sql), {'index': self.name, 'prefix': f"{self.s3_prefix}%"}).fetchall()
 
         return {key: {'id': id, 'version': built and ver} for id, key, ver, built in rows}
 
@@ -477,9 +483,9 @@ class Index:
         """
         Update the keys table to indicate the key has been built.
         """
-        sql = 'UPDATE `__Keys` SET `built` = %s WHERE `index` = %s AND `key` = %s'
-        with engine.connect() as conn:
-            conn.execute(sql, datetime.datetime.utcnow(), self.name, key)
+        sql = 'UPDATE `__Keys` SET `built` = :built WHERE `index` = :index AND `key` = :key'
+        with engine.begin() as conn:
+            conn.execute(text(sql), {'index': self.name, 'key': key, 'built': datetime.datetime.utcnow()})
 
     def set_built_flag(self, engine, flag=True):
         """
