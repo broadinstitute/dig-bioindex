@@ -96,12 +96,12 @@ class Index:
         sql = (
             'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` '
             'FROM `__Indexes` '
-            'WHERE `name` = %s AND LENGTH(`schema`) - LENGTH(REPLACE(`schema`, \',\', \'\')) + 1 = %s'
+            'WHERE `name` = :name AND LENGTH(`schema`) - LENGTH(REPLACE(`schema`, \',\', \'\')) + 1 = :arity'
         )
 
         with engine.connect() as conn:
             # lookup the index
-            row = conn.execute(text(sql), name, arity).fetchone()
+            row = conn.execute(text(sql), {'name': name, 'arity': arity}).fetchone()
 
             if row is None:
                 raise KeyError(f'No such index: {name}')
