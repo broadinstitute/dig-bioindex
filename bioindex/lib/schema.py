@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Index, Integer, BigInteger, MetaData, String, Table
+from sqlalchemy import Column, Index, Integer, BigInteger, MetaData, String, Table, text
 from sqlalchemy.exc import OperationalError
 
 from .locus import parse_locus_builder
@@ -139,7 +139,8 @@ class Schema:
         Removes the index. This can help performance when updating.
         """
         try:
-            engine.execute(f'ALTER TABLE `{table.name}` DROP INDEX schema_idx')
+            with engine.begin() as conn:
+                conn.execute(text(f'ALTER TABLE `{table.name}` DROP INDEX schema_idx'))
         except OperationalError:
             pass
 
