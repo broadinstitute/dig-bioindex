@@ -67,7 +67,7 @@ class Index:
 
         with engine.connect() as conn:
             row = conn.execute(text(sql), {'name': name, 'table': rds_table_name, 'prefix': s3_prefix, 'schema': schema})
-
+            conn.commit()
             return row and row.lastrowid is not None
 
     @staticmethod
