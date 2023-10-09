@@ -41,6 +41,9 @@ def decompress_file(bucket_name, file, boto_s3, files_to_retry, print_lock):
             boto_s3.delete_object(Bucket=bucket_name, Key=f"{file}")
     except Exception as e:
         error_message = f"Error: Failed to decompress: {e}, {file}"
+    finally:
+        if os.path.exists(os.path.dirname(f'/tmp/{file}')):
+            os.remove(os.path.dirname(f'/tmp/{file}'))
 
     if error_message:
         with print_lock:
