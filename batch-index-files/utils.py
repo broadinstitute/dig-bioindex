@@ -6,10 +6,10 @@ import concurrent.futures
 from boto3 import Session
 
 
-def process_files_concurrently(boto_s3, bucket, files, file_function):
+def process_files_concurrently(boto_s3, bucket, files, file_function, max_workers=60):
     files_to_retry = []
     print_lock = threading.Lock()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=60) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers) as executor:
         futures = []
         for file in files:
             futures.append(executor.submit(file_function, bucket, file, boto_s3,
