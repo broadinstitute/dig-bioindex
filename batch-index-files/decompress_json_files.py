@@ -12,13 +12,14 @@ import utils
 @click.option('--index', '-i', type=str)
 @click.option('--bucket', '-b', type=str)
 @click.option('--path', '-p', type=str)
-def main(index, bucket, path):
+@click.option('--workers', '-w', type=int, default=60)
+def main(index, bucket, path, workers):
     utils.set_bgzip_creds()
     s3_objects = list(s3.list_objects(bucket, path, only='*.gz'))
     boto_s3 = boto3.client('s3')
     print(f"will uncompress {len(s3_objects)} files for index {index}")
     files_to_retry = utils.process_files_concurrently(boto_s3, bucket, [file['Key'] for file in s3_objects],
-                                                      decompress_file)
+                                                      decompress_file, max_workers=workers)
     return len(files_to_retry)
 
 
@@ -42,8 +43,9 @@ def decompress_file(bucket_name, file, boto_s3, files_to_retry, print_lock):
     except Exception as e:
         error_message = f"Error: Failed to decompress: {e}, {file}"
     finally:
-        if os.path.exists(os.path.dirname(f'/tmp/{file}')):
-            os.remove(os.path.dirname(f'/tmp/{file}'))
+        if os.path.exists(f'/tmp/{file}'):
+            os.remove(f'/tmp/{file}')
+            os.remove(f'/tmp/{file.replace(".gz", "")}')
 
     if error_message:
         with print_lock:
@@ -51,7 +53,7 @@ def decompress_file(bucket_name, file, boto_s3, files_to_retry, print_lock):
             files_to_retry.append(file)
     else:
         with print_lock:
-            print(f"Finished compressing {file}")
+            print(f"Finished decompressing {file}")
 
 
 if __name__ == "__main__":

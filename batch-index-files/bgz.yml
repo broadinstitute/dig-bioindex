@@ -118,7 +118,7 @@ Resources:
       PlatformCapabilities:
         - 'FARGATE'
       Timeout:
-        AttemptDurationSeconds: 7200
+        AttemptDurationSeconds: 36000
       ContainerProperties:
         Image: '005901288866.dkr.ecr.us-east-1.amazonaws.com/bgzip-repo'
         Command:
@@ -130,6 +130,8 @@ Resources:
           - 'Ref::bucket'
           - '-p'
           - 'Ref::path'
+          - '-w'
+          - 'Ref::workers'
         JobRoleArn: !GetAtt BlockGzipRole.Arn
         ExecutionRoleArn: !GetAtt BlockGzipRole.Arn
         ResourceRequirements:
