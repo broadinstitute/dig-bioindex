@@ -1,4 +1,7 @@
 import base64
+import math
+import time
+
 import boto3
 import botocore.config
 import orjson
@@ -97,28 +100,39 @@ def connect_to_db(schema=None, **kwargs):
         return engine
 
 
-def invoke_lambda(function_name, payload):
+def invoke_lambda(function_name, payload, max_retries=3):
     """
     Invokes an AWS lambda function and waits for it to complete.
     """
     payload = orjson.dumps(payload).decode('utf-8')
+    for attempt in range(max_retries):
+        try:
+            # invoke and wait for response
+            response = lambda_client.invoke(
+                FunctionName=function_name,
+                InvocationType='RequestResponse',
+                LogType='Tail',
+                Payload=payload,
+            )
 
-    # invoke and wait for response
-    response = lambda_client.invoke(
-        FunctionName=function_name,
-        InvocationType='RequestResponse',
-        LogType='Tail',
-        Payload=payload,
-    )
+            # parse the response payload
+            payload = orjson.loads(response['Payload'].read())
 
-    # parse the response payload
-    payload = orjson.loads(response['Payload'].read())
+            # if a failure, then raise an exception
+            if response.get('FunctionError'):
+                raise RuntimeError(payload)
 
-    # if a failure, then raise an exception
-    if response.get('FunctionError'):
-        raise RuntimeError(payload)
+            return payload['body']
 
-    return payload['body']
+        except Exception as e:
+            # Retry with exponential backoff
+            if attempt < max_retries - 1:  # try again?
+                sleep_time = math.pow(2, attempt)  # exponential backoff
+                print(f"Attempt {attempt + 1} failed, retrying in {sleep_time} seconds...")
+                time.sleep(sleep_time)
+            else:
+                print(f"Attempt {attempt + 1} failed and no more retries left, raising exception.")
+                raise e
 
 
 def look_up_var_id(rs_id: str, dynamo_table) -> dict:
