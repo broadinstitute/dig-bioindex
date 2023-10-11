@@ -118,10 +118,14 @@ def cli_list(cfg):
 @click.argument('index_name')
 @click.option('--rebuild', '-r', is_flag=True)
 @click.option('--use-lambda', '-l', is_flag=True)
+@click.option('--use-batch', '-b', is_flag=True)
 @click.option('--workers', '-w', type=int, default=None)
 @click.confirmation_option(prompt='This will build the index; continue? ')
 @click.pass_obj
-def cli_index(cfg, index_name, use_lambda, rebuild, workers):
+def cli_index(cfg, index_name, use_lambda, use_batch, rebuild, workers):
+    if use_batch and use_lambda:
+        raise ValueError('Cannot use both --use-lambda and --use-batch')
+
     engine = migrate.migrate(cfg)
 
     # if --use-lambda specified, then ensure that config options are set
@@ -135,7 +139,8 @@ def cli_index(cfg, index_name, use_lambda, rebuild, workers):
     build_kwargs = {
         'console': console,
         'use_lambda': use_lambda,
-        'workers': workers or (20 if use_lambda else 1),
+        'use_batch': use_batch,
+        'workers': workers or (20 if use_lambda or use_batch else 1),
     }
 
     # build each index specified
@@ -197,7 +202,7 @@ def cli_bulk_compression_management(cfg, include, exclude, job_type):
     inclusion_list = convert_cli_arg_to_list(include)
     exclusion_list = convert_cli_arg_to_list(exclude)
 
-    with (concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor):
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = []
         for i in indexes:
             if (inclusion_list is None or i.name in inclusion_list) and (

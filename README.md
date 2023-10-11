@@ -164,7 +164,7 @@ You can also build indexes "remotely" using an AWS Lambda Function. To do this, 
 ## Block Gzip Compression
 
 Once you've indexed plain json files, you can compress them using bgzip and mark the index as compressed in the db.  
-To see about the steps for compressing the plain json see [README.md](./batch-index-files/README.md). Setting the compressed field in __Indexes will cause the bio index
+To see about the steps for compressing the plain json see [README.md](batch-compression-management/README.md). Setting the compressed field in __Indexes will cause the bio index
 server to retrieve the relevant data with the bgzip command.  To install bgzip on AWS Linux follow these steps (it is necessary to build from source in order to enable seamless s3 support as of 06/2023):
 1. `sudo yum install -y gcc make zlib-devel bzip2-devel xz-devel curl-devel ncurses-devel openssl-devel`
 2. `wget https://github.com/samtools/htslib/releases/download/1.17/htslib-1.17.tar.bz2` (replace with latest version from https://github.com/samtools/htslib/releases if you want)

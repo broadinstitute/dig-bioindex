@@ -1,0 +1,136 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description:
+  --Alternative to lambda indexing
+Resources:
+  EcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: batch-indexer-repo
+  BatchServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - batch.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole'
+  IndexerBatchComputeEnv:
+    Type: 'AWS::Batch::ComputeEnvironment'
+    Properties:
+      Type: MANAGED
+      ServiceRole: !GetAtt BatchServiceRole.Arn
+      ComputeResources:
+        Type: Fargate
+        MaxvCpus: 128
+        Subnets:
+          - subnet-ab89bbf3
+        SecurityGroupIds:
+          - sg-28485f53
+  IndexerBatchJobQueue:
+    Type: 'AWS::Batch::JobQueue'
+    Properties:
+      JobQueueName: 'indexer-job-queue'
+      ComputeEnvironmentOrder:
+        - Order: 1
+          ComputeEnvironment: !Ref IndexerBatchComputeEnv
+      Priority: 1
+      State: ENABLED
+  BatchIndexerJobDefinition:
+    Type: 'AWS::Batch::JobDefinition'
+    Properties:
+      Type: 'container'
+      JobDefinitionName: 'batch-indexer-job'
+      PlatformCapabilities:
+        - 'FARGATE'
+      Timeout:
+        AttemptDurationSeconds: 3600
+      ContainerProperties:
+        Image: '005901288866.dkr.ecr.us-east-1.amazonaws.com/batch-indexer-repo'
+        Command:
+          - 'python3'
+          - 'index_files.py'
+          - '-f'
+          - 'Ref::file'
+          - '-i'
+          - 'Ref::index'
+          - '-a'
+          - 'Ref::arity'
+          - '-b'
+          - 'Ref::bucket'
+          - '-r'
+          - 'Ref::rds-secret'
+          - '-s'
+          - 'Ref::rds-schema'
+          - '-z'
+          - 'Ref::file-size'
+        JobRoleArn: !GetAtt IndexerRole.Arn
+        ExecutionRoleArn: !GetAtt IndexerRole.Arn
+        ResourceRequirements:
+          - Type: 'VCPU'
+            Value: '1.0'
+          - Type: 'MEMORY'
+            Value: '8192'
+        NetworkConfiguration:
+          AssignPublicIp: 'ENABLED'
+        FargatePlatformConfiguration:
+          PlatformVersion: 'LATEST'
+
+  IndexerRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'ecs-tasks.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+      Policies:
+        - PolicyName: 'S3Access'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 's3:ListBucket'
+                Resource:
+                  - '*'
+              - Effect: 'Allow'
+                Action:
+                  - 's3:GetObject'
+                Resource:
+                  - 'arn:aws:s3:::*/*'
+        - PolicyName: 'ECSTaskExecution'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 'ecr:GetAuthorizationToken'
+                  - 'ecr:BatchCheckLayerAvailability'
+                  - 'ecr:GetDownloadUrlForLayer'
+                  - 'ecr:BatchGetImage'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: '*'
+        - PolicyName: 'SecretsManagerAccess'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 'secretsmanager:GetSecretValue'
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:*'
+
+
+
+
