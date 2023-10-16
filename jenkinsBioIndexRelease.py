@@ -45,23 +45,18 @@ file_name = ".bioindex"
 s3client = boto3.client('s3')
 
 
-# log
-# print("got initial schema name: {} and s3 index: {} and git directory {}".format(schema_name_dev, s3_bucket_dev, git_directory))
-# print("the git clone command is: {}".format(git_clone_command))
-
-# methods
 # method to run an OS command and time it
-def run_system_command(os_command, input_message="", if_test=True):
+def run_system_command(os_command, if_test=True):
     log_message = "Running command"
     exit_code = None
     start = time.time()
     if if_test:
         log_message = "Testing command"
-    print("{}: {}".format(log_message, os_command))
+    print("{}: {}".format(log_message, os_command), flush=True)
     if not if_test:
         exit_code = os.system(os_command)
     end = time.time()
-    print("    Done in {:0.2f}s with exit code {}".format(end - start, exit_code))
+    print("    Done in {:0.2f}s with exit code {}".format(end - start, exit_code), flush=True)
 
 
 def create_setting_file(s3_bucket, aws_secret, bio_schema, portal_schema, temp_dir, bio_file, if_test=True):
@@ -84,7 +79,7 @@ def create_setting_file(s3_bucket, aws_secret, bio_schema, portal_schema, temp_d
 
 
 def header_print(message):
-    print("\n==> {}".format(message))
+    print("\n==> {}".format(message), flush=True)
 
 
 # method to list the buckets based on search string
@@ -93,7 +88,7 @@ def print_s3_buckets(s3client, search_str):
     list_buckets_resp = s3client.list_buckets()
     for bucket in list_buckets_resp['Buckets']:
         if search_str in bucket['Name']:
-            print("existing bucket name after addition: {}".format(bucket['Name']))
+            print("existing bucket name after addition: {}".format(bucket['Name']), flush=True)
 
 
 # method to retrive the secrets given name and region
@@ -181,17 +176,17 @@ def clone_database(schema_dev, schema_new, aws_secret):
     # build the mysql schema cloning command
     header_print("copying data from schema {} to the new schema {}".format(schema_dev, schema_new))
     database_table_list = show_tables(schema_dev, mysql_user, mysql_password, mysql_host)
-    with concurrent.futures.ThreadPoolExecutor(3) as executor:
-        futures = []
+    with concurrent.futures.ThreadPoolExecutor(3) as db_executor:
+        db_futures = []
         for table in database_table_list:
             mysql_command_dump = "mysqldump -u {} -p'{}' -h {} {} {}".format(mysql_user, mysql_password, mysql_host,
                                                                              schema_dev, table)
             mysql_command_load = "mysql -u {} -p'{}' -h {} {}".format(mysql_user, mysql_password, mysql_host,
                                                                       schema_new)
             mysql_command_combined = mysql_command_dump + " | " + mysql_command_load
-            futures.append(executor.submit(run_system_command, mysql_command_combined))
-        for future in concurrent.futures.as_completed(futures):
-            future.result()
+            db_futures.append(db_executor.submit(run_system_command, mysql_command_combined, if_test=arg_if_test))
+        for my_future in concurrent.futures.as_completed(db_futures):
+            my_future.result()
 
 
 def print_args(arg_map):
@@ -237,21 +232,10 @@ if __name__ == "__main__":
         "passed in bucket is {} AWS dev secret {} and ifTest {}".format(s3_bucket_dev, secret_name_dev, arg_if_test))
     header_print("using bioindex database {} and portal database {}".format(schema_bio_dev, schema_portal_dev))
 
-    # clone the code (not needed anymore since config.json not used for indexes)
-    # log
-    # print("Running git clone command: {}".format(git_clone_command))
-
-    # # clone the bioindex
-    # os.chdir(code_directory)
-    # clone_output = os.system(git_clone_command)
-
-    # # log
-    # print("the git process exited with code {}".format(clone_output))
-
     # get the secret to use to clone
     header_print("get the secret to clone")
     bio_secret_dev = get_secret(secret_name_dev, region_name)
-    print("got secret with name {}".format(bio_secret_dev['dbInstanceIdentifier']))
+    print("got secret with name {}".format(bio_secret_dev['dbInstanceIdentifier']), flush=True)
 
     # list the existing buckets before creating the new one
     header_print("listing existing s3 buckets")
@@ -262,14 +246,14 @@ if __name__ == "__main__":
     # create the s3 bucket
     if not arg_if_test:
         s3client.create_bucket(Bucket=s3_bucket_new)
-        print("created new s3 bucket {}".format(s3_bucket_new))
+        print("created new s3 bucket {}".format(s3_bucket_new), flush=True)
     else:
-        print("test, so skipped creating new s3 bucket {}".format(s3_bucket_new))
+        print("test, so skipped creating new s3 bucket {}".format(s3_bucket_new), flush=True)
 
     list_buckets_resp = s3client.list_buckets()
     for bucket in list_buckets_resp['Buckets']:
         if bucket['Name'] == s3_bucket_new:
-            print('(Just created) --> {} - there since {}'.format(bucket['Name'], bucket['CreationDate']))
+            print('(Just created) --> {} - there since {}'.format(bucket['Name'], bucket['CreationDate']), flush=True)
 
     # list the existing buckets before creating the new one
     header_print("listing existing s3 buckets")
@@ -279,41 +263,31 @@ if __name__ == "__main__":
     header_print("sub folders of {} that need to be cloned".format(s3_bucket_dev))
     result = s3client.list_objects(Bucket=s3_bucket_dev, Prefix="", Delimiter='/')
     for s3object in result.get('CommonPrefixes'):
-        print("-> sub folder: {}".format(s3object.get('Prefix')))
+        print("-> sub folder: {}".format(s3object.get('Prefix')), flush=True)
 
     # log
     header_print("cloning s3 bucket {}".format(s3_bucket_dev))
+    all_futures = []
     # copy the data
     with concurrent.futures.ThreadPoolExecutor(3) as executor:
-        s3_sync_futures = []
         for s3object in result.get('CommonPrefixes'):
             s3_subdirectory = s3object.get('Prefix')
-            s3_command = "aws s3 sync --no-progress s3://{}/{} s3://{}/{}".format(s3_bucket_dev, s3_subdirectory,
-                                                                                  s3_bucket_new, s3_subdirectory)
-            s3_sync_futures.append(executor.submit(run_system_command, s3_command, if_test=arg_if_test))
+            s3_command = "aws s3 sync --no-progress --quiet s3://{}/{} s3://{}/{}".format(s3_bucket_dev,
+                                                                                          s3_subdirectory,
+                                                                                          s3_bucket_new,
+                                                                                          s3_subdirectory)
+            all_futures.append(executor.submit(run_system_command, s3_command, if_test=arg_if_test))
 
-    # clone the bioindex database
-    clone_database(schema_portal_dev, schema_portal_new, bio_secret_dev)
+        # clone the databases concurrently with s3 sync
+        all_futures.append(executor.submit(clone_database, schema_portal_dev, schema_portal_new, bio_secret_dev))
+        all_futures.append(executor.submit(clone_database, schema_bio_dev, schema_bio_new, bio_secret_dev))
 
-    # clone the bioindex database
-    clone_database(schema_bio_dev, schema_bio_new, bio_secret_dev)
-
-    for future in concurrent.futures.as_completed(s3_sync_futures):
-        future.result()
-
-    print("huzzah, done copying date from {} to {}".format(s3_bucket_dev, s3_bucket_new))
+        for future in concurrent.futures.as_completed(all_futures):
+            future.result()
 
     # create the settings file
     header_print("create the bioindex settings file")
     create_setting_file(s3_bucket_new, secret_name_dev, schema_bio_new, schema_portal_new, file_temp_directory,
                         file_name, arg_if_test)
 
-    #
-    # log done
     header_print("DONE\n\n\n")
-
-    # # testing command
-    # header_print("DEBIG")
-    # testBoolean = False
-    # print("testing the False arg ifTest with {}".format(testBoolean))
-    # run_system_command("junk command", if_test = testBoolean)
