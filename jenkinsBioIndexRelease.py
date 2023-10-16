@@ -47,16 +47,12 @@ s3client = boto3.client('s3')
 
 # method to run an OS command and time it
 def run_system_command(os_command, if_test=True):
-    log_message = "Running command"
     exit_code = None
     start = time.time()
-    if if_test:
-        log_message = "Testing command"
-    print("{}: {}".format(log_message, os_command), flush=True)
     if not if_test:
         exit_code = os.system(os_command)
     end = time.time()
-    print("    Done in {:0.2f}s with exit code {}".format(end - start, exit_code), flush=True)
+    print("Command: {} done in {:0.2f}s with exit code {}".format(os_command, end - start, exit_code), flush=True)
 
 
 def create_setting_file(s3_bucket, aws_secret, bio_schema, portal_schema, temp_dir, bio_file, if_test=True):
@@ -235,7 +231,6 @@ if __name__ == "__main__":
     # get the secret to use to clone
     header_print("get the secret to clone")
     bio_secret_dev = get_secret(secret_name_dev, region_name)
-    print("got secret with name {}".format(bio_secret_dev['dbInstanceIdentifier']), flush=True)
 
     # list the existing buckets before creating the new one
     header_print("listing existing s3 buckets")
