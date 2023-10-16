@@ -29,7 +29,7 @@ Resources:
         Type: Fargate
         MaxvCpus: 128
         Subnets:
-          - subnet-ab89bbf3
+          - subnet-041ed74e61806c6f0
         SecurityGroupIds:
           - sg-28485f53
   IndexerBatchJobQueue:
