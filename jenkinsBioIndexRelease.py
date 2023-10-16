@@ -10,6 +10,8 @@ import boto3
 import pymysql as mdb
 from botocore.exceptions import ClientError
 
+# this script is run as a jenkins job to copy the data for a quarterly release
+
 # script variables
 # get the timestamp for the build
 format = "%Y%m%d%H%M%S"
