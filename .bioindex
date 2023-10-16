@@ -1,5 +1,2 @@
-BIOINDEX_RDS_SECRET=dr-bioindex
-BIOINDEX_S3_BUCKET=dig-data-registry-qa
-BIOINDEX_BIO_SCHEMA=dataregistry_qa
 BIOINDEX_LAMBDA_FUNCTION=dig-indexer-dev-main
 BIOINDEX_PORTAL_SCHEMA=portal
