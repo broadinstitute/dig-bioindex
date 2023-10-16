@@ -4,6 +4,7 @@ import base64
 import concurrent.futures
 import json
 import os
+import re
 import time
 
 import boto3
@@ -54,7 +55,9 @@ def run_system_command(os_command, if_test=True):
     if not if_test:
         exit_code = os.system(os_command)
     end = time.time()
-    print("Command: {} done in {:0.2f}s with exit code {}".format(os_command, end - start, exit_code), flush=True)
+    cleaned_cmd = re.sub(r'-p[^ ]+', '-p<REDACTED>', os_command)
+    print("Command: {} done in {:0.2f}s with exit code {}".format(cleaned_cmd, end - start,
+                                                                  exit_code), flush=True)
 
 
 def create_setting_file(s3_bucket, aws_secret, bio_schema, portal_schema, temp_dir, bio_file, if_test=True):
