@@ -197,7 +197,7 @@ def cli_bulk_compression_management(cfg, include, exclude, job_type):
     inclusion_list = convert_cli_arg_to_list(include)
     exclusion_list = convert_cli_arg_to_list(exclude)
 
-    with (concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor):
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = []
         for i in indexes:
             if (inclusion_list is None or i.name in inclusion_list) and (
