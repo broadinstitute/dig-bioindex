@@ -1,4 +1,3 @@
-# imports
 import argparse
 import base64
 import concurrent.futures
@@ -8,7 +7,6 @@ import re
 import time
 
 import boto3
-import pymysql as mdb
 from botocore.exceptions import ClientError
 
 # this script is run as a jenkins job to copy the data for a quarterly release
@@ -141,25 +139,6 @@ def get_secret(secret_name, region_name):
     return json.loads(secret)
 
 
-# method to take in secret and return tables
-def show_tables(schema, username, password, host):
-    '''returns the database table list from the database specified in the secret provided'''
-    db = mdb.connect(host, username, password, schema)
-    sql = "show tables"
-    cursor = db.cursor()
-    table_list = []
-
-    # execute
-    cursor.execute(sql)
-
-    # fetch
-    for row in cursor:
-        table_list.append(row[0])
-
-    # return
-    return table_list
-
-
 def clone_database(schema_dev, schema_new, aws_secret):
     # get the secret data
     mysql_user = aws_secret['username']
@@ -176,18 +155,11 @@ def clone_database(schema_dev, schema_new, aws_secret):
     # clone database
     # build the mysql schema cloning command
     header_print("copying data from schema {} to the new schema {}".format(schema_dev, schema_new))
-    database_table_list = show_tables(schema_dev, mysql_user, mysql_password, mysql_host)
-    with concurrent.futures.ThreadPoolExecutor(3) as db_executor:
-        db_futures = []
-        for table in database_table_list:
-            mysql_command_dump = "mysqldump -u {} -p'{}' -h {} {} {}".format(mysql_user, mysql_password, mysql_host,
-                                                                             schema_dev, table)
-            mysql_command_load = "mysql -u {} -p'{}' -h {} {}".format(mysql_user, mysql_password, mysql_host,
-                                                                      schema_new)
-            mysql_command_combined = mysql_command_dump + " | " + mysql_command_load
-            db_futures.append(db_executor.submit(run_system_command, mysql_command_combined, if_test=arg_if_test))
-        for my_future in concurrent.futures.as_completed(db_futures):
-            my_future.result()
+    mysql_command_dump = ("mysqldump --single-transaction --compact --quick -u {} -p'{}' -h {} {}"
+                          .format(mysql_user, mysql_password, mysql_host, schema_dev))
+    mysql_command_load = "mysql -u {} -p'{}' -h {} {}".format(mysql_user, mysql_password, mysql_host, schema_new)
+    mysql_command_combined = mysql_command_dump + " | " + mysql_command_load
+    run_system_command(mysql_command_combined, if_test=arg_if_test)
 
 
 def print_args(arg_map):
