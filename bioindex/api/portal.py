@@ -158,7 +158,7 @@ async def api_portal_phenotypes(q: str = None):
                 }
             )
         if include:
-            phenotypes.append(fetch_added_phenotypes(include))
+            phenotypes.extend(fetch_added_phenotypes(include))
 
         return {
             "profile": {
