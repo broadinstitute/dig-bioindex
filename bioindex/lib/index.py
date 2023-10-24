@@ -465,7 +465,7 @@ class Index:
         by name.
         """
         with engine.begin() as conn:
-            conn.execute('DELETE FROM `__Keys` WHERE `index` = :index', {'index': self.name})
+            conn.execute(text('DELETE FROM `__Keys` WHERE `index` = :index'), {'index': self.name})
 
     def lookup_keys(self, engine):
         """
