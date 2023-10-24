@@ -49,7 +49,7 @@ def create_indexes_table(engine):
         Column('prefix', String(1024, collation='ascii_bin')),
         Column('schema', String(200, collation='utf8_bin')),
         Column('built', DateTime, nullable=True),
-        Column('compressed', Boolean, nullable=False, default=False),
+        Column('compressed', Boolean, nullable=False, server_default=text('0')),
     ]
 
     # define the __Indexes table
