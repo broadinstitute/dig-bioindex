@@ -313,7 +313,7 @@ class Index:
         """
         Read a file in S3, index it, and insert records into the table.
         """
-        key, version, size = obj['Key'], obj['ETag'].strip('"'), obj['Size']
+        key, version, size = obj['Key'], obj['ETag'].strip('"')[:32], obj['Size']
         key_id = self.insert_key(engine, key, version)
 
         # read the file from s3
