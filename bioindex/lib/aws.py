@@ -1,4 +1,6 @@
 import base64
+import time
+
 import boto3
 import botocore.config
 import orjson
@@ -40,6 +42,27 @@ def start_batch_job(index_name: str, s3_path: str, job_definition: str, addition
         parameters=parameters
     )
     return response['jobId']
+
+
+def start_and_wait_for_indexer_job(file: str, index: str, arity: int, bucket: str, rds_secret: str, rds_schema: str,
+                                   size: int):
+    batch_client = boto3.client('batch')
+    response = batch_client.submit_job(
+        jobName='batch-indexer-job',
+        jobQueue='indexer-job-queue',
+        jobDefinition='batch-indexer-job',
+        parameters={'file': file, 'index': index, 'arity': str(arity),
+                    'bucket': bucket, 'rds-secret': rds_secret, 'rds-schema': rds_schema, 'file-size': str(size)}
+    )
+    job_id = response['jobId']
+    while True:
+        response = batch_client.describe_jobs(jobs=[job_id])
+        job_status = response['jobs'][0]['status']
+
+        if job_status in ['SUCCEEDED', 'FAILED']:
+            return response['jobs'][0]
+
+        time.sleep(60)
 
 
 def secret_lookup(secret_id):

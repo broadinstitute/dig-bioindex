@@ -13,7 +13,7 @@ import time
 
 from sqlalchemy import text
 
-from .aws import invoke_lambda
+from .aws import invoke_lambda, start_and_wait_for_indexer_job
 from .s3 import list_objects, read_object, relative_key
 from .schema import Schema
 from .utils import cap_case_str
@@ -140,7 +140,7 @@ class Index:
         logging.info('Creating %s table...', self.table.name)
         self.table.create(engine, checkfirst=True)
 
-    def build(self, config, engine, use_lambda=False, workers=3, console=None):
+    def build(self, config, engine, use_lambda=False, use_batch=False, workers=3, console=None):
         """
         Builds the index table for objects in S3.
         """
@@ -178,6 +178,17 @@ class Index:
                         engine,
                         pool,
                         objects,
+                        self.lambda_run_function,
+                        progress,
+                        overall,
+                    )
+                elif use_batch:
+                    self.index_objects_remote(
+                        config,
+                        engine,
+                        pool,
+                        objects,
+                        self.batch_run_function,
                         progress,
                         overall,
                     )
@@ -245,29 +256,35 @@ class Index:
         # return new and updated json files
         return new_files + updated_files_for_return
 
-    def index_objects_remote(self, config, engine, pool, objects, progress=None, overall=None):
+    def batch_run_function(self, config, obj):
+        logging.info(f'Processing via batch {relative_key(obj["Key"], self.s3_prefix)}...')
+
+        return start_and_wait_for_indexer_job(obj['Key'], self.name, self.schema.arity, config.s3_bucket, config.rds_secret,
+                                              config.bio_schema, obj['Size'])
         """
         Index the objects using a lambda function.
         """
 
-        def run_function(obj):
-            logging.info(f'Processing {relative_key(obj["Key"], self.s3_prefix)}...')
+    def lambda_run_function(self, config, obj):
+        logging.info(f'Processing {relative_key(obj["Key"], self.s3_prefix)}...')
 
-            # lambda function event data
-            payload = {
-                'index': self.name,
-                'arity': self.schema.arity,
-                'rds_secret': config.rds_secret,
-                'rds_schema': config.bio_schema,
-                's3_bucket': config.s3_bucket,
-                's3_obj': obj,
-            }
+        # lambda function event data
+        payload = {
+            'index': self.name,
+            'arity': self.schema.arity,
+            'rds_secret': config.rds_secret,
+            'rds_schema': config.bio_schema,
+            's3_bucket': config.s3_bucket,
+            's3_obj': obj,
+        }
 
-            # run the lambda asynchronously
-            return invoke_lambda(config.lambda_function, payload)
+        # run the lambda asynchronously
+        return invoke_lambda(config.lambda_function, payload)
+
+    def index_objects_remote(self, config, engine, pool, objects, run_function, progress=None, overall=None):
 
         # create a job per object
-        jobs = [pool.submit(run_function, obj) for obj in objects]
+        jobs = [pool.submit(run_function, config, obj) for obj in objects]
 
         # as each job finishes, set the built flag for that key
         for job in concurrent.futures.as_completed(jobs):
@@ -275,9 +292,16 @@ class Index:
                 raise job.exception()
 
             result = job.result()
-            key = result['key']
-            record_count = result['records']
-            size = result['size']
+            # if result has 'key' then it's a lambda job
+            if 'key' in result:
+                key = result['key']
+                record_count = result['records']
+                size = result['size']
+            else:
+                key = result['parameters']['file']
+                size = int(result['parameters']['file-size'])
+                # not an easy way to get the number of records from batch and it's only used for logging
+                record_count = 0
 
             # the insert was done remotely, simply set the built flag now
             self.set_key_built_flag(engine, key)
