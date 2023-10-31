@@ -327,12 +327,12 @@ async def api_portal_documentations(q: str):
 
     # if q is not equal to md, then add md to group, else add q to group
     if q != "md":
-        sql += "WHERE `group` IN ({0}, 'md')".format(q)
+        sql += "WHERE `group` IN (:q, 'md')"
     else:
-        sql += "WHERE `group` IN ({0})".format(q)
+        sql += "WHERE `group` IN (:q)"
 
     with portal.connect() as conn:
-        resp, query_s = profile(conn.execute, text(sql))
+        resp, query_s = profile(conn.execute, text(sql).bindparams(q=q))
 
         # transform results
         data = [
@@ -404,20 +404,23 @@ async def api_portal_links(q: str = None, group: str = None):
     sql = "SELECT `path`, `group`, `redirect`, `description` FROM Links "
     tests = []
     data = []
+    sql_params = {}
 
     # create conditionals
     if q:
-        tests += [f"`{q}` LIKE `path`"]
+        tests.append(text(":path LIKE `path`"))
+        sql_params['path'] = q
     if group:
-        tests += [f"`group` = '{group}'"]
+        tests.append(text("`group` = :group"))
+        sql_params['group'] = group
 
     # add all the tests
     if tests:
-        sql += f'WHERE {" AND ".join(test for test in tests)}'
+        sql += f'WHERE {" AND ".join(str(test) for test in tests)}'
 
     # run the query
     with portal.connect() as conn:
-        resp, query_s = profile(conn.execute, text(sql))
+        resp, query_s = profile(conn.execute, text(sql).bindparams(**sql_params))
 
         # transform results
         for path, group, redirect, description in resp:
