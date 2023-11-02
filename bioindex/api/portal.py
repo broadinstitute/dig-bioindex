@@ -134,7 +134,7 @@ async def api_portal_phenotypes(q: str = None):
         # collect phenotype groups by union
         group_params = []
         if groups is not None and groups[0] != '':
-            group_params = [f"{group.replace(' ', '')}" for group in groups]
+            group_params = [f"{group.replace(' ', '').replace('-', '_')}" for group in groups]
             sql = f"({sql} WHERE `group` in ({','.join([':' + param for param in group_params])}))"
 
         # run the query
@@ -282,7 +282,7 @@ async def api_portal_datasets(req: fastapi.Request, q: str = None):
 
         return {
             "profile": {
-                "query": query_p + query_s,
+                "query": query_s if not isinstance(query_p, float) else query_p + query_s,
             },
             "data": datasets,
             "count": len(datasets),
