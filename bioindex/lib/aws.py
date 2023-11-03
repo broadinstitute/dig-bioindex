@@ -10,6 +10,7 @@ import sqlalchemy.engine
 aws_config = botocore.config.Config(
     max_pool_connections=200,
     read_timeout=900,
+    region_name='us-east-1'
 )
 
 # create service clients
