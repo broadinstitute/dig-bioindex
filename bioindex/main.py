@@ -37,7 +37,7 @@ def cli(ctx, env_file):
 
 SERVER_LOGGING_CONFIG = {
     "version": 1,
-    "disable_existing_loggers": False,
+    "disable_existing_loggers": True,
     "handlers": {
         "file": {
             "class": "logging.handlers.RotatingFileHandler",
@@ -47,25 +47,18 @@ SERVER_LOGGING_CONFIG = {
         }
     },
     "root": {"level": "INFO", "handlers": ["file"]},
-    "loggers": {
-        "uvicorn.access": {
-            "level": "INFO",
-            "handlers": ["file"],
-            "propagate": True,
-            "formatter": "apache",
-        },
-    },
-    "formatters": {
-        "apache": {
-            "format": '%(message)s "%(status)d" %(bytes)d',
-        },
-    },
+
 }
 
 
 @click.command(name='serve')
 @click.option('--port', '-p', type=int, default=5000)
 def cli_serve(port):
+    uvicorn_access = logging.getLogger("uvicorn.access")
+    uvicorn_access.disabled = True
+
+    logger = logging.getLogger("uvicorn")
+    logger.setLevel(logging.getLevelName(logging.DEBUG))
     uvicorn.run(
         'bioindex.server:app',
         host='0.0.0.0',
