@@ -74,11 +74,12 @@ def fetch_added_phenotypes(include: list):
     """
     Returns named phenotypes specified by include
     """
-    format_strings = ','.join([f":{name}" for name in include])
+    escaped_param_names = [name.replace(' ', '').replace('-', '_') for name in include]
+    format_strings = ','.join([f":{name}" for name in escaped_param_names])
     sql = f"SELECT `name`, `description`, `group`, `dichotomous` FROM Phenotypes where `name` in ({format_strings})"
 
     with portal.connect() as conn:
-        resp, query_s = profile(conn.execute, text(sql), dict(zip(include, include)))
+        resp, query_s = profile(conn.execute, text(sql), dict(zip(escaped_param_names, include)))
         phenotypes = []
 
         # transform response
@@ -193,17 +194,18 @@ async def api_portal_complications(q: str = None):
 
             # groups are a comma-separated set
             groups = rows[0].split(",")
+            escaped_param_names = [group.replace(' ', '').replace('-', '_') for group in groups]
 
         # collect phenotype groups by union
         if groups is not None:
             sql = " UNION ".join(
-                f"({sql} WHERE FIND_IN_SET(:{group}, Phenotypes.`group`))" for group in groups
+                f"({sql} WHERE FIND_IN_SET(:{group}, Phenotypes.`group`))" for group in escaped_param_names
             )
 
         # run the query
         if sql:
             resp, query_s = (
-                profile(conn.execute, text(sql), dict(zip(groups, groups)))
+                profile(conn.execute, text(sql), dict(zip(escaped_param_names, groups)))
                 if groups
                 else profile(conn.execute, text(sql))
             )
