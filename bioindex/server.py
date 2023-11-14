@@ -1,5 +1,6 @@
 import http
 import time
+from datetime import datetime
 
 import fastapi
 
@@ -44,11 +45,12 @@ async def add_process_time_header(request: Request, call_next):
     formatted_process_time = "{0:.2f}".format(process_time)
     host = getattr(getattr(request, "client", None), "host", None)
     port = getattr(getattr(request, "client", None), "port", None)
+    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
         status_phrase = http.HTTPStatus(response.status_code).phrase
     except ValueError:
         status_phrase=""
-    logging.info(f'{host}:{port} - "{request.method} {url}" {response.status_code} {status_phrase} {formatted_process_time}ms')
+    logging.info(f'{current_time} - {host}:{port} - "{request.method} {url}" {response.status_code} {status_phrase} {formatted_process_time}ms')
     return response
 
 
