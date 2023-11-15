@@ -63,8 +63,7 @@ def cli_serve(port):
         'bioindex.server:app',
         host='0.0.0.0',
         port=port,
-        log_level='info',
-        log_config=SERVER_LOGGING_CONFIG
+        log_level='info'
     )
 
 
