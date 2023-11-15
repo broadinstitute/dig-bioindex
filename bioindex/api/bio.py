@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import itertools
 import re
+import tracemalloc
 from enum import Enum
 from typing import List, Optional
 
@@ -17,6 +18,7 @@ from ..lib import ql
 from ..lib import query
 from ..lib.auth import restricted_keywords
 from ..lib.utils import nonce, profile, profile_async
+import tracemalloc
 
 # load dot files and configuration
 CONFIG = config.Config()
@@ -32,6 +34,7 @@ portal = connect_to_portal(CONFIG)
 RESPONSE_LIMIT = CONFIG.response_limit
 RESPONSE_LIMIT_MAX = CONFIG.response_limit_max
 MATCH_LIMIT = CONFIG.match_limit
+tracemalloc.start()
 
 # multi-query executor
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
@@ -331,9 +334,9 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
             reader.set_limit(limit)
 
         # the results of the query
-        result = _fetch_records(reader, index, qs, fmt, query_s=auth_s + query_s)
-        reader = None
-        return result
+        snapshot = tracemalloc.take_snapshot()
+        print(dir(snapshot))
+        return _fetch_records(reader, index, qs, fmt, query_s=auth_s + query_s)
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
