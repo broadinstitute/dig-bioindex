@@ -111,7 +111,7 @@ def connect_to_db(schema=None, **kwargs):
         schema = kwargs.get('dbname')
 
     # build the connection uri
-    uri = '{engine}://{username}:{password}@{host}/{schema}?local_infile=1'.format(schema=schema, **kwargs)
+    uri = '{engine}+pymysql://{username}:{password}@{host}/{schema}?local_infile=1'.format(schema=schema, **kwargs)
 
     # create the connection pool
     engine = sqlalchemy.create_engine(uri, pool_recycle=3600)
