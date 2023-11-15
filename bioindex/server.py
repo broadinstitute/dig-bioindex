@@ -3,6 +3,7 @@ import time
 from datetime import datetime
 
 import fastapi
+import pymysql
 
 from .api import bio
 from .api import portal
@@ -14,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi import Request
 import logging
 
+pymysql.install_as_MySQLdb()
 # create web server
 app = fastapi.FastAPI(title='BioIndex', redoc_url=None)
 
@@ -30,7 +32,6 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
-
 # serve static content
 app.mount('/static', StaticFiles(directory="web/static"), name="static")
 
