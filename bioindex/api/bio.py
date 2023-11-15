@@ -335,7 +335,10 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
 
         # the results of the query
         snapshot = tracemalloc.take_snapshot()
-        print(dir(snapshot))
+        top_stats = snapshot.statistics('lineno')
+
+        for stat in top_stats[:10]:
+            print(stat)
         return _fetch_records(reader, index, qs, fmt, query_s=auth_s + query_s)
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
