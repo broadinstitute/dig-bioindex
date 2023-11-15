@@ -331,7 +331,9 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
             reader.set_limit(limit)
 
         # the results of the query
-        return _fetch_records(reader, index, qs, fmt, query_s=auth_s + query_s)
+        result = _fetch_records(reader, index, qs, fmt, query_s=auth_s + query_s)
+        reader = None
+        return result
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
