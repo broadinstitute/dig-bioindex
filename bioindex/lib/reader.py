@@ -97,13 +97,16 @@ class RecordReader:
             try:
                 compression_on = self.index.compressed
                 if compression_on:
-                    if source.key.endswith('.gz'):
-                        command = ['bgzip', '-b', f"{source.start}", '-s', f"{source.end - source.start}",
-                            f"s3://{self.config.s3_bucket}/{source.key}"]
-                    else:
-                        command = ['bgzip', '-b', f"{source.start}", '-s', f"{source.end - source.start}",
-                                   f"s3://{self.config.s3_bucket}/{source.key}.gz"]
-                    content = subprocess.run(command, capture_output=True, check=True).stdout
+                    command = ['bgzip', '-b', f"{source.start}", '-s', f"{source.end - source.start}",
+                               f"s3://{self.config.s3_bucket}/{source.key}{'.gz' if source.key.endswith('.gz') else ''}"]
+
+                    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as proc:
+                        stdout, stderr = proc.communicate()
+                        content = stdout
+
+                    if proc.returncode != 0:
+                        # Handle the error. You can use stderr to get more information about the error.
+                        raise subprocess.CalledProcessError(proc.returncode, command, output=stderr)
                 else:
                     content = read_object(self.config.s3_bucket, source.key, offset=source.start,
                                           length=source.end - source.start)
