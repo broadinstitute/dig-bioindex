@@ -75,11 +75,6 @@ class RecordReader:
             self.records = filter(record_filter, self.records)
 
     def _readall(self):
-        def get_lines(str_content, use_str_split):
-            if use_str_split:
-                return str_content.splitlines()
-            else:
-                return str_content.iter_lines()
         """
         A generator that reads each of the records from S3 for the sources.
         """
@@ -117,9 +112,7 @@ class RecordReader:
 
                         proc.wait()
                         if proc.returncode != 0:
-                            # Check for errors after processing output
                             stderr = proc.stderr.read()
-                            # Handle the error. You can use stderr to get more information about the error.
                             raise subprocess.CalledProcessError(proc.returncode, command, output=stderr)
 
                 else:
@@ -130,7 +123,7 @@ class RecordReader:
                     if content is None:
                         raise FileNotFoundError(source.key)
 
-                    for line in get_lines(content, compression_on):
+                    for line in content.iter_lines():
                         self.bytes_read += len(line) + 1  # eol character
 
                         # parse the record
