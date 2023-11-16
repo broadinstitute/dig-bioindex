@@ -2,7 +2,6 @@ import asyncio
 import concurrent.futures
 import itertools
 import re
-import tracemalloc
 from enum import Enum
 from typing import List, Optional
 
@@ -18,7 +17,6 @@ from ..lib import ql
 from ..lib import query
 from ..lib.auth import restricted_keywords
 from ..lib.utils import nonce, profile, profile_async
-import tracemalloc
 
 # load dot files and configuration
 CONFIG = config.Config()
@@ -34,7 +32,6 @@ portal = connect_to_portal(CONFIG)
 RESPONSE_LIMIT = CONFIG.response_limit
 RESPONSE_LIMIT_MAX = CONFIG.response_limit_max
 MATCH_LIMIT = CONFIG.match_limit
-tracemalloc.start()
 
 # multi-query executor
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
