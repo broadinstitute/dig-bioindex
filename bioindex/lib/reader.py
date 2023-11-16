@@ -115,9 +115,10 @@ class RecordReader:
                                 self.count += 1
                                 yield record
 
-                        # Check for errors after processing output
-                        stderr = proc.stderr.read()
+                        proc.wait()
                         if proc.returncode != 0:
+                            # Check for errors after processing output
+                            stderr = proc.stderr.read()
                             # Handle the error. You can use stderr to get more information about the error.
                             raise subprocess.CalledProcessError(proc.returncode, command, output=stderr)
 
