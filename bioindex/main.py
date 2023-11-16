@@ -47,23 +47,31 @@ SERVER_LOGGING_CONFIG = {
         }
     },
     "root": {"level": "INFO", "handlers": ["file"]},
-
+    "loggers": {
+        "uvicorn.access": {
+            "level": "INFO",
+            "handlers": ["file"],
+            "propagate": False,
+            "formatter": "apache",
+        },
+    },
+    "formatters": {
+        "apache": {
+            "format": '%(asctime)s %(message)s "%(status)d" %(bytes)d',
+        },
+    },
 }
 
 
 @click.command(name='serve')
 @click.option('--port', '-p', type=int, default=5000)
 def cli_serve(port):
-    uvicorn_access = logging.getLogger("uvicorn.access")
-    uvicorn_access.disabled = True
-
-    logger = logging.getLogger("uvicorn")
-    logger.setLevel(logging.getLevelName(logging.DEBUG))
     uvicorn.run(
         'bioindex.server:app',
         host='0.0.0.0',
         port=port,
-        log_level='info'
+        log_level='info',
+        log_config=SERVER_LOGGING_CONFIG
     )
 
 
