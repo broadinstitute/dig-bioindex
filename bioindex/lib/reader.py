@@ -99,37 +99,51 @@ class RecordReader:
                 if compression_on:
                     command = ['bgzip', '-b', f"{source.start}", '-s', f"{source.end - source.start}",
                                f"s3://{self.config.s3_bucket}/{source.key}{'' if source.key.endswith('.gz') else '.gz'}"]
+                    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1) as proc:
+                        for line in proc.stdout:
+                            self.bytes_read += len(line) + 1  # eol character
 
-                    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as proc:
-                        stdout, stderr = proc.communicate()
-                        content = stdout
+                            # parse the record
+                            record = orjson.loads(line)
 
-                    if proc.returncode != 0:
-                        # Handle the error. You can use stderr to get more information about the error.
-                        raise subprocess.CalledProcessError(proc.returncode, command, output=stderr)
+                            # Check for restrictions and filters, then yield records
+                            if not verify_record(record, self.restricted):
+                                self.restricted_count += 1
+                                continue
+
+                            if self.record_filter is None or self.record_filter(record):
+                                self.count += 1
+                                yield record
+
+                        # Check for errors after processing output
+                        stderr = proc.stderr.read()
+                        if proc.returncode != 0:
+                            # Handle the error. You can use stderr to get more information about the error.
+                            raise subprocess.CalledProcessError(proc.returncode, command, output=stderr)
+
                 else:
                     content = read_object(self.config.s3_bucket, source.key, offset=source.start,
                                           length=source.end - source.start)
 
-                # handle a bad case where the content failed to be read
-                if content is None:
-                    raise FileNotFoundError(source.key)
+                    # handle a bad case where the content failed to be read
+                    if content is None:
+                        raise FileNotFoundError(source.key)
 
-                for line in get_lines(content, compression_on):
-                    self.bytes_read += len(line) + 1  # eol character
+                    for line in get_lines(content, compression_on):
+                        self.bytes_read += len(line) + 1  # eol character
 
-                    # parse the record
-                    record = orjson.loads(line)
+                        # parse the record
+                        record = orjson.loads(line)
 
-                    # are there any restrictions on this record?
-                    if not verify_record(record, self.restricted):
-                        self.restricted_count += 1
-                        continue
+                        # are there any restrictions on this record?
+                        if not verify_record(record, self.restricted):
+                            self.restricted_count += 1
+                            continue
 
-                    # optionally filter; and tally filtered records
-                    if self.record_filter is None or self.record_filter(record):
-                        self.count += 1
-                        yield record
+                        # optionally filter; and tally filtered records
+                        if self.record_filter is None or self.record_filter(record):
+                            self.count += 1
+                            yield record
 
             # handle database out of sync with S3
             except botocore.exceptions.ClientError:
