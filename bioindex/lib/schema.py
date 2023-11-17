@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Index, Integer, BigInteger, MetaData, String, Table
+from sqlalchemy import Column, Index, Integer, BigInteger, MetaData, String, Table, text
 from sqlalchemy.exc import OperationalError
 
 from .locus import parse_locus_builder
@@ -139,7 +139,8 @@ class Schema:
         Removes the index. This can help performance when updating.
         """
         try:
-            engine.execute(f'ALTER TABLE `{table.name}` DROP INDEX schema_idx')
+            with engine.begin() as conn:
+                conn.execute(text(f'ALTER TABLE `{table.name}` DROP INDEX schema_idx'))
         except OperationalError:
             pass
 
@@ -165,7 +166,7 @@ class Schema:
         Builds the query string from the index columns that can be used in a
         SQL execute statement.
         """
-        tests = 'AND'.join(map(lambda k: f'`{k}`=%s ', self.key_columns))
+        tests = 'AND'.join(map(lambda k: f'`{k}`=:{k.replace("|", "_")} ', self.key_columns))
 
         # if there's a locus index, append it
         if self.has_locus:
@@ -173,7 +174,7 @@ class Schema:
                 tests += 'AND '
 
             # add the chromosome and position
-            tests += '`chromosome`=%s AND `position` BETWEEN %s AND %s '
+            tests += '`chromosome`= :chromosome AND `position` BETWEEN :start_pos AND :end_pos '
 
         return tests
 

@@ -11,6 +11,8 @@ import sqlalchemy
 import tempfile
 import time
 
+from sqlalchemy import text
+
 from .aws import invoke_lambda, start_and_wait_for_indexer_job
 from .s3 import list_objects, read_object, relative_key
 from .schema import Schema
@@ -55,7 +57,7 @@ class Index:
         # add the new index to the table
         sql = (
             'INSERT INTO `__Indexes` (`name`, `table`, `prefix`, `schema`) '
-            'VALUES (%s, %s, %s, %s) '
+            'VALUES (:name, :table, :prefix, :schema) '
             'ON DUPLICATE KEY UPDATE '
             '   `table` = VALUES(`table`), '
             '   `prefix` = VALUES(`prefix`), '
@@ -63,26 +65,26 @@ class Index:
             '   `built` = 0 '
         )
 
-        # add to the database
-        row = engine.execute(sql, name, rds_table_name, s3_prefix, schema)
-
-        return row and row.lastrowid is not None
+        with engine.begin() as conn:
+            row = conn.execute(text(sql), {'name': name, 'table': rds_table_name, 'prefix': s3_prefix, 'schema': schema})
+            return row and row.lastrowid is not None
 
     @staticmethod
     def list_indexes(engine, filter_built=True):
-        """
-        Return an iterator of all the indexes.
-        """
-        sql = 'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` FROM `__Indexes`'
+        with engine.connect() as conn:
+            """
+            Return an iterator of all the indexes.
+            """
+            sql = 'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` FROM `__Indexes`'
 
-        # convert all rows to an index definition
-        indexes = map(lambda r: Index(*r), engine.execute(sql))
+            # convert all rows to an index definition
+            indexes = map(lambda r: Index(*r), conn.execute(text(sql)).fetchall())
 
-        # remove indexes not built?
-        if filter_built:
-            indexes = filter(lambda i: i.built, indexes)
+            # remove indexes not built?
+            if filter_built:
+                indexes = filter(lambda i: i.built, indexes)
 
-        return indexes
+            return indexes
 
     @staticmethod
     def lookup(engine, name, arity):
@@ -93,16 +95,17 @@ class Index:
         sql = (
             'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` '
             'FROM `__Indexes` '
-            'WHERE `name` = %s AND LENGTH(`schema`) - LENGTH(REPLACE(`schema`, \',\', \'\')) + 1 = %s'
+            'WHERE `name` = :name AND LENGTH(`schema`) - LENGTH(REPLACE(`schema`, \',\', \'\')) + 1 = :arity'
         )
 
-        # lookup the index
-        row = engine.execute(sql, name, arity).fetchone()
+        with engine.connect() as conn:
+            # lookup the index
+            row = conn.execute(text(sql), {'name': name, 'arity': arity}).fetchone()
 
-        if row is None:
-            raise KeyError(f'No such index: {name}')
+            if row is None:
+                raise KeyError(f'No such index: {name}')
 
-        return Index(*row)
+            return Index(*row)
 
     @staticmethod
     def lookup_all(engine, name):
@@ -113,16 +116,16 @@ class Index:
         sql = (
             'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` '
             'FROM `__Indexes` '
-            'WHERE `name` = %s'
+            'WHERE `name` = :name'
         )
 
-        # lookup the index
-        rows = engine.execute(sql, name).fetchall()
+        with engine.connect() as conn:
+            rows = conn.execute(text(sql), {'name': name}).fetchall()
 
-        if len(rows) == 0:
-            raise KeyError(f'No such index: {name}')
+            if len(rows) == 0:
+                raise KeyError(f'No such index: {name}')
 
-        return [Index(*row) for row in rows]
+            return [Index(*row) for row in rows]
 
     def prepare(self, engine, rebuild=False):
         """
@@ -238,8 +241,9 @@ class Index:
 
                 # delete stale or missing keys
                 for kid in updated_or_deleted_files:
-                    sql = f'DELETE FROM {self.table.name} WHERE `key` = %s'
-                    n += engine.execute(sql, kid['id']).rowcount
+                    sql = f'DELETE FROM {self.table.name} WHERE `key` = :key'
+                    with engine.begin() as conn:
+                        n += conn.execute(text(sql), {'key': kid['id']}).rowcount
 
                     # remove the key from the __Keys table
                     self.delete_key(engine, kid['key'])
@@ -257,10 +261,10 @@ class Index:
 
         return start_and_wait_for_indexer_job(obj['Key'], self.name, self.schema.arity, config.s3_bucket, config.rds_secret,
                                               config.bio_schema, obj['Size'])
+        """
+        Index the objects using a lambda function.
+        """
 
-    """
-    Index the objects using a lambda function.
-    """
     def lambda_run_function(self, config, obj):
         logging.info(f'Processing {relative_key(obj["Key"], self.s3_prefix)}...')
 
@@ -333,7 +337,7 @@ class Index:
         """
         Read a file in S3, index it, and insert records into the table.
         """
-        key, version, size = obj['Key'], obj['ETag'].strip('"'), obj['Size']
+        key, version, size = obj['Key'], obj['ETag'].strip('"')[:32], obj['Size']
         key_id = self.insert_key(engine, key, version)
 
         # read the file from s3
@@ -421,7 +425,8 @@ class Index:
             # attempt to bulk load into the database
             for _ in range(5):
                 try:
-                    engine.execute(sql)
+                    with engine.begin() as conn:
+                        conn.execute(text(sql))
                     break
                 except sqlalchemy.exc.OperationalError as ex:
                     fail_ex = ex
@@ -452,36 +457,39 @@ class Index:
         If the versions don't match, delete the existing record and create
         a new one with a new ID.
         """
-        sql = 'SELECT `id`, `version` FROM `__Keys` WHERE `index` = %s and `key` = %s'
-        row = engine.execute(sql, self.name, key).fetchone()
+        sql = 'SELECT `id`, `version` FROM `__Keys` WHERE `index` = :index and `key` = :key'
+        with engine.connect() as conn:
+            row = conn.execute(text(sql), {'index': self.name, 'key': key}).fetchone()
 
-        if row is not None:
-            if row[1] == version:
-                return row[0]
+            if row is not None:
+                if row[1] == version:
+                    return row[0]
 
-            # delete the existing key entry
-            engine.execute('DELETE FROM `__Keys` WHERE `id` = %s', row[0])
+                # delete the existing key entry
+                conn.execute(text('DELETE FROM `__Keys` WHERE `id` = :id'), {'id': row[0]})
 
-        # add a new entry
-        sql = 'INSERT INTO `__Keys` (`index`, `key`, `version`) VALUES (%s, %s, %s)'
-        row = engine.execute(sql, self.name, key, version)
-
-        return row.lastrowid
+            # add a new entry
+            sql = 'INSERT INTO `__Keys` (`index`, `key`, `version`) VALUES (:index, :key, :version)'
+            row = conn.execute(text(sql), {'index': self.name, 'key': key, 'version': version})
+            conn.commit()
+            return row.lastrowid
 
     def delete_key(self, engine, key):
         """
         Removes all records from the index and the key from the __Keys
         table for a paritcular index/key pair.
         """
-        sql = 'DELETE FROM `__Keys` WHERE `index` = %s and `key` = %s'
-        engine.execute(sql, self.name, key)
+        sql = 'DELETE FROM `__Keys` WHERE `index` = :index and `key` = :key'
+        with engine.begin() as conn:
+            conn.execute(text(sql), {'index': self.name, 'key': key})
 
     def delete_keys(self, engine):
         """
         Removes all records from the __Keys table for a paritcular index
         by name.
         """
-        engine.execute('DELETE FROM `__Keys` WHERE `index` = %s', self.name)
+        with engine.begin() as conn:
+            conn.execute(text('DELETE FROM `__Keys` WHERE `index` = :index'), {'index': self.name})
 
     def lookup_keys(self, engine):
         """
@@ -489,8 +497,9 @@ class Index:
         key -> {id, version}. The version will be None if the key hasn't been
         completely indexed.
         """
-        sql = 'SELECT `id`, `key`, `version`, `built` FROM `__Keys` WHERE `index` = %s AND `key` LIKE %s'
-        rows = engine.execute(sql, self.name, f'{self.s3_prefix}%').fetchall()
+        sql = 'SELECT `id`, `key`, `version`, `built` FROM `__Keys` WHERE `index` = :index AND `key` LIKE :prefix'
+        with engine.begin() as conn:
+            rows = conn.execute(text(sql), {'index': self.name, 'prefix': f"{self.s3_prefix}%"}).fetchall()
 
         return {key: {'id': id, 'version': built and ver} for id, key, ver, built in rows}
 
@@ -498,16 +507,18 @@ class Index:
         """
         Update the keys table to indicate the key has been built.
         """
-        sql = 'UPDATE `__Keys` SET `built` = %s WHERE `index` = %s AND `key` = %s'
-        engine.execute(sql, datetime.datetime.utcnow(), self.name, key)
+        sql = 'UPDATE `__Keys` SET `built` = :built WHERE `index` = :index AND `key` = :key'
+        with engine.begin() as conn:
+            conn.execute(text(sql), {'index': self.name, 'key': key, 'built': datetime.datetime.utcnow()})
 
     def set_built_flag(self, engine, flag=True):
         """
         Update the __Index table to indicate this index has been built.
         """
         now = datetime.datetime.utcnow()
-
-        if flag:
-            engine.execute('UPDATE `__Indexes` SET `built` = %s WHERE `name` = %s', now, self.name)
-        else:
-            engine.execute('UPDATE `__Indexes` SET `built` = NULL WHERE `name` = %s', self.name)
+        with engine.begin() as conn:
+            if flag:
+                conn.execute(text('UPDATE `__Indexes` SET `built` = :built WHERE `name` = :name'),
+                             {'name': self.name, 'built': now})
+            else:
+                conn.execute(text('UPDATE `__Indexes` SET `built` = NULL WHERE `name` = :name'), {'name': self.name})

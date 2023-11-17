@@ -1,6 +1,8 @@
 import concurrent.futures
 import re
 
+from sqlalchemy import text
+
 from .locus import Locus, parse_region_string
 from .reader import MultiRecordReader, RecordReader, RecordSource
 from .s3 import list_objects
@@ -87,10 +89,10 @@ def match(config, engine, index, q):
     distinct_column = index.schema.key_columns[len(q) - 1]
 
     # exact query parameters and match parameter
-    tests = [f'`{k}` = %s' for k in index.schema.key_columns[:len(q) - 1]]
+    tests = [f'`{k}` = :{k}' for k in index.schema.key_columns[:len(q) - 1]]
 
     # append the matching query
-    tests.append(f'`{distinct_column}` LIKE %s')
+    tests.append(f'`{distinct_column}` LIKE :{distinct_column}')
 
     # build the SQL statement
     sql = (
@@ -103,12 +105,14 @@ def match(config, engine, index, q):
         sql += f'WHERE {" AND ".join(tests)} '
 
     # create the match pattern
-    pattern = '%' if q[-1] in ['_', '*'] else  re.sub(r'_|%|$', lambda m: f'%{m.group(0)}', q[-1])
+    pattern = '%' if q[-1] in ['_', '*'] else re.sub(r'_|%|$', lambda m: f'%{m.group(0)}', q[-1])
     prev_key = None
 
     # fetch all the results
     with engine.connect() as conn:
-        cursor = conn.execution_options(stream_results=True).execute(sql, *q[:-1], pattern)
+        params = dict(zip(index.schema.key_columns, q[:-1]))
+        params.update({distinct_column: pattern})
+        cursor = conn.execution_options(stream_results=True).execute(text(sql), params)
 
         # yield all the results until no more matches
         for r in cursor:
@@ -143,7 +147,7 @@ def _run_query(config, engine, index, q, restricted):
 
     # query parameter list
     query_params = q
-
+    escaped_column_names = [col.replace("|", "_") for col in index.schema.schema_columns]
     # if the schema has a locus, parse the query parameter
     if index.schema.has_locus:
         if index.schema.locus_is_template:
@@ -156,7 +160,8 @@ def _run_query(config, engine, index, q, restricted):
         step_stop = (stop // Locus.LOCUS_STEP) * Locus.LOCUS_STEP
 
         # replace the last query parameter with the locus
-        query_params = [*q[:-1], chromosome, step_start, step_stop]
+        query_params = dict(zip(escaped_column_names, q[:-1]))
+        query_params.update({"chromosome": chromosome, "start_pos": step_start, "end_pos": step_stop})
 
         # match templated locus or overlapping loci
         def overlaps(row):
@@ -168,18 +173,20 @@ def _run_query(config, engine, index, q, restricted):
         # filter records read by locus
         record_filter = overlaps
 
-    # execute the query
-    cursor = engine.execute(sql, *query_params)
-    rows = cursor.fetchall()
+    with engine.connect() as conn:
+        if isinstance(query_params, list):
+            query_params = dict(zip(escaped_column_names, query_params))
+        cursor = conn.execute(text(sql), query_params)
+        rows = cursor.fetchall()
 
-    # create a RecordSource for each entry in the database
-    sources = [RecordSource(*row) for row in rows]
+        # create a RecordSource for each entry in the database
+        sources = [RecordSource(*row) for row in rows]
 
-    # create the reader
-    return RecordReader(
-        config,
-        sources,
-        index,
-        record_filter=record_filter,
-        restricted=restricted,
-    )
+        # create the reader
+        return RecordReader(
+            config,
+            sources,
+            index,
+            record_filter=record_filter,
+            restricted=restricted,
+        )

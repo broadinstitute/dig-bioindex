@@ -301,8 +301,13 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
     Query the database for records matching the query parameter and
     read the records from s3.
     """
+    global INDEXES
+
     try:
         qs = _parse_query(q, required=True)
+        # in the event we've added a new index
+        if (index, len(qs)) not in INDEXES:
+            INDEXES = _load_indexes()
         i = INDEXES[(index, len(qs))]
 
         # discover what the user doesn't have access to see

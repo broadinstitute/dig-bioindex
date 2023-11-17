@@ -10,6 +10,7 @@ import sqlalchemy.engine
 aws_config = botocore.config.Config(
     max_pool_connections=200,
     read_timeout=900,
+    region_name='us-east-1'
 )
 
 # create service clients
@@ -110,7 +111,7 @@ def connect_to_db(schema=None, **kwargs):
         schema = kwargs.get('dbname')
 
     # build the connection uri
-    uri = '{engine}://{username}:{password}@{host}/{schema}?local_infile=1'.format(schema=schema, **kwargs)
+    uri = '{engine}+pymysql://{username}:{password}@{host}/{schema}?local_infile=1'.format(schema=schema, **kwargs)
 
     # create the connection pool
     engine = sqlalchemy.create_engine(uri, pool_recycle=3600)

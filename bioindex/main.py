@@ -37,7 +37,7 @@ def cli(ctx, env_file):
 
 SERVER_LOGGING_CONFIG = {
     "version": 1,
-    "disable_existing_loggers": False,
+    "disable_existing_loggers": True,
     "handlers": {
         "file": {
             "class": "logging.handlers.RotatingFileHandler",
@@ -51,13 +51,13 @@ SERVER_LOGGING_CONFIG = {
         "uvicorn.access": {
             "level": "INFO",
             "handlers": ["file"],
-            "propagate": True,
+            "propagate": False,
             "formatter": "apache",
         },
     },
     "formatters": {
         "apache": {
-            "format": '%(message)s "%(status)d" %(bytes)d',
+            "format": '%(asctime)s %(message)s "%(status)d" %(bytes)d',
         },
     },
 }

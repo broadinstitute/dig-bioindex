@@ -2,11 +2,10 @@ import logging
 import sqlalchemy
 import sys
 
-from sqlalchemy import Column, DateTime, Index, Integer, String, Table, FetchedValue, Boolean
+from sqlalchemy import Column, DateTime, Index, Integer, String, Table, FetchedValue, Boolean, text
 from sqlalchemy.orm import Session
 
 from .aws import connect_to_db
-
 
 # tables
 __Indexes = None
@@ -50,7 +49,7 @@ def create_indexes_table(engine):
         Column('prefix', String(1024, collation='ascii_bin')),
         Column('schema', String(200, collation='utf8_bin')),
         Column('built', DateTime, nullable=True),
-        Column('compressed', Boolean, nullable=False, default=False),
+        Column('compressed', Boolean, nullable=False, server_default=text('0'), default=False),
     ]
 
     # define the __Indexes table
@@ -62,19 +61,23 @@ def create_indexes_table(engine):
 
 
 def index_migration_1(engine):
-    with Session(engine) as session:
-        indexes = engine.execute('SHOW INDEXES FROM `__Indexes`').fetchall()
-        # drop name_UNIQUE index if present
-        maybe_name_idx = [r[2] == 'name_UNIQUE' for r in indexes]
-        if any(maybe_name_idx):
-            session.execute('ALTER TABLE __Indexes DROP INDEX `name_UNIQUE`')
+    with Session(engine) as session:  # Using Session with engine
+        with session.begin():  # Beginning the transaction explicitly
+            result = session.execute(text('SHOW INDEXES FROM `__Indexes`'))  # Using session for executing
+            indexes = result.fetchall()
 
-        # create name_arity index if not present
-        maybe_name_arity_idx = [r[2] != 'name_arity_idx' for r in indexes]
-        if all(maybe_name_arity_idx):
-            session.execute('CREATE UNIQUE INDEX `name_arity_idx` ON __Indexes '
-                           '(name, (LENGTH(`schema`) - LENGTH(REPLACE(`schema`, ",", "")) + 1))')
-        session.commit()
+            # drop name_UNIQUE index if present
+            maybe_name_idx = [r[2] == 'name_UNIQUE' for r in indexes]
+            if any(maybe_name_idx):
+                session.execute(text('ALTER TABLE __Indexes DROP INDEX `name_UNIQUE`'))
+
+            # create name_arity index if not present
+            maybe_name_arity_idx = [r[2] != 'name_arity_idx' for r in indexes]
+            if all(maybe_name_arity_idx):
+                session.execute(text(
+                    'CREATE UNIQUE INDEX `name_arity_idx` ON __Indexes '
+                    '(name, (LENGTH(`schema`) - LENGTH(REPLACE(`schema`, ",", "")) + 1))'
+                ))
 
 
 def create_keys_table(engine):
@@ -97,7 +100,8 @@ def create_keys_table(engine):
     __Keys.create(engine, checkfirst=True)
 
     # create the compound index for the table
-    rows = engine.execute('SHOW INDEXES FROM `__Keys`').fetchall()
+    with engine.connect() as conn:
+        rows = conn.execute(text('SHOW INDEXES FROM `__Keys`')).fetchall()
 
     # build the index if not present
     if not any(map(lambda r: r[2] == 'key_idx', rows)):

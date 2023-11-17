@@ -1,4 +1,5 @@
 import fastapi
+import pymysql
 
 from .api import bio
 from .api import portal
@@ -8,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+pymysql.install_as_MySQLdb()
 # create web server
 app = fastapi.FastAPI(title='BioIndex', redoc_url=None)
 
@@ -24,7 +26,6 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
-
 # serve static content
 app.mount('/static', StaticFiles(directory="web/static"), name="static")
 
