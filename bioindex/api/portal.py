@@ -29,20 +29,21 @@ async def api_portal_groups():
     sql = "SELECT `name`, `title`, `description`, `default`, `portalGroup` FROM DiseaseGroups"
 
     # run the query
-    resp, query_s = profile(portal.execute, sql)
-    disease_groups = []
+    with portal.connect() as conn:
+        resp, query_s = profile(conn.execute, text(sql))
+        disease_groups = []
 
-    # transform response
-    for name, title, desc, default, portalGroup in resp:
-        disease_groups.append(
-            {
-                "name": name,
-                "default": default != 0,
-                "description": desc,
-                "title": title,
-                "portalGroup": portalGroup,
-            }
-        )
+        # transform response
+        for name, title, desc, default, portalGroup in resp:
+            disease_groups.append(
+                {
+                    "name": name,
+                    "default": default != 0,
+                    "description": desc,
+                    "title": title,
+                    "portalGroup": portalGroup,
+                }
+            )
 
     return {
         "profile": {
