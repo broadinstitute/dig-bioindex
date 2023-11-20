@@ -143,7 +143,7 @@ async def api_portal_phenotypes(q: str = None):
         resp, query_s = (
             profile(conn.execute, text(sql), dict(zip(group_params, groups)))
             if groups
-            else profile(conn.execute, sql)
+            else profile(conn.execute, text(sql))
         )
         phenotypes = []
 
