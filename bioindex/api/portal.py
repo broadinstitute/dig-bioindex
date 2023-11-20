@@ -373,7 +373,7 @@ async def api_portal_systems(req: fastapi.Request):
         """
 
     with portal.connect() as conn:
-        resp, query_s = profile(conn.execute, sql)
+        resp, query_s = profile(conn.execute, text(sql))
         # get all systems
         systems = []
 
