@@ -147,6 +147,9 @@ class Index:
         logging.info('Finding keys in %s...', self.s3_prefix)
         json_objects = list(list_objects(config.s3_bucket, self.s3_prefix, only='*.json'))
         gz_objects = list(list_objects(config.s3_bucket, self.s3_prefix, only='*.gz'))
+        if len(json_objects) > 0 and len(gz_objects) > 0:
+            raise ValueError(f'There are both compressed and uncompressed files in {self.s3_prefix}. '
+                             f'An index needs to be all one or the other.')
         s3_objects = json_objects + gz_objects
 
         # delete all stale keys; get the list of objects left to index
