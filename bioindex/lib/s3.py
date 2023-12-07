@@ -1,3 +1,6 @@
+import gzip
+from io import BytesIO
+
 import botocore.errorfactory
 import fnmatch
 import os
@@ -142,10 +145,18 @@ def read_object(bucket, path, offset=None, length=None):
         kwargs['Range'] = f'bytes=-{length}'
 
     # download the object
-    try:
-        return s3_client.get_object(**kwargs).get('Body')
-    except s3_client.exceptions.NoSuchKey:
-        return None
+    raw = s3_client.get_object(**kwargs).get('Body')
+
+    # Check if the file is gzip compressed
+    if path.endswith('.gz'):
+        # Create a BytesIO object from the S3 Object
+        bytestream = BytesIO(raw.read())
+
+        # Decompress gzip file
+        return gzip.open(bytestream, 'rt')
+    else:
+        # Return raw contents for normal JSON file
+        return raw.iter_lines()
 
 
 def test_object(bucket, s3_obj):
