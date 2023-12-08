@@ -145,7 +145,12 @@ class Index:
         Builds the index table for objects in S3.
         """
         logging.info('Finding keys in %s...', self.s3_prefix)
-        s3_objects = list(list_objects(config.s3_bucket, self.s3_prefix, only='*.json'))
+        json_objects = list(list_objects(config.s3_bucket, self.s3_prefix, only='*.json'))
+        gz_objects = list(list_objects(config.s3_bucket, self.s3_prefix, only='*.json.gz'))
+        if len(json_objects) > 0 and len(gz_objects) > 0:
+            raise ValueError(f'There are both compressed and uncompressed files in {self.s3_prefix}. '
+                             f'An index needs to be all one or the other.')
+        s3_objects = json_objects + gz_objects
 
         # delete all stale keys; get the list of objects left to index
         objects = self.delete_stale_keys(engine, s3_objects, console=console)
@@ -241,7 +246,7 @@ class Index:
 
                 # delete stale or missing keys
                 for kid in updated_or_deleted_files:
-                    sql = f'DELETE FROM {self.table.name} WHERE `key` = :key'
+                    sql = f'DELETE FROM `{self.table.name}` WHERE `key` = :key'
                     with engine.begin() as conn:
                         n += conn.execute(text(sql), {'key': kid['id']}).rowcount
 
@@ -350,7 +355,7 @@ class Index:
         file_progress = progress and progress.add_task(f'[yellow]{rel_key}[/]', total=size)
 
         # process each line (record)
-        for line_num, line in enumerate(content.iter_lines()):
+        for line_num, line in enumerate(content):
             row = orjson.loads(line)
             end_offset = start_offset + len(line) + 1  # newline
 
