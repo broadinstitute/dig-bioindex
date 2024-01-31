@@ -123,7 +123,7 @@ class RecordReader:
                     if content is None:
                         raise FileNotFoundError(source.key)
 
-                    for line in content.iter_lines():
+                    for line in content:
                         self.bytes_read += len(line) + 1  # eol character
 
                         # parse the record
