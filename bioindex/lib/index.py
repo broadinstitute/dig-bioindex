@@ -231,7 +231,7 @@ class Index:
         db_keys = self.lookup_keys(engine)
         # if a file in s3 is in the db but the version is different from what's in s3 we delete
         updated_files_for_db = [{'id': db_keys[o['Key']]['id'], 'key': o['Key']} for o in objects
-                                if o['Key'] in db_keys and db_keys[o['Key']]['version'] != o['ETag'].strip('"')]
+                                if o['Key'] in db_keys and db_keys[o['Key']]['version'] != o['ETag'].strip('"')[:32]]
         updated_files_for_return = [o for o in objects if o['Key'] in set([f['key'] for f in updated_files_for_db])]
         s3_keys = set([o['Key'] for o in objects])
         deleted_files = [{'id': db_keys[k]['id'], 'key': k} for k in db_keys if k not in s3_keys]
