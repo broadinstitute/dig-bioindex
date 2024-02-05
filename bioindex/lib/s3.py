@@ -144,8 +144,11 @@ def read_object(bucket, path, offset=None, length=None):
     elif length is not None:
         kwargs['Range'] = f'bytes=-{length}'
 
-    raw = s3_client.get_object(**kwargs).get('Body')
+    return s3_client.get_object(**kwargs).get('Body')
 
+
+def read_lined_object(bucket, path, offset=None, length=None):
+    raw = read_object(bucket, path, offset, length)
     if path.endswith('.gz'):
         bytestream = BytesIO(raw.read())
         return gzip.open(bytestream, 'rt')

@@ -7,7 +7,7 @@ import logging
 import orjson
 
 from .auth import verify_record
-from .s3 import read_object
+from .s3 import read_lined_object
 # from . import config
 
 # CONFIG = config.Config()
@@ -116,7 +116,7 @@ class RecordReader:
                             raise subprocess.CalledProcessError(proc.returncode, command, output=stderr)
 
                 else:
-                    content = read_object(self.config.s3_bucket, source.key, offset=source.start,
+                    content = read_lined_object(self.config.s3_bucket, source.key, offset=source.start,
                                           length=source.end - source.start)
 
                     # handle a bad case where the content failed to be read

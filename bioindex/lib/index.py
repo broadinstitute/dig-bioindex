@@ -14,7 +14,7 @@ import time
 from sqlalchemy import text
 
 from .aws import invoke_lambda, start_and_wait_for_indexer_job
-from .s3 import list_objects, read_object, relative_key
+from .s3 import list_objects, read_lined_object, relative_key
 from .schema import Schema
 from .utils import cap_case_str
 
@@ -346,7 +346,7 @@ class Index:
         key_id = self.insert_key(engine, key, version)
 
         # read the file from s3
-        content = read_object(bucket, key)
+        content = read_lined_object(bucket, key)
         start_offset = 0
         records = {}
 
