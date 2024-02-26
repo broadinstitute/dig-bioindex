@@ -5,7 +5,7 @@ click==7.0
 fastapi==0.65.2
 graphene==3.0
 graphql-core==3.1.2
-orjson==3.5
+orjson==3.9.15
 pydantic==1.6.2
 pymysql==0.10
 python-dotenv==0.15
