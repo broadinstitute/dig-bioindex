@@ -54,7 +54,7 @@ def fetch_all(config, index, restricted=None, key_limit=None):
     return RecordReader(config, sources, index, restricted=restricted)
 
 
-def fetch_keys(engine, index, restricted=None, key_limit=None):
+def fetch_keys(engine, index, columns, restricted=None, key_limit=None):
     """
     Construct a SQL query to fetch S3 objects and byte offsets. Run it and
     return a RecordReader to the results.
@@ -62,7 +62,10 @@ def fetch_keys(engine, index, restricted=None, key_limit=None):
     if not index.built:
         raise ValueError(f'Index "{index.name}" is not built')
 
-    column_name_str = ', '.join([f'`{col}`' for col in index.schema.key_columns])
+    if columns is None:
+        column_name_str = ', '.join([f'`{col}`' for col in index.schema.key_columns])
+    else:
+        column_name_str = ', '.join([f'`{col}`' for col in index.schema.key_columns if col in columns])
 
     sql = (
         f'SELECT DISTINCT {column_name_str} '
