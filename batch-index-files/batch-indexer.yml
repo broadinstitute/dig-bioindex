@@ -51,7 +51,7 @@ Resources:
       Timeout:
         AttemptDurationSeconds: 3600
       ContainerProperties:
-        Image: '005901288866.dkr.ecr.us-east-1.amazonaws.com/batch-indexer-repo'
+        Image: !Sub '${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/batch-indexer-repo'
         Command:
           - 'python3'
           - 'index_files.py'
