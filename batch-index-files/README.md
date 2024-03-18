@@ -11,4 +11,13 @@ If you make changes to either of those files, you'll need to rebuild the docker 
 2. `docker tag <tag-name>:latest <our aws acct id>.dkr.ecr.us-east-1.amazonaws.com/batch-indexer-repo`
 3. `docker push <our aws acct id>.dkr.ecr.us-east-1.amazonaws.com/batch-indexer-repo`
 
+NOTE: If you run into an error with the message "no basic auth credentials" log into the AWS console, navigate to 
+the elastic container registry, select the repo you are trying to push to, and press "View push commands"
+
+The first coopyable command should look like:
+`aws ecr get-login-password --region <repo region> | 
+docker login --username AWS --password-stdin <our aws acct id>.dkr.ecr.us-east-1.amazonaws.com`
+
+If you copy and run it in your console it will save auth credentials into `~/.docker/config.json`
+
 The AWS batch configuration is in [batch-indexer.yml](./batch-indexer.yml).  
