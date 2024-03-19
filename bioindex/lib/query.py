@@ -56,8 +56,7 @@ def fetch_all(config, index, restricted=None, key_limit=None):
 
 def fetch_keys(engine, index, columns, restricted=None, key_limit=None):
     """
-    Construct a SQL query to fetch S3 objects and byte offsets. Run it and
-    return a RecordReader to the results.
+    Fetch all unique keys from schema index (e.g. to fill a self-updating dropdown menu)
     """
     if not index.built:
         raise ValueError(f'Index "{index.name}" is not built')
