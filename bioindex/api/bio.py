@@ -148,6 +148,32 @@ async def api_count_index(index: str, req: fastapi.Request, q: str = None):
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
+@router.get('/keys/{index}/{arity}', response_class=fastapi.responses.ORJSONResponse)
+async def api_keys_index(index: str, arity: int, req: fastapi.Request, columns: str = None):
+    """
+    Query the database and return all non-locus keys.
+    """
+    try:
+        if columns is not None:
+            columns = columns.split(',')
+        i = INDEXES[(index, arity)]
+
+        keys, query_s = profile(query.fetch_keys, engine, i, columns)
+
+        return {
+            'profile': {
+                'query': query_s,
+            },
+            'index': index,
+            'keys': keys,
+            'nonce': nonce(),
+        }
+    except KeyError:
+        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
+
+
 @router.get('/all/{index}', response_class=fastapi.responses.ORJSONResponse)
 async def api_all(index: str, req: fastapi.Request, fmt: str = 'row'):
     """
