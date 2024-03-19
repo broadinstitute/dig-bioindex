@@ -73,6 +73,8 @@ class Schema:
         self.locus_columns = None
 
         # add table columns that will be indexed
+        max_length = 3048  # bytes, mysql constraint
+        column_size = min(200, max_length // 4 // len(self.schema_columns))
         for column in self.schema_columns:
             if self.locus_class is not None:
                 raise ValueError(f'Invalid schema (locus must be last): {self.schema_str}')
@@ -87,7 +89,7 @@ class Schema:
                     Column('position', Integer),
                 ]
             else:
-                self.index_columns.append(Column(column, String(200)))
+                self.index_columns.append(Column(column, String(column_size)))
                 self.key_columns.append(column)
 
         # ensure a valid schema exists
