@@ -76,3 +76,11 @@ async def api_raw_file_single_cell_umap(dataset: str, file: str, req: fastapi.Re
         raise fastapi.HTTPException(status_code=404)
 
     return fastapi.Response(content=content.read())
+
+@router.get('/file/{file:path}')
+async def api_raw_file(file: str, req: fastapi.Request):
+    content = s3.read_object(CONFIG.s3_bucket, f'raw/{file}')
+    if content is None:
+        raise fastapi.HTTPException(status_code=404)
+
+    return fastapi.Response(content=content.read())
