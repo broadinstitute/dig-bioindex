@@ -69,9 +69,9 @@ async def api_raw_plot_phenotype_ancestry(phenotype: str, ancestry: str, file: s
     return fastapi.Response(content=content.read(), media_type='image/png')
 
 
-@router.get('/file/single_cell/{dataset}/{file}')
-async def api_raw_file_single_cell_umap(dataset: str, file: str, req: fastapi.Request):
-    content = s3.read_object(CONFIG.s3_bucket, f'single_cell/raw/{dataset}/{file}')
+@router.get('/file/{file:path}')
+async def api_raw_file(file: str, req: fastapi.Request):
+    content = s3.read_object(CONFIG.s3_bucket, f'raw/{file}')
     if content is None:
         raise fastapi.HTTPException(status_code=404)
 
