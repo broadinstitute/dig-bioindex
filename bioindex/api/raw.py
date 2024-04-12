@@ -76,8 +76,11 @@ async def api_raw_file(file: str, req: fastapi.Request):
     content = s3.read_object(CONFIG.s3_bucket, f'raw/{file}')
     if content is None:
         raise fastapi.HTTPException(status_code=404)
-    content_type, _ = mimetypes.guess_type(file)
-    if content_type is None:
+    content_type, encoding = mimetypes.guess_type(file)
+    if encoding == 'gzip':
+        content_type = 'application/gzip'
+    elif content_type is None:
         content_type = 'application/octet-stream'
+
 
     return fastapi.Response(content=content.read(), media_type=content_type)
