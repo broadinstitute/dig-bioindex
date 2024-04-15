@@ -77,10 +77,7 @@ async def api_raw_file(file: str, req: fastapi.Request):
     if content is None:
         raise fastapi.HTTPException(status_code=404)
     content_type, encoding = mimetypes.guess_type(file)
-    if encoding == 'gzip':
-        content_type = 'application/gzip'
-    elif content_type is None:
+    if content_type is None:
         content_type = 'application/octet-stream'
 
-
-    return fastapi.Response(content=content.read(), media_type=content_type)
+    return fastapi.Response(content=content.read(), media_type=content_type, headers={'Content-Encoding': encoding})
