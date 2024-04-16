@@ -357,7 +357,7 @@ class Index:
         # process each line (record)
         for line_num, line in enumerate(content):
             row = orjson.loads(line)
-            end_offset = start_offset + len(line) + 1  # newline
+            end_offset = start_offset + len(line.encode('utf-8')) + 1  # newline
 
             try:
                 for key_tuple in self.schema.index_builder(row):
