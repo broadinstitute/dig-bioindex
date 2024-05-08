@@ -70,6 +70,9 @@ def fetch_keys(engine, index, columns, restricted=None, key_limit=None):
         f'SELECT DISTINCT {column_name_str} '
         f'FROM `{index.table}`'
     )
+    if key_limit is not None:
+        sql += f' LIMIT {key_limit}'
+    print(sql)
 
     with engine.connect() as conn:
         cursor = conn.execute(text(sql))
