@@ -67,7 +67,7 @@ def fetch_keys(engine, index, columns, restricted=None, key_limit=None):
         column_name_str = ', '.join([f'`{col}`' for col in index.schema.key_columns if col in columns])
 
     sql = (
-        f'SELECT /*+ MAX_EXECUTION_TIME(30000) */ DISTINCT {column_name_str} '
+        f'SELECT /*+ MAX_EXECUTION_TIME(5000) */ DISTINCT {column_name_str} '
         f'FROM `{index.table}`'
     )
     if key_limit is not None:
