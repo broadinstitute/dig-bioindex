@@ -227,7 +227,7 @@ def _index_builder(index_keys, locus_class=None, locus_columns=None):
     """
     def build_index_key(row):
         indexed_tuples = (tuple(row.get(k) for k in keys) for keys in index_keys)
-        indexed_tuples = [tup for tup in indexed_tuples if all(tup)]
+        indexed_tuples = [tup for tup in indexed_tuples if all([value is not None for value in tup])]
 
         # if there's a locus in the schema, match it
         if locus_class:
