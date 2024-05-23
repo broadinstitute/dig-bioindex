@@ -149,7 +149,7 @@ async def api_count_index(index: str, req: fastapi.Request, q: str = None):
 
 
 @router.get('/keys/{index}/{arity}', response_class=fastapi.responses.ORJSONResponse)
-async def api_keys_index(index: str, arity: int, req: fastapi.Request, columns: str = None):
+async def api_keys_index(index: str, arity: int, req: fastapi.Request, columns: str = None, limit: int = None):
     """
     Query the database and return all non-locus keys.
     """
@@ -158,7 +158,7 @@ async def api_keys_index(index: str, arity: int, req: fastapi.Request, columns: 
             columns = columns.split(',')
         i = INDEXES[(index, arity)]
 
-        keys, query_s = profile(query.fetch_keys, engine, i, columns)
+        keys, query_s = profile(query.fetch_keys, engine, i, columns, key_limit=limit)
 
         return {
             'profile': {
