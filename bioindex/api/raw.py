@@ -79,5 +79,8 @@ async def api_raw_file(file: str, req: fastapi.Request):
     content_type, encoding = mimetypes.guess_type(file)
     if content_type is None:
         content_type = 'application/octet-stream'
+    headers = {}
+    if encoding is not None:
+        headers['Content-Encoding'] = encoding
 
-    return fastapi.Response(content=content.read(), media_type=content_type, headers={'Content-Encoding': encoding})
+    return fastapi.Response(content=content.read(), media_type=content_type, headers=headers)
