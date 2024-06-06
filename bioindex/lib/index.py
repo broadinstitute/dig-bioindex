@@ -37,14 +37,13 @@ class Index:
 
     @staticmethod
     def set_compressed(engine, name, prefix, compressed):
-        print(name, prefix, compressed)
         with engine.connect() as conn:
             conn.execute(
                 sqlalchemy.text(
                     'UPDATE `__Indexes` SET compressed = :compressed '
                     'WHERE `name` = :name and prefix = :prefix'
                 ),
-                {'name': name, 'prefix': prefix, 'compressed': 1 if compressed else 0}
+                {'name': name, 'prefix': prefix, 'compressed': compressed}
             )
 
     @staticmethod
