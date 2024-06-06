@@ -42,7 +42,7 @@ class Index:
                 sqlalchemy.text(
                     'UPDATE `__Indexes` SET compressed = :compressed WHERE `name` = :name and prefix = :prefix'
                 ),
-                name=name, prefix=prefix, compressed=compressed
+                {'name': name, 'prefix': prefix, 'compressed': compressed}
             )
 
     @staticmethod
