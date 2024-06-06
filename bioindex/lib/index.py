@@ -45,6 +45,7 @@ class Index:
                 ),
                 {'name': name, 'prefix': prefix, 'compressed': compressed}
             )
+            conn.commit()
 
     @staticmethod
     def create(engine, name, rds_table_name, s3_prefix, schema):
