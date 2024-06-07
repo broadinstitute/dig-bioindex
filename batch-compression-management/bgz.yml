@@ -88,7 +88,7 @@ Resources:
       Timeout:
         AttemptDurationSeconds: 7200
       ContainerProperties:
-        Image: '005901288866.dkr.ecr.us-east-1.amazonaws.com/bgzip-repo'
+        Image: !Sub '${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/bgzip-repo'
         Command:
           - 'python3'
           - 'delete_json_files.py'
@@ -120,7 +120,7 @@ Resources:
       Timeout:
         AttemptDurationSeconds: 36000
       ContainerProperties:
-        Image: '005901288866.dkr.ecr.us-east-1.amazonaws.com/bgzip-repo'
+        Image: !Sub '${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/bgzip-repo'
         Command:
           - 'python3'
           - 'decompress_json_files.py'
