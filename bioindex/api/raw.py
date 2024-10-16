@@ -18,10 +18,6 @@ router = fastapi.APIRouter()
 # optionally connect to the portal/metadata schema
 portal = connect_to_portal(CONFIG)
 
-# if there is no portal schema defined, then patch the router
-if not portal:
-    monkey_patch_router(router)
-
 
 @router.get('/plot/dataset/{dataset}/{file:path}')
 async def api_raw_plot_dataset(dataset: str, file: str, req: fastapi.Request):
