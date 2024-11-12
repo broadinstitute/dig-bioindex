@@ -5,7 +5,7 @@ import sys
 from sqlalchemy import Column, DateTime, Index, Integer, String, Table, FetchedValue, Boolean, text
 from sqlalchemy.orm import Session
 
-from .aws import connect_to_db
+from .gcp import connect_to_db
 
 # tables
 __Indexes = None

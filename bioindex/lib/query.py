@@ -5,7 +5,7 @@ from sqlalchemy import text
 
 from .locus import Locus, parse_region_string
 from .reader import MultiRecordReader, RecordReader, RecordSource
-from .s3 import list_objects
+from .gcs import list_objects
 
 
 def fetch(config, engine, index, q, restricted=None):

@@ -4,7 +4,7 @@ import os
 import sys
 import urllib
 
-from .aws import describe_rds_instance, secret_lookup
+from .gcp import describe_rds_instance, secret_lookup
 from .locus import RegionLocus
 from .utils import read_gff
 

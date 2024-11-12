@@ -13,7 +13,7 @@ import rich.logging
 import rich.table
 import uvicorn
 
-from .lib import config, aws
+from .lib import config, gcp
 from .lib import index
 from .lib import migrate
 from .lib import ql
@@ -241,19 +241,19 @@ def is_index_prefix_valid(cfg, idx: str, prefix: str):
 
 def check_index_and_launch_job(cfg, index_name, prefix, job_type, additional_parameters=None):
     if is_index_prefix_valid(cfg, index_name, prefix):
-        start_and_monitor_aws_batch_job(job_type, index_name, prefix, additional_parameters=additional_parameters)
+        start_and_monitor_gcp_batch_job(job_type, index_name, prefix, additional_parameters=additional_parameters)
     else:
         console.print(f'Could not find unique index with name {index_name} and prefix {prefix}, quitting')
 
 
-def start_and_monitor_aws_batch_job(job_type: BgzipJobType, index_name: str, s3_path: str,
+def start_and_monitor_gcp_batch_job(job_type: BgzipJobType, index_name: str, s3_path: str,
                                     initial_wait: int = 90, check_interval: int = 30,
                                     additional_parameters: dict = None):
-    job_id = aws.start_batch_job(index_name, s3_path, job_type.value, additional_parameters=additional_parameters)
+    job_id = gcp.start_batch_job(index_name, s3_path, job_type.value, additional_parameters=additional_parameters)
     console.print(f'{job_type} started with id {job_id}')
     time.sleep(initial_wait)
     while True:
-        status = aws.get_bgzip_job_status(job_id)
+        status = gcp.get_bgzip_job_status(job_id)
         console.print(f'{job_type} job, id: {job_id} status: {status}')
         if status == 'SUCCEEDED':
             console.print(f'{job_type} job {job_id} succeeded')

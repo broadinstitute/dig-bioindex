@@ -7,7 +7,7 @@ import logging
 import orjson
 
 from .auth import verify_record
-from .s3 import read_lined_object
+from .gcs import read_lined_object
 # from . import config
 
 # CONFIG = config.Config()

@@ -13,8 +13,8 @@ import time
 
 from sqlalchemy import text
 
-from .aws import invoke_lambda, start_and_wait_for_indexer_job
-from .s3 import list_objects, read_lined_object, relative_key
+from .gcp import invoke_lambda, start_and_wait_for_indexer_job
+from .gcs import list_objects, read_lined_object, relative_key
 from .schema import Schema
 from .utils import cap_case_str
 
