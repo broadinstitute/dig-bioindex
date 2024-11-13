@@ -17,14 +17,14 @@ def migrate(config):
     Ensure all tables exist for the BioIndex to function. Returns
     the SQLAlchemy Engine object connected to the database.
     """
-    rds_config = config.rds_config
-    name = rds_config['name']
+    cloudsql_config = config.cloudsql_config
+    name = cloudsql_config['name']
 
     # indicate what's being connected to and try
     logging.info('Connecting to %s/%s...', name, config.bio_schema)
 
     try:
-        engine = connect_to_db(**rds_config, schema=config.bio_schema)
+        engine = connect_to_db(**cloudsql_config, schema=config.bio_schema)
 
         # create all tables
         create_indexes_table(engine)

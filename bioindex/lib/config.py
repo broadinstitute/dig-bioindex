@@ -4,7 +4,7 @@ import os
 import sys
 import urllib
 
-from .gcp import describe_rds_instance, secret_lookup
+from .gcp import describe_cloudsql_instance
 from .locus import RegionLocus
 from .utils import read_gff
 
@@ -39,19 +39,12 @@ class Config:
         Loads the configuration file using environment.
         """
         try:
-            if self.bioindex_env is not None:
-                secret = secret_lookup(self.bioindex_env)
-                assert secret, f'Failed to lookup secret {self.bioindex_env}'
-
-                # set environment keys if not already set
-                Config.set_default_env(secret)
-
             # use keyword arguments if environment not yet set
             Config.set_default_env(kwargs)
 
             # validate required settings
-            assert self.s3_bucket, 'BIOINDEX_S3_BUCKET not set in the environment'
-            assert self.rds_config, 'BIOINDEX_RDS_SECRET nor BIOINDEX_RDS_INSTANCE set in the environment'
+            assert self.gcs_bucket, 'BIOINDEX_GCS_BUCKET not set in the environment'
+            assert self.cloudsql_config, 'BIOINDEX_CLOUDSQL_SECRET nor BIOINDEX_CLOUDSQL_INSTANCE set in the environment'
             assert self.bio_schema, 'BIOINDEX_BIO_SCHEMA not set in the environment'
         except AssertionError as ex:
             logging.error(ex)
@@ -67,33 +60,25 @@ class Config:
                 os.environ[k] = v
 
     @functools.cached_property
-    def rds_config(self):
+    def cloudsql_config(self):
         """
-        Builds the RDS configuration from the environment.
+        Builds the CloudSQL configuration from the environment.
         """
-        if self.rds_secret:
-            secret = secret_lookup(self.rds_secret)
-            assert secret, f'Failed to lookup secret {self.rds_secret}'
-
-            # set the name of the RDS instance
-            secret['name'] = secret.pop('dbInstanceIdentifier')
-            return secret
-
         # no instance specified
-        if not self.rds_instance:
+        if not self.cloudsql_instance:
             return None
 
         # ensure the username and password are both set
-        assert self.rds_username, 'BIOINDEX_RDS_USERNAME is not set in the environment'
-        assert self.rds_password, 'BIOINDEX_RDS_PASSWORD is not set in the environment'
+        assert self.cloudsql_username, 'BIOINDEX_CLOUDSQL_USERNAME is not set in the environment'
+        assert self.cloudsql_password, 'BIOINDEX_CLOUDSQL_PASSWORD is not set in the environment'
 
         # use the instance name to look up information
-        instance = describe_rds_instance(self.rds_instance)
+        instance = describe_cloudsql_instance(self.cloudsql_instance)
 
         # return the configuration
         return {
-            'username': self.rds_username,
-            'password': self.rds_password,
+            'username': self.cloudsql_username,
+            'password': self.cloudsql_password,
             **instance,
         }
 
@@ -138,13 +123,13 @@ class Config:
 
     @property
     @config_var()
-    def s3_bucket(self):
-        return 'BIOINDEX_S3_BUCKET'
+    def gcs_bucket(self):
+        return 'BIOINDEX_GCS_BUCKET'
 
     @property
     @config_var()
-    def rds_secret(self):
-        return 'BIOINDEX_RDS_SECRET'
+    def cloudsql_secret(self):
+        return 'BIOINDEX_CLOUDSQL_SECRET'
 
     @property
     @config_var(default='rsidmapping_v2')
@@ -153,18 +138,18 @@ class Config:
 
     @property
     @config_var()
-    def rds_instance(self):
-        return 'BIOINDEX_RDS_INSTANCE'
+    def cloudsql_instance(self):
+        return 'BIOINDEX_CLOUDSQL_INSTANCE'
 
     @property
     @config_var()
-    def rds_username(self):
-        return 'BIOINDEX_RDS_USERNAME'
+    def cloudsql_username(self):
+        return 'BIOINDEX_CLOUDSQL_USERNAME'
 
     @property
     @config_var()
-    def rds_password(self):
-        return 'BIOINDEX_RDS_PASSWORD'
+    def cloudsql_password(self):
+        return 'BIOINDEX_CLOUDSQL_PASSWORD'
 
     @property
     @config_var()

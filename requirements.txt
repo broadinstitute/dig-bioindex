@@ -15,3 +15,8 @@ smart_open==5.0
 sqlalchemy==2.0.3
 typing-extensions==4.8.0
 uvicorn[standard]==0.24.0
+
+google-auth==2.36.0
+google-auth-oauthlib==1.2.1
+google-auth-httplib2==0.2.0
+google-api-python-client==2.152.0
