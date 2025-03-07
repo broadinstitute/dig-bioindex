@@ -143,6 +143,17 @@ class Config:
 
     @property
     @config_var()
+    def s3_subdir(self):
+        return "BIOINDEX_S3_SUBDIR"
+
+    def s3_path(self, path):
+        if self.s3_subdir is None:
+            return path
+        else:
+            return f'{self.s3_subdir}/{path}'
+
+    @property
+    @config_var()
     def rds_secret(self):
         return 'BIOINDEX_RDS_SECRET'
 
