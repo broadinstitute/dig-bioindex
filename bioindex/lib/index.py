@@ -147,8 +147,8 @@ class Index:
         Builds the index table for objects in S3.
         """
         logging.info('Finding keys in %s...', self.s3_prefix)
-        json_objects = list(list_objects(config.s3_bucket, self.s3_prefix, only='*.json'))
-        gz_objects = list(list_objects(config.s3_bucket, self.s3_prefix, only='*.json.gz'))
+        json_objects = list(list_objects(config.s3_bucket, config.s3_path(self.s3_prefix), only='*.json'))
+        gz_objects = list(list_objects(config.s3_bucket, config.s3_path(self.s3_prefix), only='*.json.gz'))
         if len(json_objects) > 0 and len(gz_objects) > 0:
             raise ValueError(f'There are both compressed and uncompressed files in {self.s3_prefix}. '
                              f'An index needs to be all one or the other.')
@@ -266,8 +266,8 @@ class Index:
     def batch_run_function(self, config, obj):
         logging.info(f'Processing via batch {relative_key(obj["Key"], self.s3_prefix)}...')
 
-        return start_and_wait_for_indexer_job(obj['Key'], self.name, self.schema.arity, config.s3_bucket, config.rds_secret,
-                                              config.bio_schema, obj['Size'])
+        return start_and_wait_for_indexer_job(config.s3_path(obj['Key']), self.name, self.schema.arity,
+                                              config.s3_bucket, config.rds_secret, config.bio_schema, obj['Size'])
 
     def lambda_run_function(self, config, obj):
         logging.info(f'Processing {relative_key(obj["Key"], self.s3_prefix)}...')

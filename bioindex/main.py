@@ -311,14 +311,14 @@ def check_index_and_launch_job(cfg, index_name, prefix, job_type, additional_par
     try:
         if is_index_prefix_valid(cfg, index_name, prefix):
             try:
-                job_id = aws.start_batch_job(cfg.s3_bucket, index_name, prefix, job_type.value, additional_parameters=additional_parameters)
+                job_id = aws.start_batch_job(cfg.s3_bucket, index_name, cfg.s3_path(prefix), job_type.value, additional_parameters=additional_parameters)
                 console.print(f'{job_type} started with id {job_id}')
 
                 if return_job_id:
                     return job_id
                 else:
                     # For backward compatibility with existing command usage
-                    start_and_monitor_aws_batch_job(cfg.s3_bucket, job_type, index_name, prefix,
+                    start_and_monitor_aws_batch_job(cfg.s3_bucket, job_type, index_name, cfg.s3_path(prefix),
                                                   additional_parameters=additional_parameters, job_id=job_id)
                     return None
             except Exception as e:
