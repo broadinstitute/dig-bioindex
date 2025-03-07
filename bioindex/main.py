@@ -241,7 +241,7 @@ def is_index_prefix_valid(cfg, idx: str, prefix: str):
 
 def check_index_and_launch_job(cfg, index_name, prefix, job_type, additional_parameters=None):
     if is_index_prefix_valid(cfg, index_name, prefix):
-        start_and_monitor_aws_batch_job(cfg.s3_bucket, job_type, index_name, prefix, additional_parameters=additional_parameters)
+        start_and_monitor_aws_batch_job(cfg.s3_bucket, job_type, index_name, cfg.s3_path(prefix), additional_parameters=additional_parameters)
     else:
         console.print(f'Could not find unique index with name {index_name} and prefix {prefix}, quitting')
 

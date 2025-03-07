@@ -41,7 +41,7 @@ def fetch_all(config, index, restricted=None, key_limit=None):
     to read all the records from all the files. Returns a RecordReader
     of the results.
     """
-    s3_objects = list_objects(config.s3_bucket, index.s3_prefix, max_keys=key_limit)
+    s3_objects = list_objects(config.s3_bucket, config.s3_path(index.s3_prefix), max_keys=key_limit)
 
     # arbitrarily limit the number of keys
     if key_limit:
