@@ -29,9 +29,9 @@ def get_bgzip_job_status(job_id: str):
     return None
 
 
-def start_batch_job(index_name: str, s3_path: str, job_definition: str, additional_parameters: dict = None):
+def start_batch_job(s3_bucket: str, index_name: str, s3_path: str, job_definition: str, additional_parameters: dict = None):
     batch_client = boto3.client('batch')
-    parameters = {'index': index_name, 'path': s3_path, 'bucket': 'dig-bio-index'}
+    parameters = {'index': index_name, 'path': s3_path, 'bucket': s3_bucket}
     if additional_parameters:
         # boto requires this
         parameters.update({k: str(v) for k, v in additional_parameters.items()})

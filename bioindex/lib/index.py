@@ -40,10 +40,12 @@ class Index:
         with engine.connect() as conn:
             conn.execute(
                 sqlalchemy.text(
-                    'UPDATE `__Indexes` SET compressed = :compressed WHERE `name` = :name and prefix = :prefix'
+                    'UPDATE `__Indexes` SET compressed = :compressed '
+                    'WHERE `name` = :name and prefix = :prefix'
                 ),
-                name=name, prefix=prefix, compressed=compressed
+                {'name': name, 'prefix': prefix, 'compressed': compressed}
             )
+            conn.commit()
 
     @staticmethod
     def create(engine, name, rds_table_name, s3_prefix, schema):
