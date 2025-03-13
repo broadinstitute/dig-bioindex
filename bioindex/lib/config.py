@@ -98,7 +98,7 @@ class Config:
         }
 
     @functools.cached_property
-    def portal_config(self):
+    def portal_rds_config(self):
         """
         Builds the RDS configuration from the environment.
         """
