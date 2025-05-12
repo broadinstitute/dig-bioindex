@@ -40,7 +40,7 @@ def bg_compress_and_index_file(bucket_name, file, boto_s3, files_to_retry, print
     # Run bgzip compression and capture stderr
     command = ['bgzip', '-i', f"s3://{bucket_name}/{file}"]
     try:
-        result = subprocess.run(command, check=True, timeout=600,
+        result = subprocess.run(command, check=True, timeout=1200,
                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                universal_newlines=True)
         stderr_output = result.stderr

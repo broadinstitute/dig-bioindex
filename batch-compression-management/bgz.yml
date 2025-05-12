@@ -54,7 +54,7 @@ Resources:
       PlatformCapabilities:
         - 'FARGATE'
       Timeout:
-        AttemptDurationSeconds: 7200
+        AttemptDurationSeconds: 20400
       ContainerProperties:
         Image: !Sub '${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/bgzip-repo'
         Command:
@@ -86,7 +86,7 @@ Resources:
       PlatformCapabilities:
         - 'FARGATE'
       Timeout:
-        AttemptDurationSeconds: 7200
+        AttemptDurationSeconds: 20400
       ContainerProperties:
         Image: !Sub '${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/bgzip-repo'
         Command:
