@@ -19,11 +19,60 @@ from ..lib.utils import nonce, profile, profile_async
 from ..lib.config import Config
 from ..lib.index import list_indexes
 
-# Create router
 router = APIRouter()
-
-# Load configuration
 load_config = Config()
+
+# MCP pigean tool endpoint using dynamic schema (no Pydantic model)
+@router.post('/pigean_query', response_class=ORJSONResponse, tags=["pigean"])
+async def pigean_query(
+    body: dict,
+):
+    """
+    Query any pigean_* index with the same logic as the REST endpoints. Uses schema from environment/config.
+    Expects JSON body with at least: {"index": "pigean_*", "q": <query>, "fmt": <format>, "limit": <int>}
+    """
+    index_name = body.get("index")
+    if not index_name or not index_name.startswith("pigean_"):
+        raise fastapi.HTTPException(status_code=400, detail="Index must start with 'pigean_'")
+    q = body.get("q")
+    fmt = body.get("fmt", "row")
+    limit = body.get("limit")
+
+    global INDEXES
+    try:
+        qs = _parse_query(q, required=False)
+        if (index_name, len(qs)) not in INDEXES:
+            INDEXES = _load_indexes()
+        i = INDEXES[(index_name, len(qs))]
+        reader, query_s = profile(
+            query.fetch,
+            load_config,
+            connect_to_bio(load_config),
+            i,
+            qs,
+        )
+        if not limit and reader.bytes_total > RESPONSE_LIMIT_MAX:
+            raise fastapi.HTTPException(status_code=413)
+        if limit is not None:
+            reader.set_limit(limit)
+        # fetch records
+        fetched_records, fetch_s = profile(list, reader.records)
+        count = len(fetched_records)
+        # build response using the same structure as other endpoints
+        return {
+            "index": index_name,
+            "q": q,
+            "count": count,
+            "data": fetched_records,
+            "page": 1,
+            "limit": limit,
+            "continuation": None,
+            "nonce": nonce(),
+        }
+    except KeyError:
+        raise fastapi.HTTPException(status_code=400, detail=f'Invalid pigean index: {index_name}')
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 # max number of bytes to read from s3 per request
 RESPONSE_LIMIT = load_config.response_limit
