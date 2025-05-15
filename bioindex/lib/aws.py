@@ -22,11 +22,21 @@ dynamo_client = boto3.resource('dynamodb', region_name='us-east-1')
 
 
 def get_bgzip_job_status(job_id: str):
-    batch_client = boto3.client('batch')
-    job_response = batch_client.describe_jobs(jobs=[job_id])
-    if len(job_response['jobs']) > 0:
-        return job_response['jobs'][0]['status']
-    return None
+    """
+    Get the status of a batch job. Returns the status string or None if job not found.
+    Valid statuses: SUBMITTED, PENDING, RUNNABLE, STARTING, RUNNING, SUCCEEDED, FAILED
+    """
+    try:
+        batch_client = boto3.client('batch')
+        job_response = batch_client.describe_jobs(jobs=[job_id])
+        if len(job_response['jobs']) > 0:
+            return job_response['jobs'][0]['status']
+        else:
+            print(f"Warning: Job {job_id} not found in AWS Batch")
+            return None
+    except Exception as e:
+        print(f"Error getting status for job {job_id}: {str(e)}")
+        return None
 
 
 def start_batch_job(s3_bucket: str, index_name: str, s3_path: str, job_definition: str, additional_parameters: dict = None):

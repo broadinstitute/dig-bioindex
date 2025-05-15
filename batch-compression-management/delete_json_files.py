@@ -19,6 +19,7 @@ def main(index, bucket, path):
 
 
 def delete_json_file(bucket_name, file, boto_s3, files_to_retry, print_lock):
+    print("Attempting to delete file: ", file)
     results = boto_s3.list_objects(Bucket=bucket_name, Prefix=file + ".gz")
     if results.get('Contents', None) and len(results.get('Contents')) == 2:
         with print_lock:

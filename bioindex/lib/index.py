@@ -268,9 +268,6 @@ class Index:
 
         return start_and_wait_for_indexer_job(obj['Key'], self.name, self.schema.arity, config.s3_bucket, config.rds_secret,
                                               config.bio_schema, obj['Size'])
-        """
-        Index the objects using a lambda function.
-        """
 
     def lambda_run_function(self, config, obj):
         logging.info(f'Processing {relative_key(obj["Key"], self.s3_prefix)}...')
