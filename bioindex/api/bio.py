@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import itertools
+import os
 import re
 from enum import Enum
 from typing import List, Optional
@@ -8,30 +9,26 @@ from typing import List, Optional
 import fastapi
 import graphql
 from pydantic import BaseModel
+from fastapi import APIRouter, Depends
+from fastapi.responses import ORJSONResponse
 
 from .utils import *
-from ..lib import config
-from ..lib import continuation
-from ..lib import index
-from ..lib import ql
-from ..lib import query
+from ..lib import aws, config as lib_config, continuation, index, ql, query, s3
 from ..lib.auth import restricted_keywords
 from ..lib.utils import nonce, profile, profile_async
+from ..lib.config import Config
+from ..lib.index import list_indexes
 
-# load dot files and configuration
-CONFIG = config.Config()
+# Create router
+router = APIRouter()
 
-# create flask app; this will load .env
-router = fastapi.APIRouter()
-
-# connect to database
-engine = connect_to_bio(CONFIG)
-portal = connect_to_portal(CONFIG)
+# Load configuration
+load_config = Config()
 
 # max number of bytes to read from s3 per request
-RESPONSE_LIMIT = CONFIG.response_limit
-RESPONSE_LIMIT_MAX = CONFIG.response_limit_max
-MATCH_LIMIT = CONFIG.match_limit
+RESPONSE_LIMIT = load_config.response_limit
+RESPONSE_LIMIT_MAX = load_config.response_limit_max
+MATCH_LIMIT = load_config.match_limit
 
 # multi-query executor
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
@@ -40,8 +37,8 @@ executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
 gql_schema = None
 
 # if the graphql schema file exists, load it
-if CONFIG.graphql_schema:
-    gql_schema = ql.load_schema(CONFIG, engine, CONFIG.graphql_schema)
+if load_config.graphql_schema:
+    gql_schema = ql.load_schema(load_config, connect_to_bio(load_config), load_config.graphql_schema)
 
 
 class Query(BaseModel):
@@ -50,48 +47,42 @@ class Query(BaseModel):
     limit: Optional[int] = None
 
 
-def _load_indexes():
+class Index(BaseModel):
+    name: str
+
+
+class QueryResult(BaseModel):
+    index: str
+    q: str
+    data: List[dict]
+
+
+class CountResult(BaseModel):
+    index: str
+    q: str
+    count: int
+
+
+class Schema(BaseModel):
+    index: str
+    schema: dict
+
+
+class IndexesResponse(BaseModel):
+    indexes: List[str]
+
+
+@router.get('/indexes', response_class=ORJSONResponse)
+async def api_list_indexes(config: Config = Depends(load_config)):
     """
-    Create a cache of the indexes in the database.
+    Return all available indexes using the schema defined in BIOINDEX_BIO_SCHEMA.
     """
-    indexes = index.Index.list_indexes(engine, filter_built=False)
-    return dict(((i.name, int(i.schema.arity)), i) for i in indexes)
-
-
-# initialize with all the indexes, get them all, whether built or not
-INDEXES = _load_indexes()
-
-
-@router.get('/indexes', response_class=fastapi.responses.ORJSONResponse)
-async def api_list_indexes():
-    """
-    Return all queryable indexes. This also refreshes the internal
-    cache of the table so the server doesn't need to be bounced when
-    the table is updated (very rare!).
-    """
-    global INDEXES
-
-    # update the global index cache
-    INDEXES = _load_indexes()
-    data = []
-
-    # add each index to the response data
-    for i in sorted(INDEXES.values(), key=lambda i: i.name):
-        data.append({
-            'index': i.name,
-            'built': i.built,
-            'schema': str(i.schema),
-            'compressed': i.compressed,
-            'query': {
-                'keys': i.schema.key_columns,
-                'locus': i.schema.has_locus,
-            },
-        })
-
+    schema = os.getenv("BIOINDEX_BIO_SCHEMA", "bio")  # Default to "bio" if not set
+    indexes = list_indexes(config, schema=schema)
     return {
-        'count': len(data),
-        'data': data,
-        'nonce': nonce(),
+        "count": len(indexes),
+        "data": indexes,
+        "nonce": "some_nonce_value"  # Replace with actual nonce logic
     }
 
 
@@ -105,7 +96,7 @@ async def api_match(index: str, req: fastapi.Request, q: str, limit: int = None)
         i = INDEXES[(index, len(qs))]
 
         # execute the query
-        keys, query_s = profile(query.match, CONFIG, engine, i, qs)
+        keys, query_s = profile(query.match, load_config, connect_to_bio(load_config), i, qs)
 
         # allow an upper limit on the total number of keys returned
         if limit is not None:
@@ -130,7 +121,7 @@ async def api_count_index(index: str, req: fastapi.Request, q: str = None):
         i = INDEXES[(index, len(qs))]
 
         # lookup the schema for this index and perform the query
-        count, query_s = profile(query.count, CONFIG, engine, i, qs)
+        count, query_s = profile(query.count, load_config, connect_to_bio(load_config), i, qs)
 
         return {
             'profile': {
@@ -158,7 +149,7 @@ async def api_keys_index(index: str, arity: int, req: fastapi.Request, columns: 
             columns = columns.split(',')
         i = INDEXES[(index, arity)]
 
-        keys, query_s = profile(query.fetch_keys, engine, i, columns)
+        keys, query_s = profile(query.fetch_keys, connect_to_bio(load_config), i, columns)
 
         return {
             'profile': {
@@ -189,12 +180,12 @@ async def api_all(index: str, req: fastapi.Request, fmt: str = 'row'):
             raise KeyError
         elif len(idxs) == 1:
             # discover what the user doesn't have access to see
-            restricted, auth_s = profile(restricted_keywords, portal, req) if portal else (None, 0)
+            restricted, auth_s = profile(restricted_keywords, connect_to_portal(load_config), req) if connect_to_portal(load_config) else (None, 0)
 
             # lookup the schema for this index and perform the query
             reader, query_s = profile(
                 query.fetch_all,
-                CONFIG,
+                load_config,
                 idxs[0],
                 restricted=restricted,
             )
@@ -224,12 +215,12 @@ async def api_all_arity(index: str, arity: int, req: fastapi.Request):
         i = INDEXES[(index, arity)]
 
         # discover what the user doesn't have access to see
-        restricted, auth_s = profile(restricted_keywords, portal, req) if portal else (None, 0)
+        restricted, auth_s = profile(restricted_keywords, connect_to_portal(load_config), req) if connect_to_portal(load_config) else (None, 0)
 
         # lookup the schema for this index and perform the query
         reader, query_s = profile(
             query.fetch_all,
-            CONFIG,
+            load_config,
             i,
             restricted=restricted,
         )
@@ -263,7 +254,7 @@ async def api_test_all(index: str, req: fastapi.Request):
             # lookup the schema for this index and perform the query
             reader, query_s = profile(
                 query.fetch_all,
-                CONFIG,
+                load_config,
                 idxs[0],
             )
 
@@ -291,7 +282,7 @@ async def api_test_all_arity(index: str, arity: int, req: fastapi.Request):
         # lookup the schema for this index and perform the query
         reader, query_s = profile(
             query.fetch_all,
-            CONFIG,
+            load_config,
             i,
         )
 
@@ -309,7 +300,7 @@ async def api_lookup_variant_for_rs_id(rsid: str):
     """
     Lookup the variant ID for a given rsID.
     """
-    dynamodb_table = CONFIG.variant_dynamodb_table
+    dynamodb_table = load_config.variant_dynamodb_table
     data, fetch_s = profile(aws.look_up_var_id, rsid, dynamodb_table)
     return {
         'profile': {
@@ -337,12 +328,12 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
         i = INDEXES[(index, len(qs))]
 
         # discover what the user doesn't have access to see
-        restricted, auth_s = profile(restricted_keywords, portal, req) if portal else (None, 0)
+        restricted, auth_s = profile(restricted_keywords, connect_to_portal(load_config), req) if connect_to_portal(load_config) else (None, 0)
         # lookup the schema for this index and perform the query
         reader, query_s = profile(
             query.fetch,
-            CONFIG,
-            engine,
+            load_config,
+            connect_to_bio(load_config),
             i,
             qs,
             restricted=restricted,
@@ -393,7 +384,7 @@ async def api_query_gql(req: fastapi.Request):
         # execute the query asynchronously using the schema
         co = asyncio.wait_for(
             graphql.graphql(gql_schema, query),
-            timeout=CONFIG.script_timeout,
+            timeout=load_config.script_timeout,
         )
 
         # wait for it to complete
@@ -417,7 +408,7 @@ async def api_query_gql(req: fastapi.Request):
         }
     except asyncio.TimeoutError:
         raise fastapi.HTTPException(status_code=408,
-                                    detail=f'Query execution timed out after {CONFIG.script_timeout} seconds')
+                                    detail=f'Query execution timed out after {load_config.script_timeout} seconds')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
@@ -436,7 +427,7 @@ async def api_test_index(index: str, q: str, req: fastapi.Request):
         i = INDEXES[(index, len(qs))]
 
         # lookup the schema for this index and perform the query
-        reader, query_s = profile(query.fetch, engine, CONFIG.s3_bucket, i, qs)
+        reader, query_s = profile(query.fetch, connect_to_bio(load_config), load_config.s3_bucket, i, qs)
 
         return fastapi.Response(
             headers={'Content-Length': str(reader.bytes_total)})
