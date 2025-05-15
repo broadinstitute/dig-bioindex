@@ -17,7 +17,7 @@ from ..lib import aws, config as lib_config, continuation, index, ql, query, s3
 from ..lib.auth import restricted_keywords
 from ..lib.utils import nonce, profile, profile_async
 from ..lib.config import Config
-from ..lib.index import list_indexes
+from ..lib.index import Index
 
 router = APIRouter()
 load_config = Config()
@@ -127,10 +127,11 @@ async def api_list_indexes(config: Config = Depends(load_config)):
     Return all available indexes using the schema defined in BIOINDEX_BIO_SCHEMA.
     """
     schema = os.getenv("BIOINDEX_BIO_SCHEMA", "bio")  # Default to "bio" if not set
-    indexes = list_indexes(config, schema=schema)
+    indexes = list(Index.list_indexes(config.engine, filter_built=False))
+    # Optionally, filter or format the output as needed
     return {
         "count": len(indexes),
-        "data": indexes,
+        "data": [i.name for i in indexes],
         "nonce": "some_nonce_value"  # Replace with actual nonce logic
     }
 
