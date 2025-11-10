@@ -1,4 +1,3 @@
-import concurrent.futures
 import re
 
 from sqlalchemy import text
@@ -16,10 +15,7 @@ def fetch(config, engine, index, qss, restricted=None):
     if len(qss[0]) != index.schema.arity:
         raise ValueError(f'Arity mismatch for index schema "{index.schema}"')
 
-    reader = _run_query(config, engine, index, qss[0], restricted)
-    for qs in qss[1:]:
-        reader = reader.combine_with(_run_query(config, engine, index, qs, restricted))
-    return reader
+    return _run_queries(config, engine, index, qss, restricted)
 
 
 def fetch_all(config, index, restricted=None, key_limit=None):
@@ -67,7 +63,7 @@ def count(config, engine, index, q):
     """
     Estimate the number of records that will be returned by a query.
     """
-    reader = fetch_all(config, index) if len(q) == 0 else _run_query(config, engine, index, q, None)
+    reader = fetch_all(config, index) if len(q) == 0 else _run_queries(config, engine, index, [q], None)
 
     # read a couple hundred records to get the total bytes read
     records = list(zip(range(500), reader.records))
@@ -132,69 +128,75 @@ def match(config, engine, index, q):
             prev_key = r[0]
 
 
-def _run_query(config, engine, index, q, restricted):
-    """
-    Construct a SQL query to fetch S3 objects and byte offsets. Run it and
-    return a RecordReader to the results.
-    """
-    record_filter = None
-
-    # validate the index
-    if not index.built:
-        raise ValueError(f'Index "{index.name}" is not built')
-
-    # build the query
-    sql = (
-        f'SELECT `__Keys`.`key`, MIN(`start_offset`), MAX(`end_offset`) '
-        f'FROM `{index.table}` '
-        f'INNER JOIN `__Keys` '
-        f'ON `__Keys`.`id` = `{index.table}`.`key` '
-        f'WHERE {index.schema.sql_filters} '
-        f'GROUP BY `key` '
-        f'ORDER BY `key` ASC'
+def _run_queries(config, engine, index, qss, restricted):
+    sources = _get_sources(config, engine, index, qss)
+    return RecordReader(
+        config,
+        sources,
+        index,
+        restricted=restricted,
     )
 
-    # query parameter list
-    query_params = q
-    escaped_column_names = [col.replace("|", "_") for col in index.schema.schema_columns]
-    # if the schema has a locus, parse the query parameter
-    if index.schema.has_locus:
-        if index.schema.locus_is_template:
-            chromosome, start, stop = index.schema.locus_class(q[-1]).region()
-        else:
-            chromosome, start, stop = parse_region_string(q[-1], config)
 
-        # positions are stepped, and need to be between stepped ranges
-        step_start = (start // Locus.LOCUS_STEP) * Locus.LOCUS_STEP
-        step_stop = (stop // Locus.LOCUS_STEP) * Locus.LOCUS_STEP
+def _get_sources(config, engine, index, qss):
+    """
+    Construct a SQL query to fetch S3 objects and byte offsets. Run it and
+    return a list of RecordSources to the results.
+    """
+    sources = []
+    for q in qss:
+        record_filter = None
 
-        # replace the last query parameter with the locus
-        query_params = dict(zip(escaped_column_names, q[:-1]))
-        query_params.update({"chromosome": chromosome, "start_pos": step_start, "end_pos": step_stop})
+        # validate the index
+        if not index.built:
+            raise ValueError(f'Index "{index.name}" is not built')
 
-        # match templated locus or overlapping loci
-        def overlaps(row):
-            if index.schema.locus_is_template:
-                return row[index.schema.locus_columns[0]] == q[-1]
-
-            return index.schema.locus_of_row(row).overlaps(chromosome, start, stop)
-
-        # filter records read by locus
-        record_filter = overlaps
-
-    with engine.connect() as conn:
-        if isinstance(query_params, list):
-            query_params = dict(zip(escaped_column_names, query_params))
-        cursor = conn.execute(text(sql), query_params)
-        rows = cursor.fetchall()
-
-        # create a RecordSource for each entry in the database
-        sources = [RecordSource(*row, record_filter) for row in rows]
-
-        # create the reader
-        return RecordReader(
-            config,
-            sources,
-            index,
-            restricted=restricted,
+        # build the query
+        sql = (
+            f'SELECT `__Keys`.`key`, MIN(`start_offset`), MAX(`end_offset`) '
+            f'FROM `{index.table}` '
+            f'INNER JOIN `__Keys` '
+            f'ON `__Keys`.`id` = `{index.table}`.`key` '
+            f'WHERE {index.schema.sql_filters} '
+            f'GROUP BY `key` '
+            f'ORDER BY `key` ASC'
         )
+
+        # query parameter list
+        query_params = q
+        escaped_column_names = [col.replace("|", "_") for col in index.schema.schema_columns]
+        # if the schema has a locus, parse the query parameter
+        if index.schema.has_locus:
+            if index.schema.locus_is_template:
+                chromosome, start, stop = index.schema.locus_class(q[-1]).region()
+            else:
+                chromosome, start, stop = parse_region_string(q[-1], config)
+
+            # positions are stepped, and need to be between stepped ranges
+            step_start = (start // Locus.LOCUS_STEP) * Locus.LOCUS_STEP
+            step_stop = (stop // Locus.LOCUS_STEP) * Locus.LOCUS_STEP
+
+            # replace the last query parameter with the locus
+            query_params = dict(zip(escaped_column_names, q[:-1]))
+            query_params.update({"chromosome": chromosome, "start_pos": step_start, "end_pos": step_stop})
+
+            # match templated locus or overlapping loci
+            def overlaps(row):
+                if index.schema.locus_is_template:
+                    return row[index.schema.locus_columns[0]] == q[-1]
+
+                return index.schema.locus_of_row(row).overlaps(chromosome, start, stop)
+
+            # filter records read by locus
+            record_filter = overlaps
+
+        with engine.connect() as conn:
+            if isinstance(query_params, list):
+                query_params = dict(zip(escaped_column_names, query_params))
+            cursor = conn.execute(text(sql), query_params)
+            rows = cursor.fetchall()
+
+            # create a RecordSource for each entry in the database
+            sources += [RecordSource(*row, record_filter) for row in rows]
+
+    return sources
