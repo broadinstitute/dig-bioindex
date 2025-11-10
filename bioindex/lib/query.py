@@ -4,35 +4,22 @@ import re
 from sqlalchemy import text
 
 from .locus import Locus, parse_region_string
-from .reader import MultiRecordReader, RecordReader, RecordSource
+from .reader import RecordReader, RecordSource
 from .s3 import list_objects
 
 
-def fetch(config, engine, index, q, restricted=None):
-    """
-    Use the table schema to determine the type of query to execute. Returns
-    a RecordReader of all the results.
-    """
-    if len(q) != index.schema.arity:
-        raise ValueError(f'Arity mismatch for index schema "{index.schema}"')
-
-    # execute the query and fetch the records from s3
-    return _run_query(config, engine, index, q, restricted)
-
-
-def fetch_multi(executor, config, engine, index, queries, restricted=None):
+def fetch(config, engine, index, qss, restricted=None):
     """
     Run multiple queries in parallel and chain the readers returned
     into a single reader.
     """
-    jobs = [executor.submit(fetch, config, engine, index, q, restricted) for q in queries]
+    if len(qss[0]) != index.schema.arity:
+        raise ValueError(f'Arity mismatch for index schema "{index.schema}"')
 
-    # wait for them to complete and get the readers for each
-    done = concurrent.futures.as_completed(jobs)
-    readers = [d.result() for d in done]
-
-    # chain the records together
-    return MultiRecordReader(readers)
+    reader = _run_query(config, engine, index, qss[0], restricted)
+    for qs in qss[1:]:
+        reader = reader.combine_with(_run_query(config, engine, index, qs, restricted))
+    return reader
 
 
 def fetch_all(config, index, restricted=None, key_limit=None):
@@ -48,7 +35,7 @@ def fetch_all(config, index, restricted=None, key_limit=None):
         s3_objects = [o[1] for o in zip(range(key_limit), s3_objects)]
 
     # create a RecordSource for each object
-    sources = [RecordSource.from_s3_object(obj) for obj in s3_objects]
+    sources = [RecordSource.from_s3_object(obj, record_filter=None) for obj in s3_objects]
 
     # create the reader object, begin reading the records
     return RecordReader(config, sources, index, restricted=restricted)
@@ -202,13 +189,12 @@ def _run_query(config, engine, index, q, restricted):
         rows = cursor.fetchall()
 
         # create a RecordSource for each entry in the database
-        sources = [RecordSource(*row) for row in rows]
+        sources = [RecordSource(*row, record_filter) for row in rows]
 
         # create the reader
         return RecordReader(
             config,
             sources,
             index,
-            record_filter=record_filter,
             restricted=restricted,
         )

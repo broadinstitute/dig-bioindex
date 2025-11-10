@@ -201,7 +201,7 @@ def ql_resolver(config, engine, index):
                 #q.append(build_region_str(**kwargs['locus']))
 
         # execute the query, get the resulting reader
-        reader = fetch(config, engine, index, q)
+        reader = fetch(config, engine, index, [q])
 
         # materialize all the records
         return list(reader.records)
