@@ -286,7 +286,7 @@ def cli_query(cfg, index_name, q):
     i = index.Index.lookup(engine, index_name, len(q))
 
     # query the index
-    reader = query.fetch(cfg, engine, i, q)
+    reader = query.fetch(cfg, engine, i, [q])
 
     # dump all the records
     for record in reader.records:

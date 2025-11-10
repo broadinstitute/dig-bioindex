@@ -19,7 +19,7 @@ class BioIndexDataSource(flummox.source.DataSource):
             self.engine,
             self.config.s3_bucket,
             self.indexes[table],
-            q.split(','),
+            [q.split(',')],
             restricted=self.restricted,
         )
 

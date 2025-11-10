@@ -13,18 +13,16 @@ from .s3 import read_lined_object
 # CONFIG = config.Config()
 
 
-@dataclasses.dataclass(frozen=True)
 class RecordSource:
-    """
-    A RecordSource is a portion of an S3 object that contains JSON-
-    lines records.
-    """
-    key: str
-    start: int
-    end: int
+    def __init__(self, key, start, end, record_filter):
+        self.key = key
+        self.start = start
+        self.end = end
+        self.record_filter = record_filter
+
 
     @staticmethod
-    def from_s3_object(s3_obj):
+    def from_s3_object(s3_obj, record_filter):
         """
         Create a RecordSource from an S3 object listing.
         """
@@ -32,6 +30,7 @@ class RecordSource:
             key=s3_obj['Key'],
             start=0,
             end=s3_obj['Size'],
+            record_filter=record_filter
         )
 
     @property
@@ -48,7 +47,7 @@ class RecordReader:
     from a list of RecordSource objects for a given S3 bucket.
     """
 
-    def __init__(self, config, sources, index, record_filter=None, restricted=None):
+    def __init__(self, config, sources, index, restricted=None):
         """
         Initialize the RecordReader with a list of RecordSource objects.
         """
@@ -67,12 +66,8 @@ class RecordReader:
             self.bytes_total += source.length
 
         # start reading the records on-demand
-        self.record_filter = record_filter
         self.records = self._readall()
 
-        # if there's a filter, apply it now
-        if record_filter is not None:
-            self.records = filter(record_filter, self.records)
 
     def _readall(self):
         """
@@ -106,7 +101,7 @@ class RecordReader:
                                 self.restricted_count += 1
                                 continue
 
-                            if self.record_filter is None or self.record_filter(record):
+                            if source.record_filter is None or source.record_filter(record):
                                 self.count += 1
                                 yield record
 
@@ -135,7 +130,7 @@ class RecordReader:
                             continue
 
                         # optionally filter; and tally filtered records
-                        if self.record_filter is None or self.record_filter(record):
+                        if source.record_filter is None or source.record_filter(record):
                             self.count += 1
                             yield record
 
@@ -164,73 +159,14 @@ class RecordReader:
         # update the iterator so it stops once the limit is reached
         self.records = itertools.takewhile(lambda _: self.count <= self.limit, self.records)
 
-
-class MultiRecordReader:
-    """
-    A RecordReader that's the aggregate of several readers chained
-    together into a single reader.
-    """
-
-    def __init__(self, readers):
-        """
-        Initialize with the several readers.
-        """
-        self.readers = readers
-        self.records = itertools.chain(*(r.records for r in readers))
-        self.limit = None
-
-    @property
-    def buckets(self):
-        """
-        All buckets.
-        """
-        return [r.bucket for r in self.readers]
-
-    @property
-    def sources(self):
-        """
-        All sources.
-        """
-        return [s for s in r.sources for r in self.readers]
-
-    @property
-    def bytes_total(self):
-        """
-        Total bytes to read.
-        """
-        return sum(r.bytes_total for r in self.readers)
-
-    @property
-    def bytes_read(self):
-        """
-        Total bytes read.
-        """
-        return sum(r.bytes_read for r in self.readers)
-
-    @property
-    def count(self):
-        """
-        Total number of records read.
-        """
-        return sum(r.count for r in self.readers)
-
-    @property
-    def restricted_count(self):
-        """
-        Total number of restricted records read.
-        """
-        return sum(r.restricted_count for r in self.readers)
-
-    @property
-    def at_end(self):
-        """
-        True if all records have been read.
-        """
-        return all(r.at_end for r in self.readers)
-
-    def set_limit(self, limit):
-        """
-        Apply a limit to the number of records that will be read.
-        """
-        for r in self.readers:
-            r.set_limit(limit)
+    def combine_with(self, other_reader):
+        # Can only combine two readers' sources
+        assert(self.config == other_reader.config)
+        assert(self.index == other_reader.index)
+        assert(self.restricted == other_reader.restricted)
+        return RecordReader(
+            self.config,
+            self.sources + other_reader.sources,
+            self.index,
+            self.restricted
+        )

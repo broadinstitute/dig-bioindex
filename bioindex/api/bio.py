@@ -344,7 +344,7 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
             CONFIG,
             engine,
             i,
-            qs,
+            [qs],
             restricted=restricted,
         )
 
@@ -358,6 +358,51 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
 
         # the results of the query
         return _fetch_records(reader, index, qs, fmt, query_s=auth_s + query_s)
+    except KeyError:
+        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
+
+
+@router.post('/multiquery', response_class=fastapi.responses.ORJSONResponse)
+async def api_multi_query_index(req: fastapi.Request, fmt='row'):
+    """
+    Query the database for records matching the query parameter and
+    read the records from s3.
+    """
+    global INDEXES
+
+    req_body = await req.json()
+    index = req_body['index']
+    queries = req_body['queries']
+    try:
+        qss = [_parse_query(q, required=True) for q in queries]
+        # All queries have to have the same arity
+        assert(len({len(qs) for qs in qss}) == 1)
+        # in the event we've added a new index
+        if (index, len(qss[0])) not in INDEXES:
+            INDEXES = _load_indexes()
+        i = INDEXES[(index, len(qss[0]))]
+
+        # discover what the user doesn't have access to see
+        restricted, auth_s = profile(restricted_keywords, portal, req) if portal else (None, 0)
+        # lookup the schema for this index and perform the query
+        reader, query_s = profile(
+            query.fetch,
+            CONFIG,
+            engine,
+            i,
+            qss,
+            restricted=restricted,
+        )
+
+        # with no limit, will this request exceed the limit?
+        if reader.bytes_total > RESPONSE_LIMIT_MAX:
+            raise fastapi.HTTPException(status_code=413)
+
+        # the results of the query
+        return _fetch_records(reader, index, qss, fmt, query_s=auth_s + query_s)
+
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
@@ -436,7 +481,7 @@ async def api_test_index(index: str, q: str, req: fastapi.Request):
         i = INDEXES[(index, len(qs))]
 
         # lookup the schema for this index and perform the query
-        reader, query_s = profile(query.fetch, engine, CONFIG.s3_bucket, i, qs)
+        reader, query_s = profile(query.fetch, engine, CONFIG.s3_bucket, i, [qs])
 
         return fastapi.Response(
             headers={'Content-Length': str(reader.bytes_total)})
