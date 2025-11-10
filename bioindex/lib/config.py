@@ -98,6 +98,22 @@ class Config:
         }
 
     @functools.cached_property
+    def portal_rds_config(self):
+        """
+        Builds the RDS configuration from the environment.
+        """
+        if self.portal_rds_secret:
+            secret = secret_lookup(self.portal_rds_secret)
+            assert secret, f'Failed to lookup secret {self.portal_rds_secret}'
+
+            # set the name of the RDS instance
+            secret['name'] = secret.pop('dbInstanceIdentifier')
+            return secret
+        else:
+            return self.rds_config
+
+
+    @functools.cached_property
     def genes_dict(self):
         """
         Builds a dictionary of genes.
@@ -156,6 +172,11 @@ class Config:
     @config_var()
     def rds_secret(self):
         return 'BIOINDEX_RDS_SECRET'
+
+    @property
+    @config_var()
+    def portal_rds_secret(self):
+        return 'BIOINDEX_PORTAL_RDS_SECRET'
 
     @property
     @config_var(default='rsidmapping_v2')
