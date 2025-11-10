@@ -158,15 +158,3 @@ class RecordReader:
 
         # update the iterator so it stops once the limit is reached
         self.records = itertools.takewhile(lambda _: self.count <= self.limit, self.records)
-
-    def combine_with(self, other_reader):
-        # Can only combine two readers' sources
-        assert(self.config == other_reader.config)
-        assert(self.index == other_reader.index)
-        assert(self.restricted == other_reader.restricted)
-        return RecordReader(
-            self.config,
-            self.sources + other_reader.sources,
-            self.index,
-            self.restricted
-        )
