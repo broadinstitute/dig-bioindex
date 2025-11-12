@@ -100,7 +100,6 @@ class RecordReader:
         return source, list(self._readsource(source))
 
     def _readsource(self, source):
-        print(source)
         # This is here to handle a particularly bad condition: when the
         # byte offsets are mucked up and this would cause the reader to
         # read everything from the source file (potentially GB of data)
