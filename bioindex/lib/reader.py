@@ -1,16 +1,13 @@
 import subprocess
 
 import botocore.exceptions
-import dataclasses
+import concurrent.futures
 import itertools
 import logging
 import orjson
 
 from .auth import verify_record
 from .s3 import read_lined_object
-# from . import config
-
-# CONFIG = config.Config()
 
 
 class RecordSource:
@@ -65,8 +62,12 @@ class RecordReader:
         for source in sources:
             self.bytes_total += source.length
 
-        # start reading the records on-demand
-        self.records = self._readall()
+        if self.bytes_total <= config.response_limit:
+            # read parallel if small enough
+            self.records = self._readparallel()
+        else:
+            # start reading the records on-demand
+            self.records = self._readall()
 
 
     def _readall(self):
@@ -74,16 +75,40 @@ class RecordReader:
         A generator that reads each of the records from S3 for the sources.
         """
         for source in self.sources:
+            yield from self._readsource(source)
 
-            # This is here to handle a particularly bad condition: when the
-            # byte offsets are mucked up and this would cause the reader to
-            # read everything from the source file (potentially GB of data)
-            # which will have time and bandwidth costs.
+    def _readparallel(self):
+        """
+        A generator that reads each of the records from S3 for the sources.
+        """
+        record_map = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
+            jobs = [pool.submit(self._readfull, source) for source in self.sources]
 
-            if source.end <= source.start:
-                logging.warning('Bad index record: end offset <= start; skipping...')
-                continue
+            for job in concurrent.futures.as_completed(jobs):
+                if job.exception() is not None:
+                    raise job.exception()
 
+                # get the key and the record iterator returned
+                source, records = job.result()
+                record_map[source] = records
+        for source in self.sources:
+            for record in record_map[source]:
+                yield record
+
+    def _readfull(self, source):
+        return source, list(self._readsource(source))
+
+    def _readsource(self, source):
+        print(source)
+        # This is here to handle a particularly bad condition: when the
+        # byte offsets are mucked up and this would cause the reader to
+        # read everything from the source file (potentially GB of data)
+        # which will have time and bandwidth costs.
+
+        if source.end <= source.start:
+            logging.warning('Bad index record: end offset <= start; skipping...')
+        else:
             try:
                 compression_on = self.index.compressed
                 if compression_on:
