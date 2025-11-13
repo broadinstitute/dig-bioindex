@@ -155,7 +155,7 @@ class Index:
         s3_objects = json_objects + gz_objects
 
         # delete all stale keys; get the list of objects left to index
-        objects = self.delete_stale_keys(engine, s3_objects, console=console)
+        objects = self.delete_stale_keys(config, engine, s3_objects, console=console)
 
         # calculate the total size of all the objects
         total_size = functools.reduce(lambda a, b: a + b['Size'], objects, 0)
@@ -221,7 +221,7 @@ class Index:
         # done indexing
         logging.info('Index is up to date')
 
-    def delete_stale_keys(self, engine, objects, console=None):
+    def delete_stale_keys(self, config, engine, objects, console=None):
         """
         Deletes all records indexed where the key...
 
@@ -230,7 +230,7 @@ class Index:
          - hasn't been fully indexed
         """
         logging.info('Finding stale keys...')
-        db_keys = self.lookup_keys(engine)
+        db_keys = self.lookup_keys(config, engine)
         # if a file in s3 is in the db but the version is different from what's in s3 we delete
         updated_files_for_db = [{'id': db_keys[o['Key']]['id'], 'key': o['Key']} for o in objects
                                 if o['Key'] in db_keys and db_keys[o['Key']]['version'] != o['ETag'].strip('"')[:32]]
@@ -495,7 +495,7 @@ class Index:
         with engine.begin() as conn:
             conn.execute(text('DELETE FROM `__Keys` WHERE `index` = :index'), {'index': self.name})
 
-    def lookup_keys(self, engine):
+    def lookup_keys(self, config, engine):
         """
         Look up all the keys and versions for this index. Returns a dictionary
         key -> {id, version}. The version will be None if the key hasn't been
@@ -503,7 +503,7 @@ class Index:
         """
         sql = 'SELECT `id`, `key`, `version`, `built` FROM `__Keys` WHERE `index` = :index AND `key` LIKE :prefix'
         with engine.begin() as conn:
-            rows = conn.execute(text(sql), {'index': self.name, 'prefix': f"{self.s3_prefix}%"}).fetchall()
+            rows = conn.execute(text(sql), {'index': self.name, 'prefix': f"{config.s3_path(self.s3_prefix)}%"}).fetchall()
 
         return {key: {'id': id, 'version': built and ver} for id, key, ver, built in rows}
 
