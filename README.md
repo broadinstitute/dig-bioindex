@@ -49,18 +49,19 @@ The bio-index uses [python-dotenv][dotenv] (environment variables) for configura
 The following are the environment variables that can be set in the `.bioindex` file:
 
 ```ini
-BIOINDEX_S3_BUCKET       # S3 bucket to index/read from
-BIOINDEX_RDS_SECRET      # AWS SecretID used to connect to the RDS instance (*)
-BIOINDEX_RDS_INSTANCE    # RDS instance name; used if no secret specified (*)
-BIOINDEX_RDS_USERNAME    # RDS instance login; used if no secret specified (**)
-BIOINDEX_RDS_PASSWORD    # RDS instance credentials; used if no secret specified (**)
-BIOINDEX_BIO_SCHEMA      # RDS MySQL schema for the bio index (default=bio)
-BIOINDEX_PORTAL_SCHEMA   # RDS MySQL schema for the portal (optional)
-BIOINDEX_LAMBDA_FUNCTION # Lambda function that can be used for indexing remotely (optional)
-BIOINDEX_GRAPHQL_SCHEMA  # File the GraphQL schema is written to and read from (optional)
-BIOINDEX_GENES_URI       # Location of a GFF gene source (default=genes/genes.gff.gz)
-BIOINDEX_RESPONSE_LIMIT  # Number of bytes to read from S3 per request (default=2 MB)
-BIOINDEX_MATCH_LIMIT     # Number of matches to return per request (default=100)
+BIOINDEX_S3_BUCKET          # S3 bucket to index/read from
+BIOINDEX_RDS_SECRET         # AWS SecretID used to connect to the RDS instance (*)
+BIOINDEX_RDS_INSTANCE       # RDS instance name; used if no secret specified (*)
+BIOINDEX_RDS_USERNAME       # RDS instance login; used if no secret specified (**)
+BIOINDEX_RDS_PASSWORD       # RDS instance credentials; used if no secret specified (**)
+BIOINDEX_BIO_SCHEMA         # RDS MySQL schema for the bio index (default=bio)
+BIOINDEX_PORTAL_SCHEMA      # RDS MySQL schema for the portal (optional)
+BIOINDEX_LAMBDA_FUNCTION    # Lambda function that can be used for indexing remotely (optional)
+BIOINDEX_GRAPHQL_SCHEMA     # File the GraphQL schema is written to and read from (optional)
+BIOINDEX_GENES_URI          # Location of a GFF gene source (default=genes/genes.gff.gz)
+BIOINDEX_RESPONSE_LIMIT     # Number of bytes to read from S3 per request (default=1 MB)
+BIOINDEX_RESPONSE_LIMIT_MAX # Total amount of data a call is allowed to read through (default=100MB)
+BIOINDEX_MATCH_LIMIT        # Number of matches to return per request (default=100)
 
 (*)  - Either BIOINDEX_RDS_SECRET or BIOINDEX_RDS_INSTANCE is required
 (**) - If BIOINDEX_RDS_INSTANCE is used, then username and password are required
