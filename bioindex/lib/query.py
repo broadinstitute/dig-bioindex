@@ -8,7 +8,7 @@ from .reader import MultiRecordReader, RecordReader, RecordSource
 from .s3 import list_objects
 
 
-def fetch(config, engine, index, q, restricted=None):
+def fetch(config, engine, index, q, restricted=None, record_filter=None):
     """
     Use the table schema to determine the type of query to execute. Returns
     a RecordReader of all the results.
@@ -17,7 +17,7 @@ def fetch(config, engine, index, q, restricted=None):
         raise ValueError(f'Arity mismatch for index schema "{index.schema}"')
 
     # execute the query and fetch the records from s3
-    return _run_query(config, engine, index, q, restricted)
+    return _run_query(config, engine, index, q, restricted, record_filter)
 
 
 def fetch_multi(executor, config, engine, index, queries, restricted=None):
@@ -145,7 +145,7 @@ def match(config, engine, index, q):
             prev_key = r[0]
 
 
-def _run_query(config, engine, index, q, restricted):
+def _run_query(config, engine, index, q, restricted, user_filter=None):
     """
     Construct a SQL query to fetch S3 objects and byte offsets. Run it and
     return a RecordReader to the results.
@@ -194,6 +194,12 @@ def _run_query(config, engine, index, q, restricted):
 
         # filter records read by locus
         record_filter = overlaps
+
+    if record_filter and user_filter:
+        combined_filter = lambda row: record_filter(row) and user_filter(row)
+        record_filter = combined_filter
+    elif user_filter:
+        record_filter = user_filter
 
     with engine.connect() as conn:
         if isinstance(query_params, list):
