@@ -1,3 +1,10 @@
+import dotenv
+import os
+import pathlib
+
+env_loc = os.path.join(pathlib.Path(__file__).parent.parent, '.bioindex')
+dotenv.load_dotenv(env_loc)
+
 import fastapi
 import pymysql
 
@@ -29,7 +36,7 @@ app.add_middleware(
 )
 
 # enable compression of large response bodies
-app.add_middlware(GZipMiddleware)
+app.add_middleware(GZipMiddleware)
 
 # serve static content
 app.mount('/static', StaticFiles(directory="web/static"), name="static")
