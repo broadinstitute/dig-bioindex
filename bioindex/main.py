@@ -65,13 +65,11 @@ SERVER_LOGGING_CONFIG = {
 
 @click.command(name='serve')
 @click.option('--port', '-p', type=int, default=5000)
-@click.option('--workers', '-w', type=int, default=1)
-def cli_serve(port, workers):
+def cli_serve(port):
     uvicorn.run(
         'bioindex.server:app',
         host='0.0.0.0',
         port=port,
-        workers=workers,
         log_level='info',
         log_config=SERVER_LOGGING_CONFIG
     )
