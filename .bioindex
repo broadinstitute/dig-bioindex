@@ -1,4 +1,5 @@
-BIOINDEX_RDS_SECRET=dig-bio-index
-BIOINDEX_S3_BUCKET=dig-bio-index
+BIOINDEX_RDS_SECRET=GIANT-bioindex
+BIOINDEX_S3_BUCKET=dig-analysis-cfde
 BIOINDEX_LAMBDA_FUNCTION=dig-indexer-dev-main
-BIOINDEX_PORTAL_SCHEMA=portal
+BIOINDEX_BIO_SCHEMA=cfde_dev
+BIOINDEX_GENES_URI=genes/genes.gff.gz
