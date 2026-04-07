@@ -48,9 +48,13 @@ class RecordReader:
     from a list of RecordSource objects for a given S3 bucket.
     """
 
-    def __init__(self, config, sources, index, record_filter=None, restricted=None):
+    def __init__(self, config, sources, index, record_filter=None, restricted=None,
+                 start_source_index=0, start_skip_count=0):
         """
         Initialize the RecordReader with a list of RecordSource objects.
+
+        start_source_index: resume reading from this source index (inclusive)
+        start_skip_count: number of records to skip at the start of start_source_index
         """
         self.config = config
         self.sources = sources
@@ -61,9 +65,13 @@ class RecordReader:
         self.count = 0
         self.restricted_count = 0
         self.limit = None
+        self._source_index = start_source_index
+        self._source_record_count = 0
+        self._start_source_index = start_source_index
+        self._start_skip_count = start_skip_count
 
-        # sum the total number of bytes to read
-        for source in sources:
+        # only count bytes from the resume point onward
+        for source in sources[start_source_index:]:
             self.bytes_total += source.length
 
         # start reading the records on-demand
@@ -78,7 +86,14 @@ class RecordReader:
         """
         A generator that reads each of the records from S3 for the sources.
         """
-        for source in self.sources:
+        for i, source in enumerate(self.sources):
+            # skip sources before the resume point
+            if i < self._start_source_index:
+                continue
+
+            self._source_index = i
+            self._source_record_count = 0
+            skip_remaining = self._start_skip_count if i == self._start_source_index else 0
 
             # This is here to handle a particularly bad condition: when the
             # byte offsets are mucked up and this would cause the reader to
@@ -107,7 +122,11 @@ class RecordReader:
                                 continue
 
                             if self.record_filter is None or self.record_filter(record):
+                                if skip_remaining > 0:
+                                    skip_remaining -= 1
+                                    continue
                                 self.count += 1
+                                self._source_record_count += 1
                                 yield record
 
                         proc.wait()
@@ -136,7 +155,11 @@ class RecordReader:
 
                         # optionally filter; and tally filtered records
                         if self.record_filter is None or self.record_filter(record):
+                            if skip_remaining > 0:
+                                skip_remaining -= 1
+                                continue
                             self.count += 1
+                            self._source_record_count += 1
                             yield record
 
             # handle database out of sync with S3

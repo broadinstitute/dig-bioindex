@@ -204,7 +204,8 @@ async def api_all(index: str, req: fastapi.Request, fmt: str = 'row'):
                 raise fastapi.HTTPException(status_code=413)
 
             # fetch records from the reader
-            return _fetch_records(reader, index, None, fmt, query_s=auth_s + query_s)
+            return _fetch_records(reader, index, None, fmt, restricted=restricted,
+                                  cont_type='all', query_s=auth_s + query_s)
         else:
             raise ValueError(f'Multiple indexes found for {index}, try arity-specific endpoint')
     except KeyError:
@@ -239,7 +240,8 @@ async def api_all_arity(index: str, arity: int, req: fastapi.Request):
             raise fastapi.HTTPException(status_code=413)
 
         # fetch records from the reader
-        return _fetch_records(reader, index, None, fmt, query_s=auth_s + query_s)
+        return _fetch_records(reader, index, None, fmt, restricted=restricted,
+                              cont_type='all', query_s=auth_s + query_s)
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
@@ -357,7 +359,8 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
             reader.set_limit(limit)
 
         # the results of the query
-        return _fetch_records(reader, index, qs, fmt, query_s=auth_s + query_s)
+        return _fetch_records(reader, index, qs, fmt, restricted=restricted,
+                              cont_type='fetch', query_s=auth_s + query_s)
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
@@ -453,18 +456,60 @@ async def api_cont(token: str):
     Lookup a continuation token and get the next set of records.
     """
     try:
-        cont = continuation.lookup_continuation(token)
-
-        # the token is no longer valid
-        continuation.remove_continuation(token)
-
-        # execute the continuation callback
-        return cont.callback(cont)
-
+        state = continuation.lookup_and_remove_continuation(token)
     except KeyError:
         raise fastapi.HTTPException(
             status_code=400,
             detail='Invalid, expired, or missing continuation token')
+
+    try:
+        i = INDEXES[(state.index_name, state.index_arity)]
+
+        if state.type == 'fetch':
+            reader, query_s = profile(
+                query.fetch,
+                CONFIG,
+                engine,
+                i,
+                state.qs,
+                restricted=state.restricted,
+                start_source_index=state.source_index,
+                start_skip_count=state.skip_count,
+            )
+            if state.limit is not None:
+                reader.set_limit(state.limit)
+            return _fetch_records(reader, state.index_name, state.qs, state.fmt,
+                                  restricted=state.restricted, cont_type='fetch',
+                                  page=state.page, query_s=query_s)
+
+        elif state.type == 'all':
+            reader, query_s = profile(
+                query.fetch_all,
+                CONFIG,
+                i,
+                restricted=state.restricted,
+                start_source_index=state.source_index,
+                start_skip_count=state.skip_count,
+            )
+            if state.limit is not None:
+                reader.set_limit(state.limit)
+            return _fetch_records(reader, state.index_name, state.qs, state.fmt,
+                                  restricted=state.restricted, cont_type='all',
+                                  page=state.page, query_s=query_s)
+
+        elif state.type == 'match':
+            all_keys = query.match(CONFIG, engine, i, state.qs)
+            # skip past keys already returned on previous pages
+            if state.last_key is not None:
+                all_keys = itertools.dropwhile(lambda k: k <= state.last_key, all_keys)
+            return _match_keys(all_keys, state.index_name, state.qs, state.limit,
+                               page=state.page)
+
+        else:
+            raise fastapi.HTTPException(status_code=400, detail='Unknown continuation type')
+
+    except KeyError:
+        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {state.index_name}')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
@@ -489,9 +534,17 @@ def _match_keys(keys, index, qs, limit, page=1, query_s=None):
     fetched, fetch_s = profile(list, itertools.islice(keys, MATCH_LIMIT))
 
     # create a continuation if there is more data
-    token = None if len(fetched) < MATCH_LIMIT else continuation.make_continuation(
-        callback=lambda cont: _match_keys(keys, index, limit, qs, page=page + 1),
-    )
+    token = None
+    if len(fetched) >= MATCH_LIMIT:
+        token = continuation.make_continuation(
+            type='match',
+            index_name=index,
+            index_arity=len(qs),
+            qs=qs,
+            limit=limit,
+            last_key=fetched[-1] if fetched else None,
+            page=page + 1,
+        )
 
     return {
         'profile': {
@@ -509,7 +562,7 @@ def _match_keys(keys, index, qs, limit, page=1, query_s=None):
     }
 
 
-def _fetch_records(reader, index, qs, fmt, page=1, query_s=None):
+def _fetch_records(reader, index, qs, fmt, restricted=None, cont_type='fetch', page=1, query_s=None):
     """
     Reads up to RESPONSE_LIMIT bytes from a RecordReader, format them,
     and then return a JSON response object with the records.
@@ -546,9 +599,20 @@ def _fetch_records(reader, index, qs, fmt, page=1, query_s=None):
         }
 
     # create a continuation if there is more data
-    token = None if reader.at_end else continuation.make_continuation(
-        callback=lambda cont: _fetch_records(reader, index, qs, fmt, page=page + 1),
-    )
+    token = None
+    if not reader.at_end:
+        token = continuation.make_continuation(
+            type=cont_type,
+            index_name=index,
+            index_arity=len(qs) if qs else 0,
+            qs=qs,
+            fmt=fmt,
+            restricted=restricted,
+            limit=reader.limit,
+            page=page + 1,
+            source_index=reader._source_index,
+            skip_count=reader._source_record_count,
+        )
 
     # build JSON response
     return {

@@ -67,6 +67,13 @@ SERVER_LOGGING_CONFIG = {
 @click.option('--port', '-p', type=int, default=5000)
 @click.option('--workers', '-w', type=int, default=1)
 def cli_serve(port, workers):
+    if workers > 1:
+        # Start a shared Manager server before uvicorn forks workers so that
+        # all workers share the same continuation token map.
+        from .lib import continuation
+        continuation.start_manager_server()
+        logging.info('Started shared continuation Manager server for %d workers', workers)
+
     uvicorn.run(
         'bioindex.server:app',
         host='0.0.0.0',
