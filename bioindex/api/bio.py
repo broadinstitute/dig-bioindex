@@ -7,6 +7,7 @@ from typing import List, Optional
 
 import fastapi
 import graphql
+import orjson
 from pydantic import BaseModel
 
 from .utils import *
@@ -331,6 +332,7 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
 
     try:
         qs = _parse_query(q, required=True)
+        record_filter = _parse_filters(req)
         # in the event we've added a new index
         if (index, len(qs)) not in INDEXES:
             INDEXES = _load_indexes()
@@ -346,6 +348,7 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
             i,
             qs,
             restricted=restricted,
+            record_filter=record_filter,
         )
 
         # with no limit, will this request exceed the limit?
@@ -481,6 +484,57 @@ def _parse_query(q, required=False):
     return q.split(',') if q else []
 
 
+def _parse_filters(req):
+    filters = []
+
+    for key, value in req.query_params.items():
+        if not key.startswith('filter.'):
+            continue
+
+        field = key[7:]
+        conditions = value.split(',')
+
+        for condition in conditions:
+            if ':' in condition:
+                op, val = condition.split(':', 1)
+
+                if op in ['lt', 'lte', 'gt', 'gte']:
+                    try:
+                        val = float(val)
+                    except ValueError:
+                        raise ValueError(f'Invalid numeric value for {field}: {val}')
+
+                    if op == 'lt':
+                        filters.append(lambda r, f=field, v=val: r.get(f) is not None and r[f] < v)
+                    elif op == 'lte':
+                        filters.append(lambda r, f=field, v=val: r.get(f) is not None and r[f] <= v)
+                    elif op == 'gt':
+                        filters.append(lambda r, f=field, v=val: r.get(f) is not None and r[f] > v)
+                    elif op == 'gte':
+                        filters.append(lambda r, f=field, v=val: r.get(f) is not None and r[f] >= v)
+                elif op == 'eq':
+                    try:
+                        val = float(val)
+                    except ValueError:
+                        pass
+                    filters.append(lambda r, f=field, v=val: r.get(f) == v)
+                elif op == 'ne':
+                    try:
+                        val = float(val)
+                    except ValueError:
+                        pass
+                    filters.append(lambda r, f=field, v=val: r.get(f) != v)
+                else:
+                    raise ValueError(f'Invalid operator: {op}. Supported: lt, lte, gt, gte, eq, ne')
+            else:
+                filters.append(lambda r, f=field, v=condition: r.get(f) == v)
+
+    if not filters:
+        return None
+
+    return lambda record: all(f(record) for f in filters)
+
+
 def _match_keys(keys, index, qs, limit, page=1, query_s=None):
     """
     Collects up to MATCH_LIMIT keys from a database cursor and then
@@ -514,16 +568,18 @@ def _fetch_records(reader, index, qs, fmt, page=1, query_s=None):
     Reads up to RESPONSE_LIMIT bytes from a RecordReader, format them,
     and then return a JSON response object with the records.
     """
-    bytes_limit = reader.bytes_read + RESPONSE_LIMIT
     restricted_count = reader.restricted_count
+    output_bytes = 0
 
-    # similar to itertools.takewhile, but keeps the final record
     def take():
+        nonlocal output_bytes
         for r in reader.records:
+            record_size = len(orjson.dumps(r))
+            output_bytes += record_size
+
             yield r
 
-            # stop if the byte limit was reached
-            if reader.bytes_read > bytes_limit:
+            if output_bytes >= RESPONSE_LIMIT or reader.bytes_read > RESPONSE_LIMIT_MAX:
                 break
 
     # validate query parameters
