@@ -1,3 +1,7 @@
+import logging
+import os
+import time
+import uuid
 from typing import Iterable
 
 from fastapi import Request
@@ -8,6 +12,9 @@ from starlette.types import ASGIApp
 from ..lib.portal_registry import get_registry
 
 
+_access_log = logging.getLogger("bioindex.access")
+
+
 class PortalResolveMiddleware(BaseHTTPMiddleware):
     """
     Read the first path segment as the portal name, look up the matching
@@ -15,50 +22,98 @@ class PortalResolveMiddleware(BaseHTTPMiddleware):
     then rewrite the request path to strip the prefix so existing routers
     work unchanged. Reserved prefixes (e.g. health, ready, metrics) bypass
     resolution.
+
+    Also emits one structured JSON access log line per HTTP request via
+    the ``bioindex.access`` logger.
     """
     def __init__(self, app: ASGIApp, reserved_prefixes: Iterable[str] = ()):
         super().__init__(app)
         self._reserved = set(reserved_prefixes)
 
     async def dispatch(self, request, call_next):
-        path = request.url.path
-        # Strip leading slash; first segment is the portal (or reserved)
-        segments = path.lstrip("/").split("/", 1)
+        start = time.time()
+        request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+        request.state.request_id = request_id
+
+        original_path = request.url.path
+        segments = original_path.lstrip("/").split("/", 1)
         head = segments[0]
 
-        if head in self._reserved or head == "":
-            return await call_next(request)
+        portal_name = None
+        if head not in self._reserved and head != "":
+            registry = get_registry()
+            ctx = registry.get(head)
+            if ctx is None:
+                response = JSONResponse(
+                    {
+                        "detail": f"Unknown portal '{head}'",
+                        "valid_portals": registry.names(),
+                    },
+                    status_code=404,
+                )
+                self._log(
+                    request, response, start, request_id,
+                    portal=None, route=None, path=original_path,
+                )
+                return response
 
-        registry = get_registry()
-        ctx = registry.get(head)
-        if ctx is None:
-            return JSONResponse(
-                {
-                    "detail": f"Unknown portal '{head}'",
-                    "valid_portals": registry.names(),
-                },
-                status_code=404,
-            )
+            # Stash on request.state for downstream handlers
+            request.state.portal_ctx = ctx
+            ctx.touch()
+            portal_name = ctx.name
 
-        # Stash on request.state for downstream handlers
-        request.state.portal_ctx = ctx
-        ctx.touch()
+            # Rewrite scope path so existing routers don't need to know about prefixes.
+            remainder = "/" + segments[1] if len(segments) > 1 else "/"
+            request.scope["path"] = remainder
+            # rewrite scope["raw_path"] by stripping the portal prefix bytes from the
+            # ORIGINAL raw_path, preserving any percent-encoding present in the sub-path
+            raw = request.scope.get("raw_path") or original_path.encode("utf-8")
+            prefix_bytes = ("/" + head).encode("utf-8")
+            if raw.startswith(prefix_bytes):
+                request.scope["raw_path"] = raw[len(prefix_bytes):] or b"/"
+            else:
+                # safety fallback if raw_path doesn't have the expected prefix
+                request.scope["raw_path"] = remainder.encode("utf-8")
 
-        # Rewrite scope path so existing routers don't need to know about prefixes.
-        # rewrite scope["path"] from the already-decoded path
-        remainder = "/" + segments[1] if len(segments) > 1 else "/"
-        request.scope["path"] = remainder
-        # rewrite scope["raw_path"] by stripping the portal prefix bytes from the
-        # ORIGINAL raw_path, preserving any percent-encoding present in the sub-path
-        raw = request.scope.get("raw_path") or path.encode("utf-8")
-        prefix_bytes = ("/" + head).encode("utf-8")
-        if raw.startswith(prefix_bytes):
-            request.scope["raw_path"] = raw[len(prefix_bytes):] or b"/"
-        else:
-            # safety fallback if raw_path doesn't have the expected prefix
-            request.scope["raw_path"] = remainder.encode("utf-8")
+        response = await call_next(request)
 
-        return await call_next(request)
+        # Pull route template from the matched route, if any
+        route_template = None
+        matched = request.scope.get("route")
+        if matched is not None and hasattr(matched, "path"):
+            route_template = matched.path
+
+        self._log(
+            request, response, start, request_id,
+            portal=portal_name,
+            route=route_template,
+            path=request.scope.get("path") or original_path,
+        )
+        return response
+
+    def _log(self, request, response, start, request_id, *, portal, route, path):
+        response_bytes = 0
+        cl = response.headers.get("content-length")
+        if cl:
+            try:
+                response_bytes = int(cl)
+            except ValueError:
+                response_bytes = 0
+        _access_log.info(
+            "request",
+            extra={
+                "portal": portal,
+                "request_id": request_id,
+                "method": request.method,
+                "route": route,
+                "path": path,
+                "query": request.url.query,
+                "status": response.status_code,
+                "response_bytes": response_bytes,
+                "latency_ms": int((time.time() - start) * 1000),
+                "worker_pid": os.getpid(),
+            },
+        )
 
 
 def get_portal_ctx(request: Request):
