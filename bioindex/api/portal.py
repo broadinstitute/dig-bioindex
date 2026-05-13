@@ -14,10 +14,10 @@ router = fastapi.APIRouter()
 
 
 def _require_portal(ctx):
-    """Raise 404 if this portal has no portal/metadata schema configured."""
+    """Raise 501 if this portal has no portal/metadata schema configured."""
     if ctx.portal is None:
         raise fastapi.HTTPException(
-            status_code=404,
+            status_code=501,
             detail='Portal metadata schema not configured for this portal',
         )
     return ctx.portal

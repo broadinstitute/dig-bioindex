@@ -15,7 +15,6 @@ from ..lib.auth import restricted_keywords
 from ..lib.utils import nonce, profile, profile_async
 from ..middleware.portal import get_portal_ctx
 
-# create flask app; this will load .env
 router = fastapi.APIRouter()
 
 # multi-query executor (stateless, shared across portals)
@@ -29,10 +28,13 @@ class Query(BaseModel):
 
 
 def _refresh_indexes(ctx):
-    """Rebuild the portal's index cache from RDS. Called on cache miss."""
+    """
+    Rebuild the portal's index cache from RDS. Called on cache miss
+    (e.g., a new index was created via the CLI since this process started).
+    Atomic — replaces the dict reference rather than mutating in place.
+    """
     fresh = {(i.name, int(i.schema.arity)): i for i in index.Index.list_indexes(ctx.engine, filter_built=False)}
-    ctx.indexes.clear()
-    ctx.indexes.update(fresh)
+    ctx.indexes = fresh
 
 
 @router.get('/indexes', response_class=fastapi.responses.ORJSONResponse)

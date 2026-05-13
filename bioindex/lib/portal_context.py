@@ -7,9 +7,11 @@ from typing import Any, Dict, Optional, Tuple
 class PortalContext:
     """
     Per-portal in-process state: config, DB engines, index metadata cache,
-    GraphQL schema. Structural fields (config, engine, indexes, etc.) are
-    set once at startup and not expected to change. Only ``last_used`` is
-    mutable via ``touch()``.
+    GraphQL schema. ``config``, ``engine``, ``portal``, and ``gql_schema``
+    are set once at startup and not expected to change. ``indexes`` may be
+    refreshed at runtime when a query references an index that wasn't
+    present at startup (atomic dict reassignment). ``last_used`` is mutated
+    by ``touch()``.
     """
     name: str
     config: Any                  # bioindex.lib.config.Config
