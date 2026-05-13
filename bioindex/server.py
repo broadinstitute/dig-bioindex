@@ -36,6 +36,15 @@ _init_registry_from_env()
 
 app = fastapi.FastAPI(title='BioIndex', redoc_url=None)
 
+
+@app.on_event("startup")
+async def _configure_threadpool():
+    import anyio
+    limit = int(os.environ.get("BIOINDEX_THREAD_POOL", "40"))
+    anyio.to_thread.current_default_thread_limiter().total_tokens = limit
+    logging.info("anyio thread-pool size set to %d", limit)
+
+
 # Reserved (non-portal) path prefixes. More specific entries first.
 RESERVED = ("health", "ready", "static", "_admin", "docs", "openapi.json")
 app.add_middleware(PortalResolveMiddleware, reserved_prefixes=RESERVED)
