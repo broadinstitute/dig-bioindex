@@ -637,10 +637,14 @@ def _fetch_records(ctx, reader, index, qs, fmt, restricted=None, cont_type='fetc
     # create a continuation if there is more data
     token = None
     if not reader.at_end:
+        # index_arity must be the SCHEMA arity (used by ctx.indexes lookup),
+        # not len(qs). For /all (cont_type='all') qs is None, so deriving from
+        # len(qs) would give 0 and fail the lookup on resume. The reader knows
+        # its source index, which knows its schema.
         state = continuation.ContState(
             type=cont_type,
             index_name=index,
-            index_arity=len(qs) if qs else 0,
+            index_arity=int(reader.index.schema.arity),
             qs=qs,
             portal_name=ctx.name,
             fmt=fmt,
