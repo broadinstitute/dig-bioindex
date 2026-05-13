@@ -4,6 +4,9 @@ from typing import Dict, List, Optional
 
 import yaml
 
+from .config import Config
+from .portal_context import PortalContext
+
 
 def _read_yaml(path: Path) -> Optional[dict]:
     if not path.exists():
@@ -44,3 +47,51 @@ def load_portal_dicts(config_dir, env: str) -> List[Dict]:
         merged = {**env_defaults, **env_block}
         result.append({"name": name, "env": merged})
     return result
+
+
+def _build_engines(config):
+    """Build bio + (optional) portal engines for a Config. Mocked in tests."""
+    from .aws import connect_to_db
+    bio = connect_to_db(**config.rds_config, schema=config.bio_schema)
+    portal = None
+    if config.portal_schema:
+        portal = connect_to_db(**config.portal_rds_config, schema=config.portal_schema)
+    return bio, portal
+
+
+def _load_indexes(engine):
+    """Load and cache the index list for a portal. Mocked in tests."""
+    from .index import Index
+    indexes = Index.list_indexes(engine, filter_built=False)
+    return {(i.name, int(i.schema.arity)): i for i in indexes}
+
+
+def _load_gql_schema(config, engine):
+    """Load the GraphQL schema if configured. Mocked in tests."""
+    if not config.graphql_schema:
+        return None
+    from . import ql
+    try:
+        return ql.load_schema(config, engine, config.graphql_schema)
+    except FileNotFoundError:
+        return None
+
+
+def build_portal_contexts(config_dir, env: str) -> List[PortalContext]:
+    """
+    Top-level entry point: walk configs, build a Config + engines + index
+    cache + gql schema for each portal, return as PortalContext list.
+    Slow (~30-60s for 15+ portals) — called once at process startup.
+    """
+    descriptors = load_portal_dicts(config_dir, env)
+    contexts = []
+    for desc in descriptors:
+        cfg = Config.from_dict(desc["env"])
+        bio_engine, portal_engine = _build_engines(cfg)
+        indexes = _load_indexes(bio_engine)
+        gql = _load_gql_schema(cfg, bio_engine)
+        contexts.append(PortalContext(
+            name=desc["name"], config=cfg, engine=bio_engine,
+            portal=portal_engine, indexes=indexes, gql_schema=gql,
+        ))
+    return contexts
