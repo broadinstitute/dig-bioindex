@@ -2,8 +2,23 @@ FROM --platform=linux/amd64 python:3.12-slim AS build
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      default-libmysqlclient-dev pkg-config build-essential curl && \
+      default-libmysqlclient-dev pkg-config build-essential curl \
+      libcurl4-openssl-dev libssl-dev libbz2-dev liblzma-dev zlib1g-dev \
+      wget ca-certificates && \
     rm -rf /var/lib/apt/lists/*
+
+# htslib provides bgzip; built from source with S3 + libcurl support so
+# the bioindex reader can read compressed indexes directly from S3.
+ARG HTSLIB_VERSION=1.21
+RUN cd /tmp && \
+    wget -q https://github.com/samtools/htslib/releases/download/${HTSLIB_VERSION}/htslib-${HTSLIB_VERSION}.tar.bz2 && \
+    tar -xjf htslib-${HTSLIB_VERSION}.tar.bz2 && \
+    cd htslib-${HTSLIB_VERSION} && \
+    ./configure --enable-s3 --enable-libcurl && \
+    make -j$(nproc) && \
+    make install && \
+    ldconfig && \
+    cd / && rm -rf /tmp/htslib-*
 
 WORKDIR /usr/src/app
 
