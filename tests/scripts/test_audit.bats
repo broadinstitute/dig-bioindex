@@ -36,3 +36,11 @@ setup() {
     [ "$status" -ne 0 ]
     [[ "$output" == *"origin"* || "$output" == *"pushed"* ]]
 }
+
+@test "verify_clean_and_pushed: fails on untracked files" {
+    repo=$(make_test_repo --pushed)
+    echo "scratch" > "$repo/scratch.tmp"
+    run verify_clean_and_pushed "$repo"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"untracked"* || "$output" == *"uncommitted"* ]]
+}

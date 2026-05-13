@@ -5,9 +5,12 @@
 # Sourced by scripts that take a --local path (deploy.sh, build-base.sh).
 
 # verify_clean_and_pushed <repo-path>
-# Returns 0 if:
-#   * working tree at <repo-path> has no uncommitted or unstaged changes
-#   * HEAD's SHA exists on the origin remote (i.e., was pushed)
+# Returns 0 if all three conditions hold:
+#   * working tree at <repo-path> has no uncommitted, unstaged, OR
+#     untracked changes (untracked files would be COPYed into the
+#     image with --local; we block them to preserve the audit trail).
+#   * an 'origin' remote is configured.
+#   * HEAD's SHA exists on origin (i.e., was pushed).
 # Returns non-zero with an explanatory message on stderr otherwise.
 verify_clean_and_pushed() {
     local repo="$1"
@@ -16,10 +19,19 @@ verify_clean_and_pushed() {
         return 1
     fi
 
-    # Check working tree cleanliness
+    # Check working tree cleanliness (including untracked files —
+    # those would be baked into the image under --local).
     if [[ -n "$(git -C "$repo" status --porcelain)" ]]; then
-        echo "ERROR: working tree at $repo has uncommitted changes." >&2
-        echo "       Run 'git status' in $repo. Commit and push before deploying." >&2
+        echo "ERROR: working tree at $repo has uncommitted or untracked changes." >&2
+        echo "       Run 'git status' in $repo. Commit and push, or remove untracked" >&2
+        echo "       files, before deploying." >&2
+        return 1
+    fi
+
+    # Check origin exists at all (distinct from "HEAD not pushed")
+    if ! git -C "$repo" remote get-url origin >/dev/null 2>&1; then
+        echo "ERROR: no remote named 'origin' is configured in $repo." >&2
+        echo "       Add origin and push HEAD before deploying." >&2
         return 1
     fi
 
