@@ -6,16 +6,11 @@ The Bio-Index has two entry points: a CLI used for basic CRUD operations and a s
 
 ## Prerequisites
 
-### Python 3.8+
+### Python 3.12+
 
-```bash
-$ sudo amazon-linux-extras install python3.8
-```
-Make sure `python3` and `pip3` are on the path.  You may need to do something like:
-```bash
-$ sudo ln -s `which python3.8` /usr/bin/python3
-$ sudo ln -s /usr/local/bin/pip3 /usr/bin/pip3
-```
+The BioIndex targets Python 3.12+. When running in containers (see the `Dockerfile`), 3.12 is installed for you. For local development, install Python 3.12 via your platform's standard mechanism (e.g. `pyenv`, `asdf`, or a system package).
+
+Make sure `python3` and `pip3` are on the path.
 
 Upgrade pip, otherwise installing deps later won't work:
 ```bash
