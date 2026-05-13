@@ -196,5 +196,42 @@ else
     fi
 fi
 
-echo "deploy.sh: image checks complete (build/push/deploy not yet implemented)." >&2
+REGISTRY=$(ecr_registry_url)
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+AWS_REGION="${AWS_REGION:-us-east-1}"
+DEPLOYABLE_URI="$REGISTRY/bioindex-deployable:$DEPLOYABLE_TAG"
+DEPLOYABLE_LATEST="$REGISTRY/bioindex-deployable:${ENV}-latest"
+
+if [[ "$SKIP_BUILD" -eq 0 ]]; then
+    echo "Building image..."
+    docker build \
+        --build-arg AWS_ACCOUNT_ID="$AWS_ACCOUNT_ID" \
+        --build-arg AWS_REGION="$AWS_REGION" \
+        --build-arg BASE_IMAGE_SHA="$BASE_IMAGE_SHA" \
+        -t "$DEPLOYABLE_URI" \
+        -t "$DEPLOYABLE_LATEST" \
+        "$CONFIGS_PATH"
+
+    echo "Logging in to ECR..."
+    ecr_login
+
+    echo "Pushing $DEPLOYABLE_URI ..."
+    docker push "$DEPLOYABLE_URI"
+    echo "Pushing $DEPLOYABLE_LATEST ..."
+    docker push "$DEPLOYABLE_LATEST"
+else
+    # Still re-tag <env>-latest to point at the existing image
+    echo "Logging in to ECR for re-tag of <env>-latest..."
+    ecr_login
+    docker pull "$DEPLOYABLE_URI" >/dev/null
+    docker tag "$DEPLOYABLE_URI" "$DEPLOYABLE_LATEST"
+    docker push "$DEPLOYABLE_LATEST"
+fi
+
+if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "--dry-run: image is in ECR but service NOT updated. Exiting."
+    exit 0
+fi
+
+echo "deploy.sh: image build+push complete (service update not yet implemented)." >&2
 exit 0
