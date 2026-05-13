@@ -7,8 +7,9 @@ from typing import Any, Dict, Optional, Tuple
 class PortalContext:
     """
     Per-portal in-process state: config, DB engines, index metadata cache,
-    GraphQL schema. Built once at startup by the PortalRegistry; immutable
-    after init.
+    GraphQL schema. Structural fields (config, engine, indexes, etc.) are
+    set once at startup and not expected to change. Only ``last_used`` is
+    mutable via ``touch()``.
     """
     name: str
     config: Any                  # bioindex.lib.config.Config
