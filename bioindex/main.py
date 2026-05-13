@@ -50,6 +50,7 @@ def cli_serve(port, workers):
         workers=workers,
         log_config=LOGGING_CONFIG,
         timeout_graceful_shutdown=30,
+        access_log=False,   # bioindex.middleware emits the canonical access log
     )
 
 

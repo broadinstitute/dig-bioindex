@@ -1,8 +1,10 @@
 import logging
 import os
+import re
 import time
 import uuid
 from typing import Iterable
+from urllib.parse import parse_qsl, quote
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -13,6 +15,37 @@ from ..lib.portal_registry import get_registry
 
 
 _access_log = logging.getLogger("bioindex.access")
+
+
+_REDACTED_QUERY_PARAMS = frozenset({"token", "access_token"})
+
+
+def _scrub_query(query: str) -> str:
+    """
+    Replace values of sensitive query parameters with <redacted>.
+    Returns the re-encoded query string. Preserves non-sensitive params.
+    The literal string ``<redacted>`` is written as-is (not percent-encoded)
+    so it remains grep-friendly in structured logs.
+    """
+    if not query:
+        return ""
+    pairs = parse_qsl(query, keep_blank_values=True)
+    parts = []
+    for k, v in pairs:
+        if k.lower() in _REDACTED_QUERY_PARAMS:
+            parts.append(f"{quote(k, safe='')}=<redacted>")
+        else:
+            parts.append(f"{quote(k, safe='')}={quote(v, safe='')}")
+    return "&".join(parts)
+
+
+_REQUEST_ID_RE = re.compile(r"\A[A-Za-z0-9._\-]{1,128}\Z")
+
+
+def _safe_request_id(header_value):
+    if header_value and _REQUEST_ID_RE.match(header_value):
+        return header_value
+    return uuid.uuid4().hex
 
 
 class PortalResolveMiddleware(BaseHTTPMiddleware):
@@ -32,7 +65,7 @@ class PortalResolveMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request, call_next):
         start = time.time()
-        request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+        request_id = _safe_request_id(request.headers.get("x-request-id"))
         request.state.request_id = request_id
 
         original_path = request.url.path
@@ -107,7 +140,7 @@ class PortalResolveMiddleware(BaseHTTPMiddleware):
                 "method": request.method,
                 "route": route,
                 "path": path,
-                "query": request.url.query,
+                "query": _scrub_query(request.url.query),
                 "status": response.status_code,
                 "response_bytes": response_bytes,
                 "latency_ms": int((time.time() - start) * 1000),

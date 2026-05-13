@@ -22,6 +22,12 @@ ENV BIOINDEX_CONFIG_DIR=/etc/bioindex
 ENV BIOINDEX_WORKERS=2
 ENV BIOINDEX_THREAD_POOL=40
 
+RUN groupadd --gid 1000 bioindex && \
+    useradd  --uid 1000 --gid bioindex --no-create-home bioindex && \
+    chown -R bioindex:bioindex /usr/src/app
+
+USER bioindex
+
 EXPOSE 5000
 
 ENTRYPOINT ["python", "-m", "bioindex.main"]

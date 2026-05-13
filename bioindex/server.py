@@ -61,7 +61,10 @@ async def _dispose_engines():
             if ctx.portal:
                 ctx.portal.dispose()
         except Exception as e:
-            logging.warning("failed to dispose engine for portal %s: %s", name, e)
+            logging.warning(
+                "failed to dispose engine for portal %s: %s",
+                name, type(e).__name__,
+            )
     logging.info("disposed all portal engines")
 
 

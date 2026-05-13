@@ -1,4 +1,5 @@
 import logging
+import re
 
 import pytest
 from fastapi import FastAPI, Request
@@ -73,3 +74,42 @@ def test_unknown_portal_request_is_logged_with_null_portal(access_log_records):
     assert len(records) == 1
     assert records[0].portal is None
     assert records[0].status == 404
+
+
+def test_continuation_token_redacted_in_log(access_log_records):
+    client = TestClient(_make_app())
+    long_token = "abc.def.ghi" * 50
+    client.get(f"/cfde/api/bio/query/gene?q=SLC30A8&token={long_token}")
+    records = [r for r in access_log_records.records if r.name == "bioindex.access"]
+    assert len(records) == 1
+    assert "<redacted>" in records[0].query
+    assert long_token not in records[0].query
+
+
+def test_access_token_redacted_in_log(access_log_records):
+    client = TestClient(_make_app())
+    client.get("/cfde/api/bio/query/gene?q=foo&access_token=secret_oauth_token_here")
+    records = [r for r in access_log_records.records if r.name == "bioindex.access"]
+    assert len(records) == 1
+    assert "<redacted>" in records[0].query
+    assert "secret_oauth_token_here" not in records[0].query
+
+
+def test_request_id_rejected_when_oversized_or_invalid(access_log_records):
+    client = TestClient(_make_app())
+    long_id = "a" * 200
+    r = client.get("/cfde/api/bio/query/gene", headers={"X-Request-Id": long_id})
+    records = [r for r in access_log_records.records if r.name == "bioindex.access"]
+    assert len(records) == 1
+    # over-long ID rejected; UUID hex used instead (32 chars, hex only)
+    assert records[0].request_id != long_id
+    assert re.fullmatch(r"[0-9a-f]{32}", records[0].request_id)
+
+
+def test_request_id_accepted_when_well_formed(access_log_records):
+    client = TestClient(_make_app())
+    good_id = "abc-123_xyz.42"
+    r = client.get("/cfde/api/bio/query/gene", headers={"X-Request-Id": good_id})
+    records = [r for r in access_log_records.records if r.name == "bioindex.access"]
+    assert len(records) == 1
+    assert records[0].request_id == good_id

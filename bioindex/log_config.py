@@ -44,7 +44,7 @@ LOGGING_CONFIG = {
     "root": {"level": "INFO", "handlers": ["stdout"]},
     "loggers": {
         "uvicorn":         {"handlers": ["stdout"], "level": "INFO", "propagate": False},
-        "uvicorn.access":  {"handlers": ["stdout"], "level": "INFO", "propagate": False},
+        "uvicorn.access":  {"handlers": ["stdout"], "level": "WARNING", "propagate": False},
         "uvicorn.error":   {"handlers": ["stdout"], "level": "INFO", "propagate": False},
     },
 }
