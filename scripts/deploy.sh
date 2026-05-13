@@ -233,5 +233,65 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
     exit 0
 fi
 
-echo "deploy.sh: image build+push complete (service update not yet implemented)." >&2
+CLUSTER="bioindex-${ENV}"
+SERVICE="bioindex-${ENV}"
+TASK_FAMILY="bioindex-${ENV}"
+
+# Capture the previous deployed image (for the rollback hint at the end)
+PREV_TASK_DEF_ARN=$(aws ecs describe-services \
+    --cluster "$CLUSTER" --services "$SERVICE" \
+    --query 'services[0].taskDefinition' --output text)
+PREV_IMAGE=$(aws ecs describe-task-definition \
+    --task-definition "$PREV_TASK_DEF_ARN" \
+    --query 'taskDefinition.containerDefinitions[0].image' --output text 2>/dev/null \
+    || echo "(no previous deployment)")
+PREV_TAG="${PREV_IMAGE##*:}"
+
+# Render new task definition by patching the current one
+echo "Registering new task definition revision..."
+CURRENT_DEF=$(aws ecs describe-task-definition \
+    --task-definition "$TASK_FAMILY" \
+    --query 'taskDefinition' --output json)
+
+NEW_DEF=$(echo "$CURRENT_DEF" | jq \
+    --arg new_image "$DEPLOYABLE_URI" \
+    '
+    .containerDefinitions[0].image = $new_image
+    | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+          .compatibilities, .registeredAt, .registeredBy)
+    ')
+
+NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+    --cli-input-json "$NEW_DEF" \
+    --query 'taskDefinition.taskDefinitionArn' --output text)
+echo "Registered: $NEW_TASK_DEF_ARN"
+
+echo "Updating service to new task definition..."
+aws ecs update-service \
+    --cluster "$CLUSTER" --service "$SERVICE" \
+    --task-definition "$NEW_TASK_DEF_ARN" \
+    >/dev/null
+
+echo "Waiting for services-stable (timeout ${WAIT_TIMEOUT}s)..."
+SECONDS=0
+START_TS=$SECONDS
+if ! timeout "$WAIT_TIMEOUT" aws ecs wait services-stable \
+        --cluster "$CLUSTER" --services "$SERVICE"; then
+    echo "WARNING: services-stable did not succeed within ${WAIT_TIMEOUT}s." >&2
+    echo "         Check CloudWatch Logs and consider a rollback." >&2
+    exit 1
+fi
+ELAPSED=$((SECONDS - START_TS))
+
+echo
+echo "=== Deploy summary ==="
+echo "  Env:                 $ENV"
+echo "  Configs SHA:         $CONFIGS_SHA"
+echo "  Base image SHA:      $BASE_IMAGE_SHA"
+echo "  Image deployed:      $DEPLOYABLE_URI"
+echo "  Task definition:     $NEW_TASK_DEF_ARN"
+echo "  Wait elapsed:        ${ELAPSED}s"
+echo
+echo "  Rollback if needed:  ./scripts/deploy.sh $ENV --sha $PREV_TAG"
+echo
 exit 0
