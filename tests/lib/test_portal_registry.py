@@ -5,6 +5,14 @@ from bioindex.lib.portal_registry import (
 from bioindex.lib.portal_context import PortalContext
 
 
+@pytest.fixture(autouse=True)
+def _reset_registry():
+    import bioindex.lib.portal_registry as pr
+    pr._registry = None
+    yield
+    pr._registry = None
+
+
 def _stub_ctx(name):
     return PortalContext(
         name=name, config=object(), engine=object(),
@@ -34,7 +42,18 @@ def test_registry_names_returns_sorted_list():
 
 
 def test_get_registry_before_init_raises():
-    import bioindex.lib.portal_registry as pr
-    pr._registry = None
     with pytest.raises(RuntimeError, match="not initialized"):
         get_registry()
+
+
+def test_registry_warns_on_duplicate_names(caplog):
+    import logging
+    caplog.set_level(logging.WARNING)
+    init_registry([_stub_ctx("dup"), _stub_ctx("dup")])
+    assert any(
+        "duplicate portal name" in r.message and "dup" in r.message
+        for r in caplog.records
+    )
+    # later wins
+    assert get_registry().get("dup") is not None
+    assert len(get_registry()) == 1
