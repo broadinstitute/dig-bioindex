@@ -1,4 +1,5 @@
 import concurrent
+import functools
 import time
 from enum import Enum
 
@@ -28,12 +29,27 @@ console = rich.console.Console(markup=True, emoji=False)
 @click.option('--env-file', '-e', type=str, default='.bioindex')
 @click.pass_context
 def cli(ctx, env_file):
-    if env_file:
-        logging.info('Loading %s environment variables...', env_file)
-        dotenv.load_dotenv(env_file)
+    # Stash the env-file choice on the click context. Subcommands that
+    # need the legacy single-portal Config opt in via @with_config, which
+    # loads the dotenv file and instantiates Config lazily. `serve` does
+    # not need either — it reads BIOINDEX_CONFIG_DIR + BIOINDEX_ENV and
+    # builds a PortalRegistry instead.
+    ctx.ensure_object(dict)
+    ctx.obj['env_file'] = env_file
 
-    # load the configuration into the click object
-    ctx.obj = config.Config()
+
+def with_config(f):
+    """Replace @click.pass_obj for subcommands needing the legacy Config."""
+    @functools.wraps(f)
+    @click.pass_context
+    def wrapper(ctx, *args, **kwargs):
+        env_file = ctx.obj.get('env_file') if isinstance(ctx.obj, dict) else None
+        if env_file:
+            logging.info('Loading %s environment variables...', env_file)
+            dotenv.load_dotenv(env_file)
+        cfg = config.Config()
+        return f(cfg, *args, **kwargs)
+    return wrapper
 
 
 @click.command(name='serve')
@@ -60,7 +76,7 @@ def cli_serve(port, workers):
 @click.argument('s3_prefix')
 @click.argument('index_schema')
 @click.confirmation_option(prompt='This will create/update an index; continue?')
-@click.pass_obj
+@with_config
 def cli_create(cfg, index_name, rds_table_name, s3_prefix, index_schema):
     engine = migrate.migrate(cfg)
 
@@ -75,7 +91,7 @@ def cli_create(cfg, index_name, rds_table_name, s3_prefix, index_schema):
 
 
 @click.command(name='list')
-@click.pass_obj
+@with_config
 def cli_list(cfg):
     engine = migrate.migrate(cfg)
     indexes = index.Index.list_indexes(engine, False)
@@ -100,7 +116,7 @@ def cli_list(cfg):
 @click.option('--use-batch', '-b', is_flag=True)
 @click.option('--workers', '-w', type=int, default=None)
 @click.confirmation_option(prompt='This will build the index; continue? ')
-@click.pass_obj
+@with_config
 def cli_index(cfg, index_name, use_lambda, use_batch, rebuild, workers):
     if use_batch and use_lambda:
         raise ValueError('Cannot use both --use-lambda and --use-batch')
@@ -148,7 +164,7 @@ class BgzipJobType(str, Enum):
 @click.command(name='compress')
 @click.argument('index_name')
 @click.argument('prefix')
-@click.pass_obj
+@with_config
 def cli_compress(cfg, index_name, prefix):
     check_index_and_launch_job(cfg, index_name, prefix, BgzipJobType.COMPRESS)
 
@@ -193,7 +209,7 @@ def convert_cli_arg_to_list(value):
               help="Type of job to perform. Must be one of COMPRESS, DECOMPRESS, DELETE_JSON")
 @click.option('--wait-for-completion/--no-wait', is_flag=True, default=True,
               help="Wait for all AWS batch jobs to complete before exiting")
-@click.pass_obj
+@with_config
 def cli_bulk_compression_management(cfg, include, exclude, job_type, wait_for_completion):
     engine = migrate.migrate(cfg)
     indexes = index.Index.list_indexes(engine, False)
@@ -266,7 +282,7 @@ def cli_bulk_compression_management(cfg, include, exclude, job_type, wait_for_co
 @click.argument('index_name')
 @click.argument('prefix')
 @click.option('--workers', '-w', type=int, default=60)
-@click.pass_obj
+@with_config
 def cli_decompress(cfg, index_name, prefix, workers):
     check_index_and_launch_job(cfg, index_name, prefix, BgzipJobType.DECOMPRESS,
                                additional_parameters={'workers': workers})
@@ -275,7 +291,7 @@ def cli_decompress(cfg, index_name, prefix, workers):
 @click.command(name='remove-uncompressed-files')
 @click.argument('index_name')
 @click.argument('prefix')
-@click.pass_obj
+@with_config
 def cli_remove_uncompressed_files(cfg, index_name, prefix):
     check_index_and_launch_job(cfg, index_name, prefix, BgzipJobType.DELETE_JSON)
 
@@ -368,7 +384,7 @@ def start_and_monitor_aws_batch_job(s3_bucket: str, job_type: BgzipJobType, inde
 @click.argument('index_name')
 @click.argument('prefix')
 @click.option('--compressed', '-c', is_flag=True)
-@click.pass_obj
+@with_config
 def update_compressed_status(cfg, index_name, prefix, compressed):
     if not is_index_prefix_valid(cfg, index_name, prefix):
         console.print(f'Could not find unique index with name {index_name} and prefix {prefix}, quitting')
@@ -380,7 +396,7 @@ def update_compressed_status(cfg, index_name, prefix, compressed):
 @click.command(name='query')
 @click.argument('index_name')
 @click.argument('q', nargs=-1)
-@click.pass_obj
+@with_config
 def cli_query(cfg, index_name, q):
     engine = migrate.migrate(cfg)
     i = index.Index.lookup(engine, index_name, len(q))
@@ -395,7 +411,7 @@ def cli_query(cfg, index_name, q):
 
 @click.command(name='all')
 @click.argument('index_name')
-@click.pass_obj
+@with_config
 def cli_all(cfg, index_name):
     engine = migrate.migrate(cfg)
     idxs = index.Index.lookup_all(engine, index_name)
@@ -412,7 +428,7 @@ def cli_all(cfg, index_name):
 @click.command(name='count')
 @click.argument('index_name')
 @click.argument('q', nargs=-1)
-@click.pass_obj
+@with_config
 def cli_count(cfg, index_name, q):
     engine = migrate.migrate(cfg)
     i = index.Index.lookup(engine, index_name, len(q))
@@ -425,7 +441,7 @@ def cli_count(cfg, index_name, q):
 @click.command(name='match')
 @click.argument('index_name')
 @click.argument('q', nargs=-1)
-@click.pass_obj
+@with_config
 def cli_match(cfg, index_name, q):
     engine = migrate.migrate(cfg)
     i = index.Index.lookup(engine, index_name, len(q))
@@ -442,7 +458,7 @@ def cli_match(cfg, index_name, q):
 @click.option('--save', '-s', is_flag=True)
 @click.option('--out', '-o', type=str, default=None)
 @click.argument('indexes', nargs=-1)
-@click.pass_obj
+@with_config
 def cli_build_schema(cfg, save, out, indexes):
     engine = migrate.migrate(cfg)
 
