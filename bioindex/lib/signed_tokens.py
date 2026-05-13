@@ -59,9 +59,16 @@ def decode(token: str, key: bytes) -> ContState:
     Security order: verify signature (constant-time) BEFORE parsing JSON,
     check expiration AFTER signature verification.
     """
+    # Reject oversize tokens before doing any decoding/HMAC work; otherwise an
+    # attacker could force base64-decode + HMAC computation over an arbitrarily
+    # large request body.
+    if len(token) > MAX_PAYLOAD_BYTES * 2:  # generous; b64 + sig + separator
+        raise TokenError("token too large")
     try:
         payload_b64, sig_b64 = token.rsplit(".", 1)
         payload = _b64u_decode(payload_b64)
+        if len(payload) > MAX_PAYLOAD_BYTES:
+            raise TokenError("payload too large")
         sig = _b64u_decode(sig_b64)
     except (ValueError, base64.binascii.Error):
         raise TokenError("invalid token encoding")
@@ -95,11 +102,16 @@ def signing_key() -> bytes:
     raw = os.environ.get("BIOINDEX_TOKEN_SIGNING_KEY")
     if not raw:
         raise RuntimeError("BIOINDEX_TOKEN_SIGNING_KEY not set")
+    key: bytes
     try:
-        return bytes.fromhex(raw)
+        key = bytes.fromhex(raw)
     except ValueError:
-        pass
-    try:
-        return base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
-    except Exception:
-        return raw.encode()
+        try:
+            key = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
+        except Exception:
+            key = raw.encode()
+    if len(key) < 32:
+        raise RuntimeError(
+            f"BIOINDEX_TOKEN_SIGNING_KEY must decode to >=32 bytes (got {len(key)})"
+        )
+    return key

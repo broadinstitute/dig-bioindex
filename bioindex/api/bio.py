@@ -5,6 +5,7 @@ from typing import List, Optional
 
 import fastapi
 import graphql
+from fastapi.responses import ORJSONResponse
 from pydantic import BaseModel
 
 from .utils import *
@@ -466,6 +467,15 @@ async def api_cont(token: str, req: fastapi.Request):
             detail=f'Invalid or expired continuation token: {e}',
         )
 
+    # C1: tokens are bound to the portal that issued them. A token minted
+    # under portal A must not be replayable against portal B (which would
+    # resolve to B's indexes/data with A's resume state).
+    if state.portal_name != ctx.name:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Token issued for different portal',
+        )
+
     i = ctx.indexes.get((state.index_name, state.index_arity))
     if i is None:
         _refresh_indexes(ctx)
@@ -476,6 +486,12 @@ async def api_cont(token: str, req: fastapi.Request):
                 detail=f"Index '{state.index_name}' no longer present",
             )
 
+    # C2: re-derive the restricted set from the *current* requester's
+    # identity, not from anything embedded in (or omitted from) the token.
+    # This ensures revoked permissions take effect immediately and leaked
+    # tokens don't grant the original requester's access to a third party.
+    restricted, _ = profile(restricted_keywords, ctx.portal, req) if ctx.portal else (None, 0)
+
     try:
         if state.type == 'fetch':
             reader, query_s = profile(
@@ -484,14 +500,14 @@ async def api_cont(token: str, req: fastapi.Request):
                 ctx.engine,
                 i,
                 state.qs,
-                restricted=state.restricted,
+                restricted=restricted,
                 start_source_index=state.source_index,
                 start_skip_count=state.skip_count,
             )
             if state.limit is not None:
                 reader.set_limit(state.limit)
             return _fetch_records(ctx, reader, state.index_name, state.qs, state.fmt,
-                                  restricted=state.restricted, cont_type='fetch',
+                                  restricted=restricted, cont_type='fetch',
                                   page=state.page, query_s=query_s)
 
         elif state.type == 'all':
@@ -499,14 +515,14 @@ async def api_cont(token: str, req: fastapi.Request):
                 query.fetch_all,
                 ctx.config,
                 i,
-                restricted=state.restricted,
+                restricted=restricted,
                 start_source_index=state.source_index,
                 start_skip_count=state.skip_count,
             )
             if state.limit is not None:
                 reader.set_limit(state.limit)
             return _fetch_records(ctx, reader, state.index_name, state.qs, state.fmt,
-                                  restricted=state.restricted, cont_type='all',
+                                  restricted=restricted, cont_type='all',
                                   page=state.page, query_s=query_s)
 
         elif state.type == 'match':
@@ -552,6 +568,7 @@ def _match_keys(ctx, keys, index, qs, limit, page=1, query_s=None):
             index_name=index,
             index_arity=len(qs),
             qs=qs,
+            portal_name=ctx.name,
             limit=limit,
             last_key=fetched[-1] if fetched else None,
             page=page + 1,
@@ -561,7 +578,7 @@ def _match_keys(ctx, keys, index, qs, limit, page=1, query_s=None):
         except signed_tokens.TokenError as e:
             raise fastapi.HTTPException(status_code=413, detail=str(e))
 
-    return {
+    body = {
         'profile': {
             'fetch': fetch_s,
             'query': query_s,
@@ -575,6 +592,8 @@ def _match_keys(ctx, keys, index, qs, limit, page=1, query_s=None):
         'continuation': token,
         'nonce': nonce(),
     }
+    headers = {'Cache-Control': 'no-store'} if token is not None else None
+    return ORJSONResponse(content=body, headers=headers)
 
 
 def _fetch_records(ctx, reader, index, qs, fmt, restricted=None, cont_type='fetch', page=1, query_s=None):
@@ -623,8 +642,8 @@ def _fetch_records(ctx, reader, index, qs, fmt, restricted=None, cont_type='fetc
             index_name=index,
             index_arity=len(qs) if qs else 0,
             qs=qs,
+            portal_name=ctx.name,
             fmt=fmt,
-            restricted=restricted,
             limit=reader.limit,
             page=page + 1,
             source_index=reader._source_index,
@@ -636,7 +655,7 @@ def _fetch_records(ctx, reader, index, qs, fmt, restricted=None, cont_type='fetc
             raise fastapi.HTTPException(status_code=413, detail=str(e))
 
     # build JSON response
-    return {
+    body = {
         'profile': {
             'fetch': fetch_s,
             'query': query_s,
@@ -655,3 +674,5 @@ def _fetch_records(ctx, reader, index, qs, fmt, restricted=None, cont_type='fetc
         'continuation': token,
         'nonce': nonce(),
     }
+    headers = {'Cache-Control': 'no-store'} if token is not None else None
+    return ORJSONResponse(content=body, headers=headers)
