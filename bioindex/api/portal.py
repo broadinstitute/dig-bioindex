@@ -3,29 +3,33 @@ from sqlalchemy import text
 
 from .utils import *
 
-from ..lib import config
 from ..lib.auth import restrictions
 from ..lib.utils import nonce, profile
+from ..middleware.portal import get_portal_ctx
 
-# load dot files and configuration
-CONFIG = config.Config()
-
-# create web server
+# create web server. With per-portal contexts attached at request time,
+# we can no longer monkey-patch routes off based on a single global
+# `portal` schema — handlers check ctx.portal at request time instead.
 router = fastapi.APIRouter()
 
-# optionally connect to the portal/metadata schema
-portal = connect_to_portal(CONFIG)
 
-# if there is no portal schema defined, then patch the router
-if not portal:
-    monkey_patch_router(router)
+def _require_portal(ctx):
+    """Raise 404 if this portal has no portal/metadata schema configured."""
+    if ctx.portal is None:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail='Portal metadata schema not configured for this portal',
+        )
+    return ctx.portal
 
 
 @router.get("/groups", response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_groups():
+async def api_portal_groups(req: fastapi.Request):
     """
     Returns the list of portals available.
     """
+    ctx = get_portal_ctx(req)
+    portal = _require_portal(ctx)
     sql = "SELECT `name`, `title`, `description`, `default`, `portalGroup` FROM DiseaseGroups"
 
     # run the query
@@ -60,6 +64,8 @@ async def api_portal_restrictions(req: fastapi.Request):
     """
     Returns all restrictions for the current user.
     """
+    ctx = get_portal_ctx(req)
+    portal = _require_portal(ctx)
     keyword_restrictions, query_s = profile(restrictions, portal, req)
 
     return {
@@ -71,7 +77,7 @@ async def api_portal_restrictions(req: fastapi.Request):
     }
 
 
-def fetch_added_phenotypes(include: list):
+def fetch_added_phenotypes(portal, include: list):
     """
     Returns named phenotypes specified by include
     """
@@ -98,11 +104,13 @@ def fetch_added_phenotypes(include: list):
 
 
 @router.get("/phenotypes", response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_phenotypes(q: str = None):
+async def api_portal_phenotypes(req: fastapi.Request, q: str = None):
     """
     Returns all available phenotypes or just those for a given
     disease group.
     """
+    ctx = get_portal_ctx(req)
+    portal = _require_portal(ctx)
     sql = "SELECT `name`, `description`, `group`, `dichotomous` FROM Phenotypes"
 
     # groups to match
@@ -160,7 +168,7 @@ async def api_portal_phenotypes(q: str = None):
                 }
             )
         if include:
-            phenotypes.extend(fetch_added_phenotypes(include))
+            phenotypes.extend(fetch_added_phenotypes(portal, include))
 
         return {
             "profile": {
@@ -173,10 +181,12 @@ async def api_portal_phenotypes(q: str = None):
 
 
 @router.get("/complications", response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_complications(q: str = None):
+async def api_portal_complications(req: fastapi.Request, q: str = None):
     """
     Returns all available complication phenotype pairs.
     """
+    ctx = get_portal_ctx(req)
+    portal = _require_portal(ctx)
     sql = (
         "SELECT Complications.`name`, Phenotypes.`group`, Complications.`phenotype`, Complications.`withComplication` "
         "FROM Complications "
@@ -233,7 +243,9 @@ async def api_portal_datasets(req: fastapi.Request, q: str = None):
     """
     Returns all available datasets for a given disease group.
     """
-    resp = await api_portal_phenotypes(q)
+    ctx = get_portal_ctx(req)
+    portal = _require_portal(ctx)
+    resp = await api_portal_phenotypes(req, q)
 
     # map all the phenotypes for this portal group
     phenotypes = set(p["name"] for p in resp["data"])
@@ -294,11 +306,13 @@ async def api_portal_datasets(req: fastapi.Request, q: str = None):
 
 
 @router.get("/documentation", response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_documentation(q: str, group: str = None):
+async def api_portal_documentation(req: fastapi.Request, q: str, group: str = None):
     """
     Returns all available phenotypes or just those for a given
     portal group.
     """
+    ctx = get_portal_ctx(req)
+    portal = _require_portal(ctx)
     sql = "SELECT `group`, `content` FROM Documentation WHERE `name` = :name "
     params = {'name': q}
 
@@ -325,7 +339,9 @@ async def api_portal_documentation(q: str, group: str = None):
 
 # Returns all documentations for a given group, and any modification to default group md
 @router.get("/documentations", response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_documentations(q: str):
+async def api_portal_documentations(req: fastapi.Request, q: str):
+    ctx = get_portal_ctx(req)
+    portal = _require_portal(ctx)
     sql = "SELECT `group`, `name`, `content` FROM Documentation "
 
     # if q is not equal to md, then add md to group, else add q to group
@@ -358,6 +374,8 @@ async def api_portal_systems(req: fastapi.Request):
     """
     Returns system-disease-phenotype for all systems.
     """
+    ctx = get_portal_ctx(req)
+    portal = _require_portal(ctx)
 
     # fetch all systems, join to diseases and phenotype groups
     sql = """
@@ -400,10 +418,12 @@ async def api_portal_systems(req: fastapi.Request):
 
 
 @router.get("/links", response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_links(q: str = None, group: str = None):
+async def api_portal_links(req: fastapi.Request, q: str = None, group: str = None):
     """
     Returns one - or all - redirect links.
     """
+    ctx = get_portal_ctx(req)
+    portal = _require_portal(ctx)
     sql = "SELECT `path`, `group`, `redirect`, `description` FROM Links "
     tests = []
     data = []
