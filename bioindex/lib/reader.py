@@ -15,20 +15,33 @@ class RecordSource:
     """
     A RecordSource is a portion of an S3 object that contains JSON-
     lines records.
+
+    bounded: whether ``start`` and ``end`` are real uncompressed-byte
+        offsets (True, for SQL-derived sources) or compressed-byte hints
+        (False, for sources from S3 listings — used by /all). For
+        unbounded sources on compressed indexes the reader must NOT pass
+        ``end`` to bgzip's ``-s`` flag (which is uncompressed bytes),
+        because doing so would truncate output at ~compressed_size of
+        uncompressed data and cut off mid-record.
     """
     key: str
     start: int
     end: int
+    bounded: bool = True
 
     @staticmethod
     def from_s3_object(s3_obj):
         """
-        Create a RecordSource from an S3 object listing.
+        Create a RecordSource from an S3 object listing. The ``end``
+        here is the S3 object's compressed-byte size, which is only an
+        approximate progress hint — bounded=False signals to the reader
+        that no uncompressed boundary is known.
         """
         return RecordSource(
             key=s3_obj['Key'],
             start=0,
             end=s3_obj['Size'],
+            bounded=False,
         )
 
     @property
@@ -70,14 +83,20 @@ class RecordReader:
         self._source_byte_offset = 0
         self._start_source_index = start_source_index
         self._start_byte_offset = start_byte_offset
+        # Set True only after the outer source loop completes naturally
+        # (every source fully consumed). Used by at_end to distinguish
+        # "iterator exhausted" from "broke at byte limit".
+        self._exhausted = False
 
         # only count bytes from the resume point onward; on the resume source,
         # discount the bytes already consumed by previous pages so bytes_read
         # (which only counts bytes read by THIS reader) can match bytes_total
-        # at end-of-stream.
+        # at end-of-stream. Unbounded sources contribute their (compressed)
+        # length as an approximate progress hint; at_end no longer relies on
+        # bytes_read >= bytes_total for them.
         for j, source in enumerate(sources[start_source_index:], start=start_source_index):
             length = source.length
-            if j == start_source_index:
+            if j == start_source_index and source.bounded:
                 length = max(0, length - start_byte_offset)
             self.bytes_total += length
 
@@ -134,8 +153,17 @@ class RecordReader:
             try:
                 compression_on = self.index.compressed
                 if compression_on:
-                    command = ['bgzip', '-b', f"{seek_start}", '-s', f"{seek_length}",
-                               f"s3://{self.config.s3_bucket}/{source.key}{'' if source.key.endswith('.gz') else '.gz'}"]
+                    # For bounded sources (SQL-derived), pass -s to limit bgzip
+                    # to the known uncompressed range. For unbounded sources
+                    # (from S3 listing, /all path), source.end is the COMPRESSED
+                    # size — passing it as -s would truncate uncompressed output
+                    # at ~compressed_size bytes (mid-record). Omit -s so bgzip
+                    # reads to actual EOF.
+                    s3_url = f"s3://{self.config.s3_bucket}/{source.key}{'' if source.key.endswith('.gz') else '.gz'}"
+                    if source.bounded:
+                        command = ['bgzip', '-b', f"{seek_start}", '-s', f"{seek_length}", s3_url]
+                    else:
+                        command = ['bgzip', '-b', f"{seek_start}", s3_url]
                     with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1) as proc:
                         for line in proc.stdout:
                             # subprocess.stdout (text=True) yields lines WITH
@@ -197,6 +225,9 @@ class RecordReader:
             except FileNotFoundError:
                 logging.error('Failed to read key %s; some records missing', source.key)
 
+        # outer source-loop completed normally — every source fully consumed
+        self._exhausted = True
+
     @property
     def at_end(self):
         """
@@ -205,7 +236,18 @@ class RecordReader:
         if self.limit and self.count >= self.limit:
             return True
 
-        return self.bytes_read >= self.bytes_total
+        if self._exhausted:
+            return True
+
+        # bytes_read >= bytes_total is a useful fallback for bounded sources
+        # (where bytes_total is an exact upper bound on uncompressed bytes
+        # delivered). For unbounded /all sources bytes_total is the SUM of
+        # compressed sizes, which is in different units than bytes_read, so
+        # this check could fire spuriously. Guard with all(bounded).
+        if self.bytes_total > 0 and all(s.bounded for s in self.sources):
+            return self.bytes_read >= self.bytes_total
+
+        return False
 
     def set_limit(self, limit):
         """
