@@ -1,4 +1,5 @@
-from typing import Iterable, List, Optional
+import logging
+from typing import Dict, Iterable, List, Optional
 
 from .portal_context import PortalContext
 
@@ -9,7 +10,14 @@ class PortalRegistry:
     in each worker process at startup.
     """
     def __init__(self, contexts: Iterable[PortalContext]):
-        self._by_name = {c.name: c for c in contexts}
+        self._by_name: Dict[str, PortalContext] = {}
+        for ctx in contexts:
+            if ctx.name in self._by_name:
+                logging.warning(
+                    "duplicate portal name %r; later definition overwrites earlier",
+                    ctx.name,
+                )
+            self._by_name[ctx.name] = ctx
 
     def get(self, name: str) -> Optional[PortalContext]:
         return self._by_name.get(name)

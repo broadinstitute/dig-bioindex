@@ -1,6 +1,7 @@
 import logging
+import os
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import yaml
 
@@ -15,7 +16,7 @@ def _read_yaml(path: Path) -> Optional[dict]:
         return yaml.safe_load(fp) or {}
 
 
-def load_portal_dicts(config_dir, env: str) -> List[Dict]:
+def load_portal_dicts(config_dir: Union[str, os.PathLike], env: str) -> List[Dict]:
     """
     Walk a configs directory and return a list of portal descriptor dicts
     for the given env. Each dict has shape:
@@ -44,6 +45,12 @@ def load_portal_dicts(config_dir, env: str) -> List[Dict]:
                 name, env,
             )
             continue
+        if not isinstance(env_block, dict):
+            logging.error(
+                "portal %s: 'envs.%s' must be a mapping, got %s (in %s); skipping",
+                name, env, type(env_block).__name__, portal_yaml,
+            )
+            continue
         merged = {**env_defaults, **env_block}
         result.append({"name": name, "env": merged})
     return result
@@ -63,6 +70,7 @@ def _load_indexes(engine):
     """Load and cache the index list for a portal. Mocked in tests."""
     from .index import Index
     indexes = Index.list_indexes(engine, filter_built=False)
+    # int() is defensive; matches the cast in bioindex/api/bio.py for key consistency.
     return {(i.name, int(i.schema.arity)): i for i in indexes}
 
 
@@ -71,13 +79,10 @@ def _load_gql_schema(config, engine):
     if not config.graphql_schema:
         return None
     from . import ql
-    try:
-        return ql.load_schema(config, engine, config.graphql_schema)
-    except FileNotFoundError:
-        return None
+    return ql.load_schema(config, engine, config.graphql_schema)
 
 
-def build_portal_contexts(config_dir, env: str) -> List[PortalContext]:
+def build_portal_contexts(config_dir: Union[str, os.PathLike], env: str) -> List[PortalContext]:
     """
     Top-level entry point: walk configs, build a Config + engines + index
     cache + gql schema for each portal, return as PortalContext list.
