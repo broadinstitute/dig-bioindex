@@ -23,11 +23,13 @@ def ready(response: fastapi.Response):
     portal's bio engine. The task is unhealthy only if ALL portals fail —
     one bad portal does not pull the task out of rotation.
     """
+    registry = get_registry()
     portals: Dict[str, str] = {}
     all_failed = True
 
-    for name in get_registry().names():
-        ctx = get_registry().get(name)
+    for name in registry.names():
+        ctx = registry.get(name)
+        assert ctx is not None  # name came from registry.names()
         try:
             with ctx.engine.connect() as conn:
                 conn.execute(sqlalchemy.text("SELECT 1"))
