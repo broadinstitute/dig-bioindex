@@ -1,74 +1,30 @@
 import dataclasses
-import threading
 import time
 
-from .utils import nonce
 
-
-_cont_map = {}
-_cont_lock = threading.RLock()
-
-
-@dataclasses.dataclass()
-class Cont:
-    callback: any
-    expiration: float = None
-
-    def __post_init__(self):
-        """
-        Set the default expiration.
-        """
-        self.expiration = time.time() + 60
-
-
-def make_continuation(**kwargs):
+@dataclasses.dataclass
+class ContState:
     """
-    Create a continuation and return a token to it.
+    Serializable snapshot of everything needed to resume a paginated query.
+
+    type == 'fetch': resume a query.fetch() — re-runs SQL to get sources,
+                     seeks to source_index / skip_count.
+    type == 'all':   resume a query.fetch_all() — re-scans S3 prefix,
+                     seeks to source_index / skip_count.
+    type == 'match': resume a query.match() — re-runs match query and
+                     skips keys already returned (via last_key).
     """
-    cont = Cont(**kwargs)
-    token = nonce()
-
-    # add it to the map
-    with _cont_lock:
-        _cont_map[token] = cont
-
-    return token
-
-
-def lookup_continuation(token):
-    """
-    Return a continuation from its token.
-    """
-    with _cont_lock:
-        return _cont_map[token]
-
-
-def remove_continuation(token):
-    """
-    Remove a continuation token from the map.
-    """
-    with _cont_lock:
-        del _cont_map[token]
-
-
-def cleanup_continuations():
-    """
-    Runs forever in the background, every minute it will remove any expired
-    continues from the map.
-    """
-    while True:
-        time.sleep(60)
-
-        with _cont_lock:
-            now = time.time()
-            tokens = list(_cont_map.keys())
-
-            # remove all expired continuations
-            for token in tokens:
-                if now > _cont_map[token].expiration:
-                    del _cont_map[token]
-
-
-# Spin up a thread that periodically removes old continuations.
-threading.Thread(target=cleanup_continuations, daemon=True). \
-    start()
+    type: str
+    index_name: str
+    index_arity: int
+    qs: list
+    fmt: str = None
+    restricted: dict = None   # dict[str, set] — picklable
+    page: int = 1
+    # fetch / all resume point
+    source_index: int = 0
+    skip_count: int = 0
+    # match resume point
+    last_key: str = None
+    limit: int = None
+    expiration: float = dataclasses.field(default_factory=lambda: time.time() + 60)
