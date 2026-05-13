@@ -1,18 +1,9 @@
-import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from bioindex.middleware.portal import PortalResolveMiddleware
 from bioindex.lib.portal_registry import init_registry
 from bioindex.lib.portal_context import PortalContext
-
-
-@pytest.fixture(autouse=True)
-def _reset_registry():
-    import bioindex.lib.portal_registry as pr
-    pr._registry = None
-    yield
-    pr._registry = None
 
 
 def _make_app(reserved=("health", "ready")):

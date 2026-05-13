@@ -5,14 +5,6 @@ from bioindex.lib.portal_registry import (
 from bioindex.lib.portal_context import PortalContext
 
 
-@pytest.fixture(autouse=True)
-def _reset_registry():
-    import bioindex.lib.portal_registry as pr
-    pr._registry = None
-    yield
-    pr._registry = None
-
-
 def _stub_ctx(name):
     return PortalContext(
         name=name, config=object(), engine=object(),
