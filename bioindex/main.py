@@ -18,6 +18,7 @@ from .lib import index
 from .lib import migrate
 from .lib import ql
 from .lib import query
+from .log_config import LOGGING_CONFIG
 
 # create the global console
 console = rich.console.Console(markup=True, emoji=False)
@@ -35,45 +36,20 @@ def cli(ctx, env_file):
     ctx.obj = config.Config()
 
 
-SERVER_LOGGING_CONFIG = {
-    "version": 1,
-    "disable_existing_loggers": True,
-    "handlers": {
-        "file": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": "access.log",
-            "maxBytes": 1024 * 1024 * 100,  # 100 MB
-            "backupCount": 3,  # keep 3 backup files
-        }
-    },
-    "root": {"level": "INFO", "handlers": ["file"]},
-    "loggers": {
-        "uvicorn.access": {
-            "level": "INFO",
-            "handlers": ["file"],
-            "propagate": False,
-            "formatter": "apache",
-        },
-    },
-    "formatters": {
-        "apache": {
-            "format": '%(asctime)s %(message)s "%(status)d" %(bytes)d',
-        },
-    },
-}
-
-
 @click.command(name='serve')
 @click.option('--port', '-p', type=int, default=5000)
-@click.option('--workers', '-w', type=int, default=1)
+@click.option('--workers', '-w', type=int, default=None)
 def cli_serve(port, workers):
+    import os
+    if workers is None:
+        workers = int(os.environ.get("BIOINDEX_WORKERS", "1"))
     uvicorn.run(
         'bioindex.server:app',
         host='0.0.0.0',
         port=port,
         workers=workers,
-        log_level='info',
-        log_config=SERVER_LOGGING_CONFIG
+        log_config=LOGGING_CONFIG,
+        timeout_graceful_shutdown=30,
     )
 
 
