@@ -1,8 +1,6 @@
 import asyncio
 import concurrent.futures
 import itertools
-import re
-from enum import Enum
 from typing import List, Optional
 
 import fastapi
@@ -10,38 +8,18 @@ import graphql
 from pydantic import BaseModel
 
 from .utils import *
-from ..lib import config
 from ..lib import continuation
 from ..lib import index
-from ..lib import ql
 from ..lib import query
 from ..lib.auth import restricted_keywords
 from ..lib.utils import nonce, profile, profile_async
-
-# load dot files and configuration
-CONFIG = config.Config()
+from ..middleware.portal import get_portal_ctx
 
 # create flask app; this will load .env
 router = fastapi.APIRouter()
 
-# connect to database
-engine = connect_to_bio(CONFIG)
-portal = connect_to_portal(CONFIG)
-
-# max number of bytes to read from s3 per request
-RESPONSE_LIMIT = CONFIG.response_limit
-RESPONSE_LIMIT_MAX = CONFIG.response_limit_max
-MATCH_LIMIT = CONFIG.match_limit
-
-# multi-query executor
+# multi-query executor (stateless, shared across portals)
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
-
-# by default, there is no graphql schema
-gql_schema = None
-
-# if the graphql schema file exists, load it
-if CONFIG.graphql_schema:
-    gql_schema = ql.load_schema(CONFIG, engine, CONFIG.graphql_schema)
 
 
 class Query(BaseModel):
@@ -50,33 +28,28 @@ class Query(BaseModel):
     limit: Optional[int] = None
 
 
-def _load_indexes():
-    """
-    Create a cache of the indexes in the database.
-    """
-    indexes = index.Index.list_indexes(engine, filter_built=False)
-    return dict(((i.name, int(i.schema.arity)), i) for i in indexes)
-
-
-# initialize with all the indexes, get them all, whether built or not
-INDEXES = _load_indexes()
+def _refresh_indexes(ctx):
+    """Rebuild the portal's index cache from RDS. Called on cache miss."""
+    fresh = {(i.name, int(i.schema.arity)): i for i in index.Index.list_indexes(ctx.engine, filter_built=False)}
+    ctx.indexes.clear()
+    ctx.indexes.update(fresh)
 
 
 @router.get('/indexes', response_class=fastapi.responses.ORJSONResponse)
-async def api_list_indexes():
+async def api_list_indexes(req: fastapi.Request):
     """
     Return all queryable indexes. This also refreshes the internal
     cache of the table so the server doesn't need to be bounced when
     the table is updated (very rare!).
     """
-    global INDEXES
+    ctx = get_portal_ctx(req)
 
-    # update the global index cache
-    INDEXES = _load_indexes()
+    # update the portal's index cache
+    _refresh_indexes(ctx)
     data = []
 
     # add each index to the response data
-    for i in sorted(INDEXES.values(), key=lambda i: i.name):
+    for i in sorted(ctx.indexes.values(), key=lambda i: i.name):
         data.append({
             'index': i.name,
             'built': i.built,
@@ -100,19 +73,22 @@ async def api_match(index: str, req: fastapi.Request, q: str, limit: int = None)
     """
     Return all the unique keys for a value-indexed table.
     """
+    ctx = get_portal_ctx(req)
     try:
         qs = _parse_query(q)
-        i = INDEXES[(index, len(qs))]
+        i = ctx.indexes.get((index, len(qs)))
+        if i is None:
+            raise KeyError
 
         # execute the query
-        keys, query_s = profile(query.match, CONFIG, engine, i, qs)
+        keys, query_s = profile(query.match, ctx.config, ctx.engine, i, qs)
 
         # allow an upper limit on the total number of keys returned
         if limit is not None:
             keys = itertools.islice(keys, limit)
 
         # read the matched keys
-        return _match_keys(keys, index, qs, limit, query_s=query_s)
+        return _match_keys(ctx, keys, index, qs, limit, query_s=query_s)
     except KeyError:
         raise fastapi.HTTPException(
             status_code=400, detail=f'Invalid index: {index}')
@@ -125,12 +101,15 @@ async def api_count_index(index: str, req: fastapi.Request, q: str = None):
     """
     Query the database and estimate how many records will be returned.
     """
+    ctx = get_portal_ctx(req)
     try:
         qs = _parse_query(q)
-        i = INDEXES[(index, len(qs))]
+        i = ctx.indexes.get((index, len(qs)))
+        if i is None:
+            raise KeyError
 
         # lookup the schema for this index and perform the query
-        count, query_s = profile(query.count, CONFIG, engine, i, qs)
+        count, query_s = profile(query.count, ctx.config, ctx.engine, i, qs)
 
         return {
             'profile': {
@@ -153,12 +132,15 @@ async def api_keys_index(index: str, arity: int, req: fastapi.Request, columns: 
     """
     Query the database and return all non-locus keys.
     """
+    ctx = get_portal_ctx(req)
     try:
         if columns is not None:
             columns = columns.split(',')
-        i = INDEXES[(index, arity)]
+        i = ctx.indexes.get((index, arity))
+        if i is None:
+            raise KeyError
 
-        keys, query_s = profile(query.fetch_keys, engine, i, columns)
+        keys, query_s = profile(query.fetch_keys, ctx.engine, i, columns)
 
         return {
             'profile': {
@@ -182,29 +164,30 @@ async def api_all(index: str, req: fastapi.Request, fmt: str = 'row'):
     a 413 response will be returned. If multiple indexes share a name
     with different arity it'll throw a 400.
     """
+    ctx = get_portal_ctx(req)
     try:
-        idxs = [idx for key, idx in INDEXES.items() if key[0] == index]
+        idxs = [idx for key, idx in ctx.indexes.items() if key[0] == index]
 
         if len(idxs) == 0:
             raise KeyError
         elif len(idxs) == 1:
             # discover what the user doesn't have access to see
-            restricted, auth_s = profile(restricted_keywords, portal, req) if portal else (None, 0)
+            restricted, auth_s = profile(restricted_keywords, ctx.portal, req) if ctx.portal else (None, 0)
 
             # lookup the schema for this index and perform the query
             reader, query_s = profile(
                 query.fetch_all,
-                CONFIG,
+                ctx.config,
                 idxs[0],
                 restricted=restricted,
             )
 
             # will this request exceed the limit?
-            if reader.bytes_total > RESPONSE_LIMIT_MAX:
+            if reader.bytes_total > ctx.config.response_limit_max:
                 raise fastapi.HTTPException(status_code=413)
 
             # fetch records from the reader
-            return _fetch_records(reader, index, None, fmt, query_s=auth_s + query_s)
+            return _fetch_records(ctx, reader, index, None, fmt, query_s=auth_s + query_s)
         else:
             raise ValueError(f'Multiple indexes found for {index}, try arity-specific endpoint')
     except KeyError:
@@ -220,26 +203,29 @@ async def api_all_arity(index: str, arity: int, req: fastapi.Request):
     the records from S3, but instead set the Content-Length to the total
     number of bytes what would be read.
     """
+    ctx = get_portal_ctx(req)
     try:
-        i = INDEXES[(index, arity)]
+        i = ctx.indexes.get((index, arity))
+        if i is None:
+            raise KeyError
 
         # discover what the user doesn't have access to see
-        restricted, auth_s = profile(restricted_keywords, portal, req) if portal else (None, 0)
+        restricted, auth_s = profile(restricted_keywords, ctx.portal, req) if ctx.portal else (None, 0)
 
         # lookup the schema for this index and perform the query
         reader, query_s = profile(
             query.fetch_all,
-            CONFIG,
+            ctx.config,
             i,
             restricted=restricted,
         )
 
         # will this request exceed the limit?
-        if reader.bytes_total > RESPONSE_LIMIT_MAX:
+        if reader.bytes_total > ctx.config.response_limit_max:
             raise fastapi.HTTPException(status_code=413)
 
         # fetch records from the reader
-        return _fetch_records(reader, index, None, fmt, query_s=auth_s + query_s)
+        return _fetch_records(ctx, reader, index, None, fmt, query_s=auth_s + query_s)
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
@@ -254,8 +240,9 @@ async def api_test_all(index: str, req: fastapi.Request):
     number of bytes what would be read. If multiple indexes share a name
     with different arity it'll throw a 400.
     """
+    ctx = get_portal_ctx(req)
     try:
-        idxs = [idx for key, idx in INDEXES.items() if key[0] == index]
+        idxs = [idx for key, idx in ctx.indexes.items() if key[0] == index]
 
         if len(idxs) == 0:
             raise KeyError
@@ -263,7 +250,7 @@ async def api_test_all(index: str, req: fastapi.Request):
             # lookup the schema for this index and perform the query
             reader, query_s = profile(
                 query.fetch_all,
-                CONFIG,
+                ctx.config,
                 idxs[0],
             )
 
@@ -285,13 +272,16 @@ async def api_test_all_arity(index: str, arity: int, req: fastapi.Request):
     the records from S3, but instead set the Content-Length to the total
     number of bytes what would be read.
     """
+    ctx = get_portal_ctx(req)
     try:
-        i = INDEXES[(index, arity)]
+        i = ctx.indexes.get((index, arity))
+        if i is None:
+            raise KeyError
 
         # lookup the schema for this index and perform the query
         reader, query_s = profile(
             query.fetch_all,
-            CONFIG,
+            ctx.config,
             i,
         )
 
@@ -305,11 +295,12 @@ async def api_test_all_arity(index: str, arity: int, req: fastapi.Request):
 
 
 @router.get('/varIdLookup/{rsid}', response_class=fastapi.responses.ORJSONResponse)
-async def api_lookup_variant_for_rs_id(rsid: str):
+async def api_lookup_variant_for_rs_id(rsid: str, req: fastapi.Request):
     """
     Lookup the variant ID for a given rsID.
     """
-    dynamodb_table = CONFIG.variant_dynamodb_table
+    ctx = get_portal_ctx(req)
+    dynamodb_table = ctx.config.variant_dynamodb_table
     data, fetch_s = profile(aws.look_up_var_id, rsid, dynamodb_table)
     return {
         'profile': {
@@ -327,29 +318,31 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
     Query the database for records matching the query parameter and
     read the records from s3.
     """
-    global INDEXES
-
+    ctx = get_portal_ctx(req)
     try:
         qs = _parse_query(q, required=True)
         # in the event we've added a new index
-        if (index, len(qs)) not in INDEXES:
-            INDEXES = _load_indexes()
-        i = INDEXES[(index, len(qs))]
+        i = ctx.indexes.get((index, len(qs)))
+        if i is None:
+            _refresh_indexes(ctx)
+            i = ctx.indexes.get((index, len(qs)))
+            if i is None:
+                raise KeyError
 
         # discover what the user doesn't have access to see
-        restricted, auth_s = profile(restricted_keywords, portal, req) if portal else (None, 0)
+        restricted, auth_s = profile(restricted_keywords, ctx.portal, req) if ctx.portal else (None, 0)
         # lookup the schema for this index and perform the query
         reader, query_s = profile(
             query.fetch,
-            CONFIG,
-            engine,
+            ctx.config,
+            ctx.engine,
             i,
             qs,
             restricted=restricted,
         )
 
         # with no limit, will this request exceed the limit?
-        if not limit and reader.bytes_total > RESPONSE_LIMIT_MAX:
+        if not limit and reader.bytes_total > ctx.config.response_limit_max:
             raise fastapi.HTTPException(status_code=413)
 
         # use a zip to limit the total number of records that will be read
@@ -357,7 +350,7 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
             reader.set_limit(limit)
 
         # the results of the query
-        return _fetch_records(reader, index, qs, fmt, query_s=auth_s + query_s)
+        return _fetch_records(ctx, reader, index, qs, fmt, query_s=auth_s + query_s)
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
@@ -369,10 +362,11 @@ async def api_schema(req: fastapi.Request):
     """
     Returns the GraphQL schema definition (SDL).
     """
-    if gql_schema is None:
+    ctx = get_portal_ctx(req)
+    if ctx.gql_schema is None:
         raise fastapi.HTTPException(status_code=503, detail='GraphQL Schema not built')
 
-    return graphql.utilities.print_schema(gql_schema)
+    return graphql.utilities.print_schema(ctx.gql_schema)
 
 
 @router.post('/query', response_class=fastapi.responses.ORJSONResponse)
@@ -380,11 +374,12 @@ async def api_query_gql(req: fastapi.Request):
     """
     Treat the body of the POST as a GraphQL query to be resolved.
     """
-    # restricted, auth_s = profile(restricted_keywords, portal, req)
+    ctx = get_portal_ctx(req)
+    # restricted, auth_s = profile(restricted_keywords, ctx.portal, req)
     body = await req.body()
 
     # ensure the graphql schema is loaded
-    if gql_schema is None:
+    if ctx.gql_schema is None:
         raise fastapi.HTTPException(status_code=503, detail='GraphQL Schema not built')
 
     try:
@@ -392,8 +387,8 @@ async def api_query_gql(req: fastapi.Request):
 
         # execute the query asynchronously using the schema
         co = asyncio.wait_for(
-            graphql.graphql(gql_schema, query),
-            timeout=CONFIG.script_timeout,
+            graphql.graphql(ctx.gql_schema, query),
+            timeout=ctx.config.script_timeout,
         )
 
         # wait for it to complete
@@ -417,7 +412,7 @@ async def api_query_gql(req: fastapi.Request):
         }
     except asyncio.TimeoutError:
         raise fastapi.HTTPException(status_code=408,
-                                    detail=f'Query execution timed out after {CONFIG.script_timeout} seconds')
+                                    detail=f'Query execution timed out after {ctx.config.script_timeout} seconds')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
@@ -431,12 +426,15 @@ async def api_test_index(index: str, q: str, req: fastapi.Request):
     bytes read exceeds a pre-configured server limit, then a 413
     response will be returned.
     """
+    ctx = get_portal_ctx(req)
     try:
         qs = _parse_query(q, required=True)
-        i = INDEXES[(index, len(qs))]
+        i = ctx.indexes.get((index, len(qs)))
+        if i is None:
+            raise KeyError
 
         # lookup the schema for this index and perform the query
-        reader, query_s = profile(query.fetch, engine, CONFIG.s3_bucket, i, qs)
+        reader, query_s = profile(query.fetch, ctx.engine, ctx.config.s3_bucket, i, qs)
 
         return fastapi.Response(
             headers={'Content-Length': str(reader.bytes_total)})
@@ -481,16 +479,17 @@ def _parse_query(q, required=False):
     return q.split(',') if q else []
 
 
-def _match_keys(keys, index, qs, limit, page=1, query_s=None):
+def _match_keys(ctx, keys, index, qs, limit, page=1, query_s=None):
     """
-    Collects up to MATCH_LIMIT keys from a database cursor and then
+    Collects up to match_limit keys from a database cursor and then
     return a JSON response object with them.
     """
-    fetched, fetch_s = profile(list, itertools.islice(keys, MATCH_LIMIT))
+    match_limit = ctx.config.match_limit
+    fetched, fetch_s = profile(list, itertools.islice(keys, match_limit))
 
     # create a continuation if there is more data
-    token = None if len(fetched) < MATCH_LIMIT else continuation.make_continuation(
-        callback=lambda cont: _match_keys(keys, index, limit, qs, page=page + 1),
+    token = None if len(fetched) < match_limit else continuation.make_continuation(
+        callback=lambda cont: _match_keys(ctx, keys, index, limit, qs, page=page + 1),
     )
 
     return {
@@ -509,12 +508,14 @@ def _match_keys(keys, index, qs, limit, page=1, query_s=None):
     }
 
 
-def _fetch_records(reader, index, qs, fmt, page=1, query_s=None):
+def _fetch_records(ctx, reader, index, qs, fmt, page=1, query_s=None):
     """
-    Reads up to RESPONSE_LIMIT bytes from a RecordReader, format them,
+    Reads up to response_limit bytes from a RecordReader, format them,
     and then return a JSON response object with the records.
     """
-    bytes_limit = reader.bytes_read + RESPONSE_LIMIT
+    response_limit = ctx.config.response_limit
+    response_limit_max = ctx.config.response_limit_max
+    bytes_limit = reader.bytes_read + response_limit
     restricted_count = reader.restricted_count
 
     # similar to itertools.takewhile, but keeps the final record
@@ -535,7 +536,7 @@ def _fetch_records(reader, index, qs, fmt, page=1, query_s=None):
     count = len(fetched_records)
 
     # did the reader exceed the configured, maximum number of bytes to read?
-    if reader.bytes_read > RESPONSE_LIMIT_MAX:
+    if reader.bytes_read > response_limit_max:
         raise fastapi.HTTPException(status_code=413)
 
     # transform a list of dictionaries into a dictionary of lists
@@ -547,7 +548,7 @@ def _fetch_records(reader, index, qs, fmt, page=1, query_s=None):
 
     # create a continuation if there is more data
     token = None if reader.at_end else continuation.make_continuation(
-        callback=lambda cont: _fetch_records(reader, index, qs, fmt, page=page + 1),
+        callback=lambda cont: _fetch_records(ctx, reader, index, qs, fmt, page=page + 1),
     )
 
     # build JSON response
