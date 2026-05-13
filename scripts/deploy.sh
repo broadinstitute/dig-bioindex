@@ -99,6 +99,68 @@ if [[ "$HELP_AFTER_PARSE" -eq 1 ]]; then
     exit 0
 fi
 
-# Subsequent steps (resolve tree, build, push, deploy) are added in Tasks 1.6+.
-echo "deploy.sh arg parsing OK; remainder of pipeline not yet implemented." >&2
+resolve_configs_tree() {
+    local form="$1"
+    local value="$2"
+    local out_path_var="$3"
+    local out_sha_var="$4"
+
+    if [[ "$form" == "--local" ]]; then
+        if ! verify_clean_and_pushed "$value"; then
+            exit 1
+        fi
+        local sha
+        sha=$(git -C "$value" rev-parse --short=7 HEAD)
+        printf -v "$out_path_var" '%s' "$value"
+        printf -v "$out_sha_var" '%s' "$sha"
+        return 0
+    fi
+
+    # Clone fresh
+    local clone_dir
+    clone_dir=$(mktemp -d -t bioindex-configs.XXXXXX)
+    echo "Cloning dig-bioindex-configs into $clone_dir..." >&2
+    git clone --quiet --depth 50 \
+        git@github.com:broadinstitute/dig-bioindex-configs.git "$clone_dir"
+
+    case "$form" in
+        --tag)
+            git -C "$clone_dir" fetch --quiet --depth 1 origin "tag $value" 2>/dev/null || \
+                git -C "$clone_dir" fetch --quiet --tags
+            git -C "$clone_dir" checkout --quiet "$value"
+            ;;
+        --sha)
+            git -C "$clone_dir" fetch --quiet --depth 1 origin "$value" 2>/dev/null || true
+            git -C "$clone_dir" checkout --quiet "$value"
+            ;;
+        --branch)
+            git -C "$clone_dir" checkout --quiet "$value"
+            ;;
+        *)
+            echo "ERROR: unexpected ref form $form" >&2
+            exit 1
+            ;;
+    esac
+
+    local sha
+    sha=$(git -C "$clone_dir" rev-parse --short=7 HEAD)
+    printf -v "$out_path_var" '%s' "$clone_dir"
+    printf -v "$out_sha_var" '%s' "$sha"
+}
+
+CONFIGS_PATH=""
+CONFIGS_SHA=""
+resolve_configs_tree "$REF_FORM" "$REF_VALUE" CONFIGS_PATH CONFIGS_SHA
+echo "Configs tree: $CONFIGS_PATH @ $CONFIGS_SHA"
+
+# Cleanup the temp clone on exit, unless --local
+cleanup() {
+    if [[ "$REF_FORM" != "--local" ]] && [[ -n "$CONFIGS_PATH" ]] && [[ -d "$CONFIGS_PATH" ]]; then
+        rm -rf "$CONFIGS_PATH"
+    fi
+}
+trap cleanup EXIT
+
+# Subsequent steps add image build, push, task def update.
+echo "deploy.sh: configs tree resolved (build/push pipeline not yet implemented)." >&2
 exit 0
