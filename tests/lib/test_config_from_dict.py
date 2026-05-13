@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from bioindex.lib.config import Config
@@ -10,7 +12,12 @@ def _no_aws(monkeypatch):
 
     Config.__init__ asserts truthiness of `self.rds_config`, which (when
     BIOINDEX_RDS_INSTANCE is set) calls describe_rds_instance under the hood.
+
+    Also clear BIOINDEX_ENVIRONMENT so a developer's polluted shell can't
+    drag the legacy-mode secret_lookup path into our tests.
     """
+    monkeypatch.delenv("BIOINDEX_ENVIRONMENT", raising=False)
+
     def _stub_describe_rds_instance(name):
         return {
             "name": name,
@@ -20,7 +27,16 @@ def _no_aws(monkeypatch):
         }
 
     def _stub_secret_lookup(name):
-        return {}
+        # belt-and-suspenders: return non-empty so even if legacy path runs,
+        # the `assert secret` in Config.__init__ doesn't fire.
+        return {
+            "name": "stub",
+            "engine": "mysql",
+            "host": "stub.example.com",
+            "port": 3306,
+            "username": "u",
+            "password": "p",
+        }
 
     monkeypatch.setattr(
         "bioindex.lib.config.describe_rds_instance",
@@ -39,7 +55,6 @@ def test_from_dict_builds_config_without_touching_os_environ(
     cfg = Config.from_dict(sample_portal_dict)
     assert cfg.s3_bucket == "test-bucket"
 
-    import os
     assert "BIOINDEX_S3_BUCKET" not in os.environ
 
 
@@ -65,10 +80,11 @@ def test_from_dict_two_configs_do_not_leak_into_each_other(monkeypatch):
 
 def test_from_dict_missing_required_fields_raises(monkeypatch):
     monkeypatch.delenv("BIOINDEX_S3_BUCKET", raising=False)
-    monkeypatch.delenv("BIOINDEX_RDS_INSTANCE", raising=False)
-    monkeypatch.delenv("BIOINDEX_RDS_SECRET", raising=False)
-    monkeypatch.delenv("BIOINDEX_BIO_SCHEMA", raising=False)
-
-    # missing s3 bucket
+    # has rds + schema, but missing s3 bucket -- should fail on the s3 assertion
     with pytest.raises((AssertionError, SystemExit)):
-        Config.from_dict({"BIOINDEX_BIO_SCHEMA": "x"})
+        Config.from_dict({
+            "BIOINDEX_RDS_INSTANCE": "rds",
+            "BIOINDEX_RDS_USERNAME": "u",
+            "BIOINDEX_RDS_PASSWORD": "p",
+            "BIOINDEX_BIO_SCHEMA": "schema",
+        })
