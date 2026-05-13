@@ -45,6 +45,26 @@ async def _configure_threadpool():
     logging.info("anyio thread-pool size set to %d", limit)
 
 
+@app.on_event("shutdown")
+async def _dispose_engines():
+    from .lib.portal_registry import get_registry
+    try:
+        registry = get_registry()
+    except RuntimeError:
+        return
+    for name in registry.names():
+        ctx = registry.get(name)
+        if ctx is None:
+            continue
+        try:
+            ctx.engine.dispose()
+            if ctx.portal:
+                ctx.portal.dispose()
+        except Exception as e:
+            logging.warning("failed to dispose engine for portal %s: %s", name, e)
+    logging.info("disposed all portal engines")
+
+
 # Reserved (non-portal) path prefixes. More specific entries first.
 RESERVED = ("health", "ready", "static", "_admin", "docs", "openapi.json")
 app.add_middleware(PortalResolveMiddleware, reserved_prefixes=RESERVED)
