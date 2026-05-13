@@ -12,12 +12,18 @@ from .utils import read_gff
 def config_var(type=str, default=None):
     """
     Wrap a property that returns a string so that it reads from
-    various places where that value may be set.
+    the instance's _overrides dict if present, falling back to os.environ.
     """
     def decorator(f):
-        def wrapper(*args):
-            key = f(*args)
-            val = os.environ.get(key, default)
+        def wrapper(self):
+            key = f(self)
+            val = (
+                self._overrides.get(key)
+                if getattr(self, "_overrides", None)
+                else None
+            )
+            if val is None:
+                val = os.environ.get(key, default)
 
             # cast to the appropriate type
             if type == list:
@@ -34,20 +40,30 @@ class Config:
     Configuration file.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, _overrides=None, **kwargs):
         """
         Loads the configuration file using environment.
+
+        If ``_overrides`` is provided, values are resolved from that dict
+        without writing them into ``os.environ`` -- this lets callers build
+        per-portal Config instances that don't collide in process-global env
+        state. When ``_overrides`` is ``None`` (default), behavior is
+        identical to the legacy env-var-driven path: ``kwargs`` are merged
+        into ``os.environ`` via ``set_default_env``.
         """
+        self._overrides = _overrides or {}
         try:
             if self.bioindex_env is not None:
                 secret = secret_lookup(self.bioindex_env)
                 assert secret, f'Failed to lookup secret {self.bioindex_env}'
 
-                # set environment keys if not already set
-                Config.set_default_env(secret)
+                # only pollute env when in legacy env-var mode
+                if not self._overrides:
+                    Config.set_default_env(secret)
 
             # use keyword arguments if environment not yet set
-            Config.set_default_env(kwargs)
+            if not self._overrides:
+                Config.set_default_env(kwargs)
 
             # validate required settings
             assert self.s3_bucket, 'BIOINDEX_S3_BUCKET not set in the environment'
@@ -56,6 +72,15 @@ class Config:
         except AssertionError as ex:
             logging.error(ex)
             sys.exit(-1)
+
+    @classmethod
+    def from_dict(cls, env_dict):
+        """
+        Build a Config from a dict of env-var-style keys without writing them
+        to os.environ. Used by the portal loader so per-portal configs don't
+        collide in process-global env state.
+        """
+        return cls(_overrides=dict(env_dict))
 
     @staticmethod
     def set_default_env(env):
