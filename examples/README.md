@@ -7,9 +7,6 @@ values from your AWS environment, and point the server at the directory.
 ## Run
 
 ```bash
-# Generate a signing key (any random 32 bytes; production uses Secrets Manager)
-export BIOINDEX_TOKEN_SIGNING_KEY=$(openssl rand -hex 32)
-
 # Point the server at this configs directory
 export BIOINDEX_CONFIG_DIR=$(pwd)/configs
 export BIOINDEX_ENV=qa
@@ -17,6 +14,12 @@ export BIOINDEX_ENV=qa
 # Run
 python -m bioindex.main serve --port 5000
 ```
+
+The Dockerfile ships with a default `BIOINDEX_TOKEN_SIGNING_KEY`. Bioindex
+serves only public data, so a stable in-image key is acceptable: forging a
+token at most yields garbled iteration over already-public data, not an
+authorization bypass. Override at runtime via `-e BIOINDEX_TOKEN_SIGNING_KEY=...`
+if you want unique keys per environment.
 
 Then visit `http://localhost:5000/example/api/bio/indexes`.
 

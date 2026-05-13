@@ -22,6 +22,13 @@ ENV BIOINDEX_CONFIG_DIR=/etc/bioindex
 ENV BIOINDEX_WORKERS=2
 ENV BIOINDEX_THREAD_POOL=40
 
+# Default continuation-token signing key. Bioindex serves only public data,
+# so a stable key in the image is acceptable: forging a token at most yields
+# garbled iteration over already-public data, not an authorization bypass.
+# Override at runtime (-e BIOINDEX_TOKEN_SIGNING_KEY=...) if you ever want
+# unique keys per environment.
+ENV BIOINDEX_TOKEN_SIGNING_KEY=0000000000000000000000000000000000000000000000000000000000000000
+
 RUN groupadd --gid 1000 bioindex && \
     useradd  --uid 1000 --gid bioindex --no-create-home bioindex && \
     chown -R bioindex:bioindex /usr/src/app
