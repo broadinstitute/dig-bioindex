@@ -138,7 +138,13 @@ class RecordReader:
                                f"s3://{self.config.s3_bucket}/{source.key}{'' if source.key.endswith('.gz') else '.gz'}"]
                     with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1) as proc:
                         for line in proc.stdout:
-                            line_bytes = len(line) + 1  # eol character
+                            # subprocess.stdout (text=True) yields lines WITH
+                            # the trailing newline. read_lined_object strips it,
+                            # which is why the non-bgzip branch adds +1. Keep
+                            # the two paths' byte accounting consistent so
+                            # _source_byte_offset can be used as a seek offset
+                            # back into bgzip's -b on resume.
+                            line_bytes = len(line)
                             self.bytes_read += line_bytes
                             self._source_byte_offset += line_bytes
 
