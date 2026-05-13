@@ -47,6 +47,15 @@ def fetch_all(config, index, restricted=None, key_limit=None, start_source_index
     if key_limit:
         s3_objects = [o[1] for o in zip(range(key_limit), s3_objects)]
 
+    # bioindex's compressed-index workflow writes a bgzip index file alongside
+    # each data file (.json.gz.gzi or .json.gz.gzi.gz). S3 listing returns
+    # everything under the prefix, so without this filter the reader would
+    # try to parse the bgzip index as JSON records and fail.
+    def _is_data(o):
+        key = o['Key']
+        return not (key.endswith('.gzi') or key.endswith('.gzi.gz'))
+    s3_objects = filter(_is_data, s3_objects)
+
     # create a RecordSource for each object
     sources = [RecordSource.from_s3_object(obj) for obj in s3_objects]
 
