@@ -161,6 +161,40 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Subsequent steps add image build, push, task def update.
-echo "deploy.sh: configs tree resolved (build/push pipeline not yet implemented)." >&2
+# Read BASE_IMAGE_SHA from the configs tree
+if [[ ! -f "$CONFIGS_PATH/BASE_IMAGE_SHA" ]]; then
+    echo "ERROR: BASE_IMAGE_SHA file not found in configs tree" >&2
+    exit 1
+fi
+BASE_IMAGE_SHA=$(tr -d '[:space:]' < "$CONFIGS_PATH/BASE_IMAGE_SHA")
+if [[ -z "$BASE_IMAGE_SHA" ]]; then
+    echo "ERROR: BASE_IMAGE_SHA file is empty" >&2
+    exit 1
+fi
+
+if ! image_exists_in_ecr "bioindex-base" "$BASE_IMAGE_SHA"; then
+    echo "ERROR: bioindex-base:$BASE_IMAGE_SHA does not exist in ECR." >&2
+    echo "       Run: ./scripts/build-base.sh --sha $BASE_IMAGE_SHA" >&2
+    exit 1
+fi
+echo "Base image: bioindex-base:$BASE_IMAGE_SHA (exists)"
+
+# Check if deployable image already exists
+DEPLOYABLE_TAG="$CONFIGS_SHA"
+SKIP_BUILD=0
+if image_exists_in_ecr "bioindex-deployable" "$DEPLOYABLE_TAG"; then
+    if [[ "$NO_BUILD" -eq 1 ]]; then
+        echo "Deployable image already in ECR; --no-build set, skipping build."
+    else
+        echo "Deployable image bioindex-deployable:$DEPLOYABLE_TAG already in ECR; skipping build."
+    fi
+    SKIP_BUILD=1
+else
+    if [[ "$NO_BUILD" -eq 1 ]]; then
+        echo "ERROR: --no-build specified but bioindex-deployable:$DEPLOYABLE_TAG not in ECR." >&2
+        exit 1
+    fi
+fi
+
+echo "deploy.sh: image checks complete (build/push/deploy not yet implemented)." >&2
 exit 0
