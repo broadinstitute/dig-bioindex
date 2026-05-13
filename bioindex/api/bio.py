@@ -11,6 +11,7 @@ from .utils import *
 from ..lib import continuation
 from ..lib import index
 from ..lib import query
+from ..lib import signed_tokens
 from ..lib.auth import restricted_keywords
 from ..lib.utils import nonce, profile, profile_async
 from ..middleware.portal import get_portal_ctx
@@ -451,25 +452,36 @@ async def api_test_index(index: str, q: str, req: fastapi.Request):
 
 
 @router.get('/cont', response_class=fastapi.responses.ORJSONResponse)
-async def api_cont(token: str):
+async def api_cont(token: str, req: fastapi.Request):
     """
-    Lookup a continuation token and get the next set of records.
+    Decode a signed continuation token and resume the paginated query.
     """
+    ctx = get_portal_ctx(req)
+
     try:
-        state = continuation.lookup_and_remove_continuation(token)
-    except KeyError:
+        state = signed_tokens.decode(token, signed_tokens.signing_key())
+    except signed_tokens.TokenError as e:
         raise fastapi.HTTPException(
             status_code=400,
-            detail='Invalid, expired, or missing continuation token')
+            detail=f'Invalid or expired continuation token: {e}',
+        )
+
+    i = ctx.indexes.get((state.index_name, state.index_arity))
+    if i is None:
+        _refresh_indexes(ctx)
+        i = ctx.indexes.get((state.index_name, state.index_arity))
+        if i is None:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=f"Index '{state.index_name}' no longer present",
+            )
 
     try:
-        i = INDEXES[(state.index_name, state.index_arity)]
-
         if state.type == 'fetch':
             reader, query_s = profile(
                 query.fetch,
-                CONFIG,
-                engine,
+                ctx.config,
+                ctx.engine,
                 i,
                 state.qs,
                 restricted=state.restricted,
@@ -478,14 +490,14 @@ async def api_cont(token: str):
             )
             if state.limit is not None:
                 reader.set_limit(state.limit)
-            return _fetch_records(reader, state.index_name, state.qs, state.fmt,
+            return _fetch_records(ctx, reader, state.index_name, state.qs, state.fmt,
                                   restricted=state.restricted, cont_type='fetch',
                                   page=state.page, query_s=query_s)
 
         elif state.type == 'all':
             reader, query_s = profile(
                 query.fetch_all,
-                CONFIG,
+                ctx.config,
                 i,
                 restricted=state.restricted,
                 start_source_index=state.source_index,
@@ -493,23 +505,21 @@ async def api_cont(token: str):
             )
             if state.limit is not None:
                 reader.set_limit(state.limit)
-            return _fetch_records(reader, state.index_name, state.qs, state.fmt,
+            return _fetch_records(ctx, reader, state.index_name, state.qs, state.fmt,
                                   restricted=state.restricted, cont_type='all',
                                   page=state.page, query_s=query_s)
 
         elif state.type == 'match':
-            all_keys = query.match(CONFIG, engine, i, state.qs)
+            all_keys = query.match(ctx.config, ctx.engine, i, state.qs)
             # skip past keys already returned on previous pages
             if state.last_key is not None:
                 all_keys = itertools.dropwhile(lambda k: k <= state.last_key, all_keys)
-            return _match_keys(all_keys, state.index_name, state.qs, state.limit,
+            return _match_keys(ctx, all_keys, state.index_name, state.qs, state.limit,
                                page=state.page)
 
         else:
-            raise fastapi.HTTPException(status_code=400, detail='Unknown continuation type')
+            raise fastapi.HTTPException(status_code=400, detail=f'Unknown continuation type: {state.type}')
 
-    except KeyError:
-        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {state.index_name}')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
@@ -537,7 +547,7 @@ def _match_keys(ctx, keys, index, qs, limit, page=1, query_s=None):
     # create a continuation if there is more data
     token = None
     if len(fetched) >= match_limit:
-        token = continuation.make_continuation(
+        state = continuation.ContState(
             type='match',
             index_name=index,
             index_arity=len(qs),
@@ -546,6 +556,10 @@ def _match_keys(ctx, keys, index, qs, limit, page=1, query_s=None):
             last_key=fetched[-1] if fetched else None,
             page=page + 1,
         )
+        try:
+            token = signed_tokens.encode(state, signed_tokens.signing_key())
+        except signed_tokens.TokenError as e:
+            raise fastapi.HTTPException(status_code=413, detail=str(e))
 
     return {
         'profile': {
@@ -604,7 +618,7 @@ def _fetch_records(ctx, reader, index, qs, fmt, restricted=None, cont_type='fetc
     # create a continuation if there is more data
     token = None
     if not reader.at_end:
-        token = continuation.make_continuation(
+        state = continuation.ContState(
             type=cont_type,
             index_name=index,
             index_arity=len(qs) if qs else 0,
@@ -616,6 +630,10 @@ def _fetch_records(ctx, reader, index, qs, fmt, restricted=None, cont_type='fetc
             source_index=reader._source_index,
             skip_count=reader._source_record_count,
         )
+        try:
+            token = signed_tokens.encode(state, signed_tokens.signing_key())
+        except signed_tokens.TokenError as e:
+            raise fastapi.HTTPException(status_code=413, detail=str(e))
 
     # build JSON response
     return {
