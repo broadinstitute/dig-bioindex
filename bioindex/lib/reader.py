@@ -46,12 +46,16 @@ class RecordReader:
     """
 
     def __init__(self, config, sources, index, record_filter=None, restricted=None,
-                 start_source_index=0, start_skip_count=0):
+                 start_source_index=0, start_byte_offset=0):
         """
         Initialize the RecordReader with a list of RecordSource objects.
 
         start_source_index: resume reading from this source index (inclusive)
-        start_skip_count: number of records to skip at the start of start_source_index
+        start_byte_offset: number of bytes already consumed within
+            start_source_index (measured from source.start). On resume, the
+            reader opens the S3 range at source.start + start_byte_offset
+            instead of source.start, so previously-returned bytes are not
+            re-downloaded.
         """
         self.config = config
         self.sources = sources
@@ -63,13 +67,19 @@ class RecordReader:
         self.restricted_count = 0
         self.limit = None
         self._source_index = start_source_index
-        self._source_record_count = 0
+        self._source_byte_offset = 0
         self._start_source_index = start_source_index
-        self._start_skip_count = start_skip_count
+        self._start_byte_offset = start_byte_offset
 
-        # only count bytes from the resume point onward
-        for source in sources[start_source_index:]:
-            self.bytes_total += source.length
+        # only count bytes from the resume point onward; on the resume source,
+        # discount the bytes already consumed by previous pages so bytes_read
+        # (which only counts bytes read by THIS reader) can match bytes_total
+        # at end-of-stream.
+        for j, source in enumerate(sources[start_source_index:], start=start_source_index):
+            length = source.length
+            if j == start_source_index:
+                length = max(0, length - start_byte_offset)
+            self.bytes_total += length
 
         # start reading the records on-demand
         self.record_filter = record_filter
@@ -82,6 +92,12 @@ class RecordReader:
     def _readall(self):
         """
         A generator that reads each of the records from S3 for the sources.
+
+        On resume, the reader opens source[start_source_index] at
+        source.start + start_byte_offset, so previously-returned bytes are
+        not re-downloaded. _source_byte_offset tracks the cumulative bytes
+        consumed within the current source, measured from source.start, and
+        can be used directly as start_byte_offset on the next resume.
         """
         for i, source in enumerate(self.sources):
             # skip sources before the resume point
@@ -89,15 +105,18 @@ class RecordReader:
                 continue
 
             self._source_index = i
-            # _source_record_count is the CUMULATIVE offset within source i.
-            # On the resume source, start from the skip point so the value can
-            # be used directly as start_skip_count for the next resume call.
+
+            # Cumulative byte offset within source i, measured from source.start.
+            # On the resume source, start from the byte offset so the value can
+            # be used directly as start_byte_offset for the next resume call.
             if i == self._start_source_index:
-                self._source_record_count = self._start_skip_count
-                skip_remaining = self._start_skip_count
+                self._source_byte_offset = self._start_byte_offset
+                seek_start = source.start + self._start_byte_offset
             else:
-                self._source_record_count = 0
-                skip_remaining = 0
+                self._source_byte_offset = 0
+                seek_start = source.start
+
+            seek_length = source.end - seek_start
 
             # This is here to handle a particularly bad condition: when the
             # byte offsets are mucked up and this would cause the reader to
@@ -108,14 +127,20 @@ class RecordReader:
                 logging.warning('Bad index record: end offset <= start; skipping...')
                 continue
 
+            if seek_length <= 0:
+                # already at/past end of this source (e.g. byte_offset == source.length)
+                continue
+
             try:
                 compression_on = self.index.compressed
                 if compression_on:
-                    command = ['bgzip', '-b', f"{source.start}", '-s', f"{source.end - source.start}",
+                    command = ['bgzip', '-b', f"{seek_start}", '-s', f"{seek_length}",
                                f"s3://{self.config.s3_bucket}/{source.key}{'' if source.key.endswith('.gz') else '.gz'}"]
                     with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1) as proc:
                         for line in proc.stdout:
-                            self.bytes_read += len(line) + 1  # eol character
+                            line_bytes = len(line) + 1  # eol character
+                            self.bytes_read += line_bytes
+                            self._source_byte_offset += line_bytes
 
                             # parse the record
                             record = orjson.loads(line)
@@ -126,11 +151,7 @@ class RecordReader:
                                 continue
 
                             if self.record_filter is None or self.record_filter(record):
-                                if skip_remaining > 0:
-                                    skip_remaining -= 1
-                                    continue
                                 self.count += 1
-                                self._source_record_count += 1
                                 yield record
 
                         proc.wait()
@@ -139,15 +160,17 @@ class RecordReader:
                             raise subprocess.CalledProcessError(proc.returncode, command, output=stderr)
 
                 else:
-                    content = read_lined_object(self.config.s3_bucket, source.key, offset=source.start,
-                                          length=source.end - source.start)
+                    content = read_lined_object(self.config.s3_bucket, source.key,
+                                                offset=seek_start, length=seek_length)
 
                     # handle a bad case where the content failed to be read
                     if content is None:
                         raise FileNotFoundError(source.key)
 
                     for line in content:
-                        self.bytes_read += len(line) + 1  # eol character
+                        line_bytes = len(line) + 1  # eol character
+                        self.bytes_read += line_bytes
+                        self._source_byte_offset += line_bytes
 
                         # parse the record
                         record = orjson.loads(line)
@@ -159,11 +182,7 @@ class RecordReader:
 
                         # optionally filter; and tally filtered records
                         if self.record_filter is None or self.record_filter(record):
-                            if skip_remaining > 0:
-                                skip_remaining -= 1
-                                continue
                             self.count += 1
-                            self._source_record_count += 1
                             yield record
 
             # handle database out of sync with S3

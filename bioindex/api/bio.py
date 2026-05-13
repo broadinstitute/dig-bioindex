@@ -502,7 +502,7 @@ async def api_cont(token: str, req: fastapi.Request):
                 state.qs,
                 restricted=restricted,
                 start_source_index=state.source_index,
-                start_skip_count=state.skip_count,
+                start_byte_offset=state.byte_offset,
             )
             if state.limit is not None:
                 reader.set_limit(state.limit)
@@ -517,7 +517,7 @@ async def api_cont(token: str, req: fastapi.Request):
                 i,
                 restricted=restricted,
                 start_source_index=state.source_index,
-                start_skip_count=state.skip_count,
+                start_byte_offset=state.byte_offset,
             )
             if state.limit is not None:
                 reader.set_limit(state.limit)
@@ -651,7 +651,7 @@ def _fetch_records(ctx, reader, index, qs, fmt, restricted=None, cont_type='fetc
             limit=reader.limit,
             page=page + 1,
             source_index=reader._source_index,
-            skip_count=reader._source_record_count,
+            byte_offset=reader._source_byte_offset,
         )
         try:
             token = signed_tokens.encode(state, signed_tokens.signing_key())

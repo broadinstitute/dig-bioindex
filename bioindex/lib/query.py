@@ -8,7 +8,7 @@ from .reader import MultiRecordReader, RecordReader, RecordSource
 from .s3 import list_objects
 
 
-def fetch(config, engine, index, q, restricted=None, start_source_index=0, start_skip_count=0):
+def fetch(config, engine, index, q, restricted=None, start_source_index=0, start_byte_offset=0):
     """
     Use the table schema to determine the type of query to execute. Returns
     a RecordReader of all the results.
@@ -17,7 +17,7 @@ def fetch(config, engine, index, q, restricted=None, start_source_index=0, start
         raise ValueError(f'Arity mismatch for index schema "{index.schema}"')
 
     # execute the query and fetch the records from s3
-    return _run_query(config, engine, index, q, restricted, start_source_index, start_skip_count)
+    return _run_query(config, engine, index, q, restricted, start_source_index, start_byte_offset)
 
 
 def fetch_multi(executor, config, engine, index, queries, restricted=None):
@@ -35,7 +35,7 @@ def fetch_multi(executor, config, engine, index, queries, restricted=None):
     return MultiRecordReader(readers)
 
 
-def fetch_all(config, index, restricted=None, key_limit=None, start_source_index=0, start_skip_count=0):
+def fetch_all(config, index, restricted=None, key_limit=None, start_source_index=0, start_byte_offset=0):
     """
     Scans for all the S3 files in the schema and creates a dummy cursor
     to read all the records from all the files. Returns a RecordReader
@@ -52,7 +52,7 @@ def fetch_all(config, index, restricted=None, key_limit=None, start_source_index
 
     # create the reader object, begin reading the records
     return RecordReader(config, sources, index, restricted=restricted,
-                        start_source_index=start_source_index, start_skip_count=start_skip_count)
+                        start_source_index=start_source_index, start_byte_offset=start_byte_offset)
 
 
 def fetch_keys(engine, index, columns, restricted=None, key_limit=None):
@@ -146,7 +146,7 @@ def match(config, engine, index, q):
             prev_key = r[0]
 
 
-def _run_query(config, engine, index, q, restricted, start_source_index=0, start_skip_count=0):
+def _run_query(config, engine, index, q, restricted, start_source_index=0, start_byte_offset=0):
     """
     Construct a SQL query to fetch S3 objects and byte offsets. Run it and
     return a RecordReader to the results.
@@ -213,5 +213,5 @@ def _run_query(config, engine, index, q, restricted, start_source_index=0, start
             record_filter=record_filter,
             restricted=restricted,
             start_source_index=start_source_index,
-            start_skip_count=start_skip_count,
+            start_byte_offset=start_byte_offset,
         )

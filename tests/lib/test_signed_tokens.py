@@ -18,18 +18,18 @@ def _state(**overrides):
     base = dict(
         type="fetch", index_name="x", index_arity=1, qs=["a"],
         fmt="row", page=1,
-        source_index=0, skip_count=0, last_key=None, limit=None,
+        source_index=0, byte_offset=0, last_key=None, limit=None,
     )
     base.update(overrides)
     return ContState(**base)
 
 
 def test_encode_decode_round_trip():
-    s = _state(page=3, skip_count=42)
+    s = _state(page=3, byte_offset=42)
     token = encode(s, KEY)
     decoded = decode(token, KEY)
     assert decoded.page == 3
-    assert decoded.skip_count == 42
+    assert decoded.byte_offset == 42
     assert decoded.index_name == "x"
 
 
@@ -65,12 +65,12 @@ def test_encode_decode_with_complex_payload():
     """Regression — earlier version of ContState carried a dict[str, set]
     which json.dumps couldn't serialize. Make sure encode works with the
     full ContState shape."""
-    s = _state(qs=["a", "b", "c"], source_index=5, skip_count=100, page=4)
+    s = _state(qs=["a", "b", "c"], source_index=5, byte_offset=100, page=4)
     token = encode(s, KEY)
     decoded = decode(token, KEY)
     assert decoded.qs == ["a", "b", "c"]
     assert decoded.source_index == 5
-    assert decoded.skip_count == 100
+    assert decoded.byte_offset == 100
     assert decoded.page == 4
 
 

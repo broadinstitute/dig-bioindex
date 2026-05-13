@@ -9,9 +9,9 @@ class ContState:
     Serializable snapshot of everything needed to resume a paginated query.
 
     type == 'fetch': resume a query.fetch() — re-runs SQL to get sources,
-                     seeks to source_index / skip_count.
+                     seeks to source_index / byte_offset.
     type == 'all':   resume a query.fetch_all() — re-scans S3 prefix,
-                     seeks to source_index / skip_count.
+                     seeks to source_index / byte_offset.
     type == 'match': resume a query.match() — re-runs match query and
                      skips keys already returned (via last_key).
 
@@ -33,7 +33,7 @@ class ContState:
     page: int = 1
     # fetch / all resume point
     source_index: int = 0
-    skip_count: int = 0
+    byte_offset: int = 0       # bytes consumed within source[source_index], measured from source.start
     # match resume point
     last_key: Optional[str] = None
     limit: Optional[int] = None
