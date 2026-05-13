@@ -89,8 +89,15 @@ class RecordReader:
                 continue
 
             self._source_index = i
-            self._source_record_count = 0
-            skip_remaining = self._start_skip_count if i == self._start_source_index else 0
+            # _source_record_count is the CUMULATIVE offset within source i.
+            # On the resume source, start from the skip point so the value can
+            # be used directly as start_skip_count for the next resume call.
+            if i == self._start_source_index:
+                self._source_record_count = self._start_skip_count
+                skip_remaining = self._start_skip_count
+            else:
+                self._source_record_count = 0
+                skip_remaining = 0
 
             # This is here to handle a particularly bad condition: when the
             # byte offsets are mucked up and this would cause the reader to
