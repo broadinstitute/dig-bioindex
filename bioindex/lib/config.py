@@ -53,19 +53,16 @@ class Config:
         """
         self._overrides = _overrides or {}
         try:
-            if self.bioindex_env is not None:
-                secret = secret_lookup(self.bioindex_env)
-                assert secret, f'Failed to lookup secret {self.bioindex_env}'
-
-                # only pollute env when in legacy env-var mode
-                if not self._overrides:
-                    Config.set_default_env(secret)
-
-            # use keyword arguments if environment not yet set
             if not self._overrides:
+                # legacy env-var-driven mode: read BIOINDEX_ENVIRONMENT,
+                # optionally expand a secret into os.environ, then merge kwargs.
+                if self.bioindex_env is not None:
+                    secret = secret_lookup(self.bioindex_env)
+                    assert secret, f'Failed to lookup secret {self.bioindex_env}'
+                    Config.set_default_env(secret)
                 Config.set_default_env(kwargs)
 
-            # validate required settings
+            # validate required settings (both modes)
             assert self.s3_bucket, 'BIOINDEX_S3_BUCKET not set in the environment'
             assert self.rds_config, 'BIOINDEX_RDS_SECRET nor BIOINDEX_RDS_INSTANCE set in the environment'
             assert self.bio_schema, 'BIOINDEX_BIO_SCHEMA not set in the environment'
