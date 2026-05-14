@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: bioindex consolidated deployment — ECS Fargate + ALB + autoscale (one per env)
+
+Parameters:
+  Env:
+    Type: String
+    AllowedValues: [qa, prod]
+    Description: Environment name (qa or prod).
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC in which the service runs.
+  PrivateSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Private subnets for the ECS tasks and ALB (>= 2, different AZs).
+  NginxHostSgId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security group of the nginx host (allowed to reach the ALB).
+  RdsSgIds:
+    Type: CommaDelimitedList
+    Description: Security groups of the RDS instances. Note - the stack does NOT manage ingress rules on these SGs; the operator must add 3306-from-tasks-SG manually post-creation. See runbook.
+  TaskCpu:
+    Type: String
+    Default: '1024'
+    Description: Fargate task CPU (1024 = 1 vCPU).
+  TaskMemory:
+    Type: String
+    Default: '4096'
+    Description: Fargate task memory in MiB.
+  MinTasks:
+    Type: Number
+    Default: 1
+  MaxTasks:
+    Type: Number
+    Default: 8
+  AutoscaleTarget:
+    Type: Number
+    Default: 50
+    Description: ALBRequestCountPerTarget target value.
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+  TokenSigningKeySecretArn:
+    Type: String
+    Description: ARN of the Secrets Manager secret containing BIOINDEX_TOKEN_SIGNING_KEY.
+
+Outputs:
+  AlbDnsName:
+    Description: Internal ALB DNS name (use as nginx upstream)
+    Value: !GetAtt LoadBalancer.DNSName
+  ClusterName:
+    Value: !Ref Cluster
+  ServiceName:
+    Value: !GetAtt Service.Name
+  TaskRoleArn:
+    Value: !GetAtt TaskRole.Arn
+
+Resources:
+  # Placeholder so the skeleton validates. Replaced by Task 2.2.
+  StackPlaceholder:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Sub 'bioindex-${Env}-placeholder'
