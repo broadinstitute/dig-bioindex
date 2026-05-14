@@ -1,0 +1,14 @@
+[
+  {"ParameterKey": "Env",                       "ParameterValue": "qa"},
+  {"ParameterKey": "VpcId",                     "ParameterValue": "REPLACE_ME_VPC_ID"},
+  {"ParameterKey": "PrivateSubnets",            "ParameterValue": "REPLACE_ME_SUBNET_A,REPLACE_ME_SUBNET_B"},
+  {"ParameterKey": "NginxHostSgId",             "ParameterValue": "REPLACE_ME_NGINX_HOST_SG_ID"},
+  {"ParameterKey": "RdsSgIds",                  "ParameterValue": "REPLACE_ME_RDS_SG_ID_1,REPLACE_ME_RDS_SG_ID_2"},
+  {"ParameterKey": "TaskCpu",                   "ParameterValue": "1024"},
+  {"ParameterKey": "TaskMemory",                "ParameterValue": "4096"},
+  {"ParameterKey": "MinTasks",                  "ParameterValue": "1"},
+  {"ParameterKey": "MaxTasks",                  "ParameterValue": "2"},
+  {"ParameterKey": "AutoscaleTarget",           "ParameterValue": "50"},
+  {"ParameterKey": "LogRetentionDays",          "ParameterValue": "30"},
+  {"ParameterKey": "TokenSigningKeySecretArn",  "ParameterValue": "REPLACE_ME_QA_SECRET_ARN"}
+]
