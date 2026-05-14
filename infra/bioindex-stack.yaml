@@ -160,3 +160,17 @@ Resources:
                   - ssmmessages:OpenControlChannel
                   - ssmmessages:OpenDataChannel
                 Resource: '*'
+
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub 'bioindex-${Env}'
+      ClusterSettings:
+        - Name: containerInsights
+          Value: disabled
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/bioindex/${Env}'
+      RetentionInDays: !Ref LogRetentionDays
