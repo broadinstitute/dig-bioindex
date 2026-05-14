@@ -15,6 +15,24 @@ source "$SCRIPT_DIR/lib/audit.sh"
 # shellcheck source=lib/ecr.sh
 source "$SCRIPT_DIR/lib/ecr.sh"
 
+# Preflight: required external tools.
+for tool in aws docker git jq; do
+    command -v "$tool" >/dev/null 2>&1 || {
+        echo "ERROR: required tool '$tool' is not installed or not on PATH" >&2
+        exit 1
+    }
+done
+
+# On macOS, GNU coreutils provides 'timeout' as 'gtimeout'. Allow either.
+if command -v timeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="timeout"
+elif command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="gtimeout"
+else
+    echo "ERROR: 'timeout' (GNU coreutils) is required (on macOS: brew install coreutils)" >&2
+    exit 1
+fi
+
 usage() {
     cat <<'USAGE' >&2
 Usage: deploy.sh <env> [--tag <tag> | --sha <sha> | --branch <branch> | --local <path>]
@@ -284,7 +302,7 @@ aws ecs update-service \
 echo "Waiting for services-stable (timeout ${WAIT_TIMEOUT}s)..."
 SECONDS=0
 START_TS=$SECONDS
-if ! timeout "$WAIT_TIMEOUT" aws ecs wait services-stable \
+if ! "$TIMEOUT_CMD" "$WAIT_TIMEOUT" aws ecs wait services-stable \
         --cluster "$CLUSTER" --services "$SERVICE"; then
     echo "WARNING: services-stable did not succeed within ${WAIT_TIMEOUT}s." >&2
     echo "         Check CloudWatch Logs and consider a rollback." >&2
