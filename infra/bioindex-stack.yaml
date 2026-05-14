@@ -287,3 +287,32 @@ Resources:
       HealthCheckGracePeriodSeconds: 90
       EnableExecuteCommand: true
       TaskDefinition: !Ref TaskDefinition
+
+  ScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: ecs
+      ResourceId: !Sub 'service/${Cluster}/${Service.Name}'
+      ScalableDimension: ecs:service:DesiredCount
+      MinCapacity: !Ref MinTasks
+      MaxCapacity: !Ref MaxTasks
+      RoleARN: !Sub 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService'
+
+  ScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub 'bioindex-${Env}-target-tracking-rcp'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ALBRequestCountPerTarget
+          ResourceLabel: !Sub
+            - 'app/${LbName}/${LbId}/targetgroup/${TgName}/${TgId}'
+            - LbName: !Select [2, !Split ['/', !Ref LoadBalancer]]
+              LbId: !Select [3, !Split ['/', !Ref LoadBalancer]]
+              TgName: !GetAtt TargetGroup.TargetGroupName
+              TgId: !Select [2, !Split ['/', !GetAtt TargetGroup.TargetGroupFullName]]
+        TargetValue: !Ref AutoscaleTarget
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
