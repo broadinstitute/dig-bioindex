@@ -107,7 +107,7 @@ resolve_configs_tree() {
 
     if [[ "$form" == "--local" ]]; then
         if ! verify_clean_and_pushed "$value"; then
-            exit 1
+            return 1
         fi
         local sha
         sha=$(git -C "$value" rev-parse --short=7 HEAD)
@@ -116,16 +116,19 @@ resolve_configs_tree() {
         return 0
     fi
 
-    # Clone fresh
+    # Clone fresh. Record the temp path FIRST so the EXIT trap can clean
+    # it up even if a subsequent git command fails.
     local clone_dir
     clone_dir=$(mktemp -d -t bioindex-configs.XXXXXX)
+    printf -v "$out_path_var" '%s' "$clone_dir"
+
     echo "Cloning dig-bioindex-configs into $clone_dir..." >&2
     git clone --quiet --depth 50 \
         git@github.com:broadinstitute/dig-bioindex-configs.git "$clone_dir"
 
     case "$form" in
         --tag)
-            git -C "$clone_dir" fetch --quiet --depth 1 origin "tag $value" 2>/dev/null || \
+            git -C "$clone_dir" fetch --quiet --depth 1 origin tag "$value" 2>/dev/null || \
                 git -C "$clone_dir" fetch --quiet --tags
             git -C "$clone_dir" checkout --quiet "$value"
             ;;
@@ -138,28 +141,34 @@ resolve_configs_tree() {
             ;;
         *)
             echo "ERROR: unexpected ref form $form" >&2
-            exit 1
+            return 1
             ;;
     esac
 
     local sha
     sha=$(git -C "$clone_dir" rev-parse --short=7 HEAD)
-    printf -v "$out_path_var" '%s' "$clone_dir"
     printf -v "$out_sha_var" '%s' "$sha"
 }
 
+# Initialize + register cleanup BEFORE resolve_configs_tree runs, so the
+# trap can clean up the temp dir if a git operation inside fails.
 CONFIGS_PATH=""
 CONFIGS_SHA=""
-resolve_configs_tree "$REF_FORM" "$REF_VALUE" CONFIGS_PATH CONFIGS_SHA
-echo "Configs tree: $CONFIGS_PATH @ $CONFIGS_SHA"
-
-# Cleanup the temp clone on exit, unless --local
 cleanup() {
+    if [[ -n "${KEEP_CLONE:-}" ]]; then
+        echo "KEEP_CLONE set; not removing $CONFIGS_PATH" >&2
+        return 0
+    fi
     if [[ "$REF_FORM" != "--local" ]] && [[ -n "$CONFIGS_PATH" ]] && [[ -d "$CONFIGS_PATH" ]]; then
         rm -rf "$CONFIGS_PATH"
     fi
 }
 trap cleanup EXIT
+# (The clone is removed on both success and failure paths. To inhibit
+# cleanup for debugging a failed deploy, set KEEP_CLONE=1 in the env.)
+
+resolve_configs_tree "$REF_FORM" "$REF_VALUE" CONFIGS_PATH CONFIGS_SHA
+echo "Configs tree: $CONFIGS_PATH @ $CONFIGS_SHA"
 
 # Read BASE_IMAGE_SHA from the configs tree
 if [[ ! -f "$CONFIGS_PATH/BASE_IMAGE_SHA" ]]; then
@@ -292,6 +301,10 @@ echo "  Image deployed:      $DEPLOYABLE_URI"
 echo "  Task definition:     $NEW_TASK_DEF_ARN"
 echo "  Wait elapsed:        ${ELAPSED}s"
 echo
-echo "  Rollback if needed:  ./scripts/deploy.sh $ENV --sha $PREV_TAG"
+if [[ "$PREV_TAG" =~ ^[0-9a-f]{7,40}$ ]]; then
+    echo "  Rollback if needed:  ./scripts/deploy.sh $ENV --sha $PREV_TAG"
+else
+    echo "  (no previous deployment to roll back to)"
+fi
 echo
 exit 0
