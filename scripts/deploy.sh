@@ -82,7 +82,11 @@ while [[ $# -gt 0 ]]; do
             DRY_RUN=1; shift
             ;;
         --wait-timeout)
-            WAIT_TIMEOUT="${2:-600}"; shift 2
+            if [[ -z "${2:-}" ]] || [[ ! "$2" =~ ^[0-9]+$ ]]; then
+                echo "ERROR: --wait-timeout requires a numeric value" >&2
+                exit 1
+            fi
+            WAIT_TIMEOUT="$2"; shift 2
             ;;
         --help-after-parse)
             HELP_AFTER_PARSE=1; shift
@@ -224,7 +228,7 @@ else
 fi
 
 REGISTRY=$(ecr_registry_url)
-AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+AWS_ACCOUNT_ID="${REGISTRY%%.*}"      # extract from registry URL: 123.dkr.ecr... -> 123
 AWS_REGION="${AWS_REGION:-us-east-1}"
 DEPLOYABLE_URI="$REGISTRY/bioindex-deployable:$DEPLOYABLE_TAG"
 DEPLOYABLE_LATEST="$REGISTRY/bioindex-deployable:${ENV}-latest"
@@ -301,14 +305,13 @@ aws ecs update-service \
 
 echo "Waiting for services-stable (timeout ${WAIT_TIMEOUT}s)..."
 SECONDS=0
-START_TS=$SECONDS
 if ! "$TIMEOUT_CMD" "$WAIT_TIMEOUT" aws ecs wait services-stable \
         --cluster "$CLUSTER" --services "$SERVICE"; then
     echo "WARNING: services-stable did not succeed within ${WAIT_TIMEOUT}s." >&2
     echo "         Check CloudWatch Logs and consider a rollback." >&2
     exit 1
 fi
-ELAPSED=$((SECONDS - START_TS))
+ELAPSED=$SECONDS
 
 echo
 echo "=== Deploy summary ==="
