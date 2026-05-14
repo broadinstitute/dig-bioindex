@@ -215,3 +215,75 @@ Resources:
       DefaultActions:
         - Type: forward
           TargetGroupArn: !Ref TargetGroup
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub 'bioindex-${Env}'
+      Cpu: !Ref TaskCpu
+      Memory: !Ref TaskMemory
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: bioindex
+          Image: !Sub
+            - '${AcctId}.dkr.ecr.${Region}.amazonaws.com/bioindex-base:latest'
+            - AcctId: !Ref AWS::AccountId
+              Region: !Ref AWS::Region
+          Essential: true
+          PortMappings:
+            - ContainerPort: 5000
+              Protocol: tcp
+          Environment:
+            - Name: BIOINDEX_ENV
+              Value: !Ref Env
+            - Name: BIOINDEX_WORKERS
+              Value: '2'
+          Secrets:
+            - Name: BIOINDEX_TOKEN_SIGNING_KEY
+              ValueFrom: !Ref TokenSigningKeySecretArn
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: task
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - curl -fsS http://localhost:5000/health || exit 1
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 90
+          StopTimeout: 30
+
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: Listener
+    Properties:
+      ServiceName: !Sub 'bioindex-${Env}'
+      Cluster: !Ref Cluster
+      LaunchType: FARGATE
+      PlatformVersion: LATEST
+      DesiredCount: !Ref MinTasks
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets: !Ref PrivateSubnets
+          SecurityGroups: [!Ref TaskSecurityGroup]
+          AssignPublicIp: DISABLED
+      LoadBalancers:
+        - TargetGroupArn: !Ref TargetGroup
+          ContainerName: bioindex
+          ContainerPort: 5000
+      HealthCheckGracePeriodSeconds: 90
+      EnableExecuteCommand: true
+      TaskDefinition: !Ref TaskDefinition
