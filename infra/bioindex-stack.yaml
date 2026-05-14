@@ -174,3 +174,44 @@ Resources:
     Properties:
       LogGroupName: !Sub '/bioindex/${Env}'
       RetentionInDays: !Ref LogRetentionDays
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub 'bioindex-${Env}-alb'
+      Scheme: internal
+      Type: application
+      Subnets: !Ref PrivateSubnets
+      SecurityGroups:
+        - !Ref AlbSecurityGroup
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub 'bioindex-${Env}-tg'
+      VpcId: !Ref VpcId
+      Protocol: HTTP
+      Port: 5000
+      TargetType: ip
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /ready
+      HealthCheckIntervalSeconds: 15
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher: {HttpCode: '200'}
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
+        - Key: stickiness.enabled
+          Value: 'false'
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
