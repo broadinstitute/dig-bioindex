@@ -55,8 +55,48 @@ Outputs:
     Value: !GetAtt TaskRole.Arn
 
 Resources:
-  # Placeholder so the skeleton validates. Replaced by Task 2.2.
-  StackPlaceholder:
-    Type: AWS::SNS::Topic
+  TaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
     Properties:
-      DisplayName: !Sub 'bioindex-${Env}-placeholder'
+      GroupName: !Sub 'bioindex-tasks-${Env}-sg'
+      GroupDescription: !Sub 'Fargate task security group for bioindex-${Env}'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5000
+          ToPort: 5000
+          SourceSecurityGroupId: !Ref AlbSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS egress (S3, ECR, Secrets Manager, CloudWatch)
+        - IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: 169.254.169.253/32
+          Description: VPC DNS resolver (TCP)
+        - IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: 169.254.169.253/32
+          Description: VPC DNS resolver (UDP)
+
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub 'bioindex-alb-${Env}-sg'
+      GroupDescription: !Sub 'ALB security group for bioindex-${Env}'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref NginxHostSgId
+
+  # NOTE: egress from TaskSecurityGroup to RDS instances on 3306 is NOT
+  # managed by this stack. After infra-create.sh completes, the operator
+  # must add an inbound rule to each portal's RDS SG (listed via the
+  # RdsSgIds parameter) allowing 3306 from TaskSecurityGroup. The runbook
+  # at docs/plan-b-runbook.md documents this step.
