@@ -37,10 +37,12 @@ setup() {
     [[ "$output" == *"origin"* || "$output" == *"pushed"* ]]
 }
 
-@test "verify_clean_and_pushed: fails on untracked files" {
+@test "verify_clean_and_pushed: passes with untracked files" {
+    # Untracked files are allowed: .dockerignore + targeted Dockerfile
+    # COPYs determine what actually enters the image, so blocking on
+    # untracked scratch files in the working tree would be too strict.
     repo=$(make_test_repo --pushed)
     echo "scratch" > "$repo/scratch.tmp"
     run verify_clean_and_pushed "$repo"
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"untracked"* || "$output" == *"uncommitted"* ]]
+    [ "$status" -eq 0 ]
 }

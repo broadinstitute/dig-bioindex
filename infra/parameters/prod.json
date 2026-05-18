@@ -2,7 +2,7 @@
   {"ParameterKey": "Env",                       "ParameterValue": "prod"},
   {"ParameterKey": "VpcId",                     "ParameterValue": "REPLACE_ME_VPC_ID"},
   {"ParameterKey": "PrivateSubnets",            "ParameterValue": "REPLACE_ME_SUBNET_A,REPLACE_ME_SUBNET_B"},
-  {"ParameterKey": "NginxHostSgId",             "ParameterValue": "REPLACE_ME_NGINX_HOST_SG_ID"},
+  {"ParameterKey": "AlbIngressSgId",            "ParameterValue": "REPLACE_ME_ALB_INGRESS_SG_ID"},
   {"ParameterKey": "RdsSgIds",                  "ParameterValue": "REPLACE_ME_RDS_SG_ID_1,REPLACE_ME_RDS_SG_ID_2"},
   {"ParameterKey": "TaskCpu",                   "ParameterValue": "1024"},
   {"ParameterKey": "TaskMemory",                "ParameterValue": "4096"},

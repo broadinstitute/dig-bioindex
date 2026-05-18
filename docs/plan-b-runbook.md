@@ -84,36 +84,23 @@ This document covers one-time setup and day-to-day operations for the consolidat
    ./scripts/deploy.sh <env> --branch main
    ```
 
-   Wait for `services-stable`. Then verify:
+   Wait for `services-stable`. Then verify from a host inside the VPC whose SG is `AlbIngressSgId` (a bastion, a test EC2, or via `aws ecs execute-command` into a running task):
 
    ```bash
    ALB=$(aws cloudformation describe-stacks --stack-name bioindex-<env> \
      --query 'Stacks[0].Outputs[?OutputKey==`AlbDnsName`].OutputValue' --output text)
-   # From a host inside the VPC (nginx host or ECS Exec into a task):
    curl -fsS http://$ALB/ready | jq '.status'
+   # Smoke-test one portal end-to-end (path-prefix routing):
+   curl -fsS "http://$ALB/<portal>/api/bio/indexes" | jq '.count'
    ```
 
-8. **Migrate nginx for the first portal.** Edit the existing per-portal `server` block:
+8. **Side-by-side validation.** Run representative queries against the new ALB and compare against the same queries on the existing per-portal EC2 hosts:
 
-   ```nginx
-   server {
-       listen 443 ssl;
-       server_name cfde.bioindex.example.com;
-       # Let's Encrypt cert unchanged
-       location / {
-           rewrite ^/(.*)$ /cfde/$1 break;
-           proxy_pass http://bioindex_<env>;
-           proxy_set_header Host $host;
-           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-           proxy_set_header X-Forwarded-Proto $scheme;
-           proxy_set_header X-Request-Id $request_id;
-           proxy_read_timeout 120s;
-           proxy_send_timeout 120s;
-       }
-   }
-   ```
+   - `count` / record shapes match.
+   - p50/p95 latency is within tolerance (CloudWatch Logs Insights, see `docs/observability.md`).
+   - Continuation tokens roundtrip across multiple tasks.
 
-   `nginx -t && systemctl reload nginx`. Verify externally. Repeat per portal.
+   The existing nginx config and client URLs are **not** changed. Cutover (whatever shape it takes) is a separate effort run once the parallel system is trusted.
 
 ## Configs repo bootstrap (one-time)
 

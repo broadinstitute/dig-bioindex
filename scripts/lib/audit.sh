@@ -6,9 +6,10 @@
 
 # verify_clean_and_pushed <repo-path>
 # Returns 0 if all three conditions hold:
-#   * working tree at <repo-path> has no uncommitted, unstaged, OR
-#     untracked changes (untracked files would be COPYed into the
-#     image with --local; we block them to preserve the audit trail).
+#   * working tree at <repo-path> has no modifications to tracked files
+#     (staged or unstaged). Untracked files are allowed — .dockerignore
+#     plus the Dockerfile's targeted COPYs determine what actually
+#     enters the image.
 #   * an 'origin' remote is configured.
 #   * HEAD's SHA exists on origin (i.e., was pushed).
 # Returns non-zero with an explanatory message on stderr otherwise.
@@ -19,12 +20,12 @@ verify_clean_and_pushed() {
         return 1
     fi
 
-    # Check working tree cleanliness (including untracked files —
-    # those would be baked into the image under --local).
-    if [[ -n "$(git -C "$repo" status --porcelain)" ]]; then
-        echo "ERROR: working tree at $repo has uncommitted or untracked changes." >&2
-        echo "       Run 'git status' in $repo. Commit and push, or remove untracked" >&2
-        echo "       files, before deploying." >&2
+    # Check working tree cleanliness for tracked files only.
+    # `git diff --quiet HEAD` catches both staged and unstaged
+    # modifications. Untracked files are intentionally allowed.
+    if ! git -C "$repo" diff --quiet HEAD 2>/dev/null; then
+        echo "ERROR: working tree at $repo has uncommitted modifications to tracked files." >&2
+        echo "       Run 'git status' in $repo. Commit and push before deploying." >&2
         return 1
     fi
 

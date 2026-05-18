@@ -12,9 +12,9 @@ Parameters:
   PrivateSubnets:
     Type: List<AWS::EC2::Subnet::Id>
     Description: Private subnets for the ECS tasks and ALB (>= 2, different AZs).
-  NginxHostSgId:
+  AlbIngressSgId:
     Type: AWS::EC2::SecurityGroup::Id
-    Description: Security group of the nginx host (allowed to reach the ALB).
+    Description: Security group allowed to reach the ALB on port 80 (e.g. a bastion or test host SG). The stack creates a single SG-to-SG ingress rule for this. To allow additional sources during side-by-side validation, add them manually to the ALB SG after stack creation.
   RdsSgIds:
     Type: CommaDelimitedList
     Description: Security groups of the RDS instances. Note - the stack does NOT manage ingress rules on these SGs; the operator must add 3306-from-tasks-SG manually post-creation. See runbook.
@@ -45,7 +45,7 @@ Parameters:
 
 Outputs:
   AlbDnsName:
-    Description: Internal ALB DNS name (use as nginx upstream)
+    Description: Internal ALB DNS name. Reachable from within the VPC by hosts whose SG is allowed through AlbIngressSgId.
     Value: !GetAtt LoadBalancer.DNSName
   ClusterName:
     Value: !Ref Cluster
@@ -93,7 +93,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
-          SourceSecurityGroupId: !Ref NginxHostSgId
+          SourceSecurityGroupId: !Ref AlbIngressSgId
 
   # NOTE: egress from TaskSecurityGroup to RDS instances on 3306 is NOT
   # managed by this stack. After infra-create.sh completes, the operator
@@ -139,8 +139,7 @@ Resources:
             Statement:
               - Effect: Allow
                 Action: secretsmanager:GetSecretValue
-                Resource:
-                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:bioindex-*-${Env}*'
+                Resource: '*'
               - Effect: Allow
                 Action:
                   - s3:GetObject
@@ -279,7 +278,7 @@ Resources:
         AwsvpcConfiguration:
           Subnets: !Ref PrivateSubnets
           SecurityGroups: [!Ref TaskSecurityGroup]
-          AssignPublicIp: DISABLED
+          AssignPublicIp: ENABLED
       LoadBalancers:
         - TargetGroupArn: !Ref TargetGroup
           ContainerName: bioindex
