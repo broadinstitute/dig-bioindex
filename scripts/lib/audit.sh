@@ -36,10 +36,23 @@ verify_clean_and_pushed() {
         return 1
     fi
 
-    # Check HEAD is on origin
-    local head_sha
+    # Check HEAD is on origin. Capture ls-remote output into a variable
+    # so we can (a) surface auth/network failures instead of swallowing
+    # them, and (b) do the SHA match in-shell without piping through
+    # whatever `grep` resolves to in the caller's environment.
+    local head_sha remote_refs ls_remote_err ls_remote_status
     head_sha=$(git -C "$repo" rev-parse HEAD)
-    if ! git -C "$repo" ls-remote origin 2>/dev/null | grep -q "^$head_sha"; then
+    ls_remote_err=$(mktemp)
+    remote_refs=$(git -C "$repo" ls-remote origin 2>"$ls_remote_err")
+    ls_remote_status=$?
+    if [[ "$ls_remote_status" -ne 0 ]]; then
+        echo "ERROR: 'git ls-remote origin' failed (exit $ls_remote_status):" >&2
+        sed 's/^/       /' "$ls_remote_err" >&2
+        rm -f "$ls_remote_err"
+        return 1
+    fi
+    rm -f "$ls_remote_err"
+    if [[ "$remote_refs" != *"$head_sha"* ]]; then
         echo "ERROR: HEAD ($head_sha) is not on origin." >&2
         echo "       Push HEAD to origin before deploying." >&2
         return 1
