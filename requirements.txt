@@ -1,22 +1,17 @@
-aiofiles==25.1.0
-botocore==1.43.6
-boto3==1.43.6
-click==8.1.7
-fastapi==0.124.4
-# starlette is a transitive dep of fastapi; pinned explicitly to clear
-# CVE-2024-47874 / CVE-2025-54121 / CVE-2025-62727. fastapi 0.124.x requires
-# starlette<0.51 -- bump these together. fastapi 0.125+ requires pydantic>=2.7.
-starlette==0.50.0
-graphene==3.4.3
-graphql-core==3.2.8
-orjson==3.11.6
-pydantic==1.10.26
-pymysql==1.1.1
-python-dotenv==1.2.2
-requests==2.33.0
-rich==13.7.1
-smart_open==7.6.1
-sqlalchemy==2.0.49
-typing-extensions==4.15.0
-uvicorn[standard]==0.46.0
-pyyaml==6.0.1
+aiofiles==0.6
+botocore==1.20
+boto3==1.17
+click==7.0
+fastapi==0.109.1
+graphene==3.0
+graphql-core==3.1.2
+orjson==3.9.15
+pydantic==1.10.2
+pymysql==0.10
+python-dotenv==0.15
+requests==2.31.0
+rich==12.0
+smart_open==5.0
+sqlalchemy==2.0.3
+typing-extensions==4.8.0
+uvicorn[standard]==0.24.0
