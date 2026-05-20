@@ -37,4 +37,4 @@ class ContState:
     # match resume point
     last_key: Optional[str] = None
     limit: Optional[int] = None
-    expiration: float = dataclasses.field(default_factory=lambda: time.time() + 60)
+    expiration: float = dataclasses.field(default_factory=lambda: time.time() + 900)
