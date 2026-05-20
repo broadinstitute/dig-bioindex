@@ -1,5 +1,7 @@
+import os
 import subprocess
 
+import boto3
 import botocore.exceptions
 import dataclasses
 import itertools
@@ -8,6 +10,34 @@ import orjson
 
 from .auth import verify_record
 from .s3 import read_lined_object
+
+
+# One session reused across requests; boto3 caches and refreshes
+# credentials internally (including ECS task-role tokens from the
+# container metadata endpoint, which htslib's libcurl S3 backend
+# does NOT read on its own).
+_boto_session = boto3.Session()
+
+
+def _aws_env_for_htslib():
+    """Build an env dict with current AWS credentials for an htslib subprocess.
+
+    bgzip / htslib read AWS credentials from env vars (or ~/.aws/credentials),
+    not from the ECS container metadata endpoint that Fargate uses to expose
+    task-role credentials. Resolve current credentials via boto3 — which DOES
+    understand the metadata endpoint and handles rotation — and forward them
+    to the subprocess.
+    """
+    env = os.environ.copy()
+    creds = _boto_session.get_credentials()
+    if creds is None:
+        return env
+    frozen = creds.get_frozen_credentials()
+    env["AWS_ACCESS_KEY_ID"] = frozen.access_key
+    env["AWS_SECRET_ACCESS_KEY"] = frozen.secret_key
+    if frozen.token:
+        env["AWS_SESSION_TOKEN"] = frozen.token
+    return env
 
 
 @dataclasses.dataclass(frozen=True)
@@ -164,7 +194,9 @@ class RecordReader:
                         command = ['bgzip', '-b', f"{seek_start}", '-s', f"{seek_length}", s3_url]
                     else:
                         command = ['bgzip', '-b', f"{seek_start}", s3_url]
-                    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1) as proc:
+                    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                          text=True, bufsize=1,
+                                          env=_aws_env_for_htslib()) as proc:
                         for line in proc.stdout:
                             # subprocess.stdout (text=True) yields lines WITH
                             # the trailing newline. read_lined_object strips it,
