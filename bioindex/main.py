@@ -55,19 +55,26 @@ def with_config(f):
 @click.command(name='serve')
 @click.option('--port', '-p', type=int, default=5000)
 @click.option('--workers', '-w', type=int, default=None)
-def cli_serve(port, workers):
+@click.option('--limit-concurrency', type=int, default=None,
+              help='per-worker in-flight cap; over this, uvicorn returns 503')
+def cli_serve(port, workers, limit_concurrency):
     import os
     if workers is None:
         workers = int(os.environ.get("BIOINDEX_WORKERS", "1"))
-    uvicorn.run(
-        'bioindex.server:app',
-        host='0.0.0.0',
-        port=port,
-        workers=workers,
-        log_config=LOGGING_CONFIG,
-        timeout_graceful_shutdown=30,
-        access_log=False,   # bioindex.middleware emits the canonical access log
-    )
+    if limit_concurrency is None:
+        limit_concurrency = int(os.environ.get("BIOINDEX_LIMIT_CONCURRENCY", "0"))
+
+    kwargs = {
+        'host': '0.0.0.0',
+        'port': port,
+        'workers': workers,
+        'log_config': LOGGING_CONFIG,
+        'timeout_graceful_shutdown': 30,
+        'access_log': False,   # bioindex.middleware emits the canonical access log
+    }
+    if limit_concurrency > 0:
+        kwargs['limit_concurrency'] = limit_concurrency
+    uvicorn.run('bioindex.server:app', **kwargs)
 
 
 @click.command(name='create')
