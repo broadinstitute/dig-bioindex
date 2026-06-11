@@ -113,3 +113,22 @@ def test_request_id_accepted_when_well_formed(access_log_records):
     records = [r for r in access_log_records.records if r.name == "bioindex.access"]
     assert len(records) == 1
     assert records[0].request_id == good_id
+
+
+def test_access_log_client_ip_from_x_real_ip_truncated_to_24(access_log_records):
+    client = TestClient(_make_app())
+    client.get("/cfde/api/bio/query/gene?q=X",
+               headers={"X-Real-IP": "203.0.113.7"})
+    records = [r for r in access_log_records.records if r.name == "bioindex.access"]
+    assert len(records) == 1
+    # last octet zeroed for privacy (/24)
+    assert records[0].client_ip == "203.0.113.0"
+
+
+def test_access_log_client_ip_falls_back_to_leftmost_xff_truncated(access_log_records):
+    client = TestClient(_make_app())
+    client.get("/cfde/api/bio/query/gene?q=X",
+               headers={"X-Forwarded-For": "198.51.100.4, 10.0.0.1"})
+    records = [r for r in access_log_records.records if r.name == "bioindex.access"]
+    assert len(records) == 1
+    assert records[0].client_ip == "198.51.100.0"

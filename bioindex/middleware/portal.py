@@ -1,3 +1,4 @@
+import ipaddress
 import logging
 import os
 import re
@@ -37,6 +38,39 @@ def _scrub_query(query: str) -> str:
         else:
             parts.append(f"{quote(k, safe='')}={quote(v, safe='')}")
     return "&".join(parts)
+
+
+def _truncate_ip(ip):
+    """
+    Coarsen a client IP for privacy before logging: IPv4 -> /24, IPv6 -> /48.
+    Returns the network address as a string, or None if ``ip`` isn't a valid
+    address (e.g. a placeholder peer like ``testclient``).
+    """
+    if not ip:
+        return None
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return None
+    prefix = 24 if addr.version == 4 else 48
+    return str(ipaddress.ip_network(f"{ip}/{prefix}", strict=False).network_address)
+
+
+def _client_ip(request):
+    """
+    Best-effort real client IP, truncated for privacy. nginx sets
+    ``X-Real-IP = $remote_addr`` (single value the ALB forwards untouched);
+    fall back to the leftmost ``X-Forwarded-For`` hop, then the direct peer.
+    """
+    xri = request.headers.get("x-real-ip")
+    raw = xri.strip() if xri else None
+    if not raw:
+        xff = request.headers.get("x-forwarded-for")
+        if xff:
+            raw = xff.split(",", 1)[0].strip()
+    if not raw:
+        raw = request.client.host if request.client else None
+    return _truncate_ip(raw)
 
 
 _REQUEST_ID_RE = re.compile(r"\A[A-Za-z0-9._\-]{1,128}\Z")
@@ -145,6 +179,7 @@ class PortalResolveMiddleware(BaseHTTPMiddleware):
                 "response_bytes": response_bytes,
                 "latency_ms": int((time.time() - start) * 1000),
                 "worker_pid": os.getpid(),
+                "client_ip": _client_ip(request),
             },
         )
 
