@@ -14,6 +14,7 @@ from ..lib import index
 from ..lib import query
 from ..lib import signed_tokens
 from ..lib.auth import restricted_keywords
+from ..lib.generation import index_generation
 from ..lib.utils import nonce, profile, profile_async
 from ..middleware.portal import get_portal_ctx
 
@@ -84,6 +85,9 @@ async def api_match(index: str, req: fastapi.Request, q: str, limit: int = None)
         if i is None:
             raise KeyError
 
+        # snapshot the current index generation for binding into continuation tokens
+        gen = index_generation(ctx.engine, index)
+
         # execute the query
         keys, query_s = profile(query.match, ctx.config, ctx.engine, i, qs)
 
@@ -92,7 +96,7 @@ async def api_match(index: str, req: fastapi.Request, q: str, limit: int = None)
             keys = itertools.islice(keys, limit)
 
         # read the matched keys
-        return _match_keys(ctx, keys, index, qs, limit, query_s=query_s)
+        return _match_keys(ctx, keys, index, qs, limit, generation=gen, query_s=query_s)
     except KeyError:
         raise fastapi.HTTPException(
             status_code=400, detail=f'Invalid index: {index}')
@@ -175,6 +179,9 @@ async def api_all(index: str, req: fastapi.Request, fmt: str = 'row'):
         if len(idxs) == 0:
             raise KeyError
         elif len(idxs) == 1:
+            # snapshot the current index generation for binding into continuation tokens
+            gen = index_generation(ctx.engine, index)
+
             # discover what the user doesn't have access to see
             restricted, auth_s = profile(restricted_keywords, ctx.portal, req) if ctx.portal else (None, 0)
 
@@ -192,7 +199,7 @@ async def api_all(index: str, req: fastapi.Request, fmt: str = 'row'):
 
             # fetch records from the reader
             return _fetch_records(ctx, reader, index, None, fmt, restricted=restricted,
-                                  cont_type='all', query_s=auth_s + query_s)
+                                  cont_type='all', generation=gen, query_s=auth_s + query_s)
         else:
             raise ValueError(f'Multiple indexes found for {index}, try arity-specific endpoint')
     except KeyError:
@@ -335,6 +342,9 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
             if i is None:
                 raise KeyError
 
+        # snapshot the current index generation for binding into continuation tokens
+        gen = index_generation(ctx.engine, index)
+
         # discover what the user doesn't have access to see
         restricted, auth_s = profile(restricted_keywords, ctx.portal, req) if ctx.portal else (None, 0)
         # lookup the schema for this index and perform the query
@@ -357,7 +367,7 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
 
         # the results of the query
         return _fetch_records(ctx, reader, index, qs, fmt, restricted=restricted,
-                              cont_type='fetch', query_s=auth_s + query_s)
+                              cont_type='fetch', generation=gen, query_s=auth_s + query_s)
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
@@ -492,6 +502,9 @@ async def api_cont(token: str, req: fastapi.Request):
     # tokens don't grant the original requester's access to a third party.
     restricted, _ = profile(restricted_keywords, ctx.portal, req) if ctx.portal else (None, 0)
 
+    # snapshot generation for the next-page token minted by _fetch_records/_match_keys
+    gen = index_generation(ctx.engine, state.index_name)
+
     try:
         if state.type == 'fetch':
             reader, query_s = profile(
@@ -508,7 +521,7 @@ async def api_cont(token: str, req: fastapi.Request):
                 reader.set_limit(state.limit)
             return _fetch_records(ctx, reader, state.index_name, state.qs, state.fmt,
                                   restricted=restricted, cont_type='fetch',
-                                  page=state.page, query_s=query_s)
+                                  generation=gen, page=state.page, query_s=query_s)
 
         elif state.type == 'all':
             reader, query_s = profile(
@@ -523,7 +536,7 @@ async def api_cont(token: str, req: fastapi.Request):
                 reader.set_limit(state.limit)
             return _fetch_records(ctx, reader, state.index_name, state.qs, state.fmt,
                                   restricted=restricted, cont_type='all',
-                                  page=state.page, query_s=query_s)
+                                  generation=gen, page=state.page, query_s=query_s)
 
         elif state.type == 'match':
             all_keys = query.match(ctx.config, ctx.engine, i, state.qs)
@@ -531,7 +544,7 @@ async def api_cont(token: str, req: fastapi.Request):
             if state.last_key is not None:
                 all_keys = itertools.dropwhile(lambda k: k <= state.last_key, all_keys)
             return _match_keys(ctx, all_keys, state.index_name, state.qs, state.limit,
-                               page=state.page)
+                               generation=gen, page=state.page)
 
         else:
             raise fastapi.HTTPException(status_code=400, detail=f'Unknown continuation type: {state.type}')
@@ -552,7 +565,7 @@ def _parse_query(q, required=False):
     return q.split(',') if q else []
 
 
-def _match_keys(ctx, keys, index, qs, limit, page=1, query_s=None):
+def _match_keys(ctx, keys, index, qs, limit, page=1, generation="", query_s=None):
     """
     Collects up to match_limit keys from a database cursor and then
     return a JSON response object with them.
@@ -572,6 +585,7 @@ def _match_keys(ctx, keys, index, qs, limit, page=1, query_s=None):
             limit=limit,
             last_key=fetched[-1] if fetched else None,
             page=page + 1,
+            generation=generation,
         )
         try:
             token = signed_tokens.encode(state, signed_tokens.signing_key())
@@ -596,7 +610,7 @@ def _match_keys(ctx, keys, index, qs, limit, page=1, query_s=None):
     return ORJSONResponse(content=body, headers=headers)
 
 
-def _fetch_records(ctx, reader, index, qs, fmt, restricted=None, cont_type='fetch', page=1, query_s=None):
+def _fetch_records(ctx, reader, index, qs, fmt, restricted=None, cont_type='fetch', page=1, generation="", query_s=None):
     """
     Reads up to response_limit bytes from a RecordReader, format them,
     and then return a JSON response object with the records.
@@ -652,6 +666,7 @@ def _fetch_records(ctx, reader, index, qs, fmt, restricted=None, cont_type='fetc
             page=page + 1,
             source_index=reader._source_index,
             byte_offset=reader._source_byte_offset,
+            generation=generation,
         )
         try:
             token = signed_tokens.encode(state, signed_tokens.signing_key())
