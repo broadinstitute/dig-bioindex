@@ -486,6 +486,19 @@ async def api_cont(token: str, req: fastapi.Request):
             detail='Token issued for different portal',
         )
 
+    # C3: reject stale continuation tokens — if the index content fingerprint
+    # has changed since the token was issued (i.e. the index was rebuilt), the
+    # resume offsets / key cursors are no longer valid.  Client must re-run.
+    # NOTE: this check intentionally comes AFTER C1 (portal binding) so that
+    # cross-portal tokens still fail with 403, not 409.  It comes BEFORE the
+    # index lookup so a stale token never triggers an unnecessary DB refresh.
+    current_gen = index_generation(ctx.engine, state.index_name)
+    if state.generation != current_gen:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail="continuation is stale (index was rebuilt); re-run the query",
+        )
+
     i = ctx.indexes.get((state.index_name, state.index_arity))
     if i is None:
         _refresh_indexes(ctx)
@@ -503,7 +516,7 @@ async def api_cont(token: str, req: fastapi.Request):
     restricted, _ = profile(restricted_keywords, ctx.portal, req) if ctx.portal else (None, 0)
 
     # snapshot generation for the next-page token minted by _fetch_records/_match_keys
-    gen = index_generation(ctx.engine, state.index_name)
+    gen = current_gen
 
     try:
         if state.type == 'fetch':
