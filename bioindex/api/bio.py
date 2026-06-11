@@ -1,10 +1,12 @@
 import asyncio
 import concurrent.futures
 import itertools
+import os
 from typing import List, Optional
 
 import fastapi
 import graphql
+import orjson
 from fastapi.responses import ORJSONResponse
 from pydantic import BaseModel
 
@@ -15,6 +17,7 @@ from ..lib import query
 from ..lib import signed_tokens
 from ..lib.auth import restricted_keywords
 from ..lib.generation import index_generation
+from ..lib.response_cache import ResponseCache
 from ..lib.utils import nonce, profile, profile_async
 from ..middleware.portal import get_portal_ctx
 
@@ -22,6 +25,58 @@ router = fastapi.APIRouter()
 
 # multi-query executor (stateless, shared across portals)
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
+
+# ---------------------------------------------------------------------------
+# In-process response cache (Task 7)
+# ---------------------------------------------------------------------------
+
+_RESP_CACHE = ResponseCache(
+    max_bytes=int(os.environ.get("BIOINDEX_RESP_CACHE_BYTES", 64 * 1024 * 1024))
+)
+
+
+def _query_cache_key(portal, index_name, fmt, generation, qs):
+    """Build a deterministic cache key for a query-type response."""
+    return f"q|{portal}|{index_name}|{fmt}|{generation}|{','.join(qs or [])}"
+
+
+def _finalize(body: dict, cache_status: str) -> ORJSONResponse:
+    """Inject a fresh nonce and return an ORJSONResponse with required headers."""
+    body = dict(body)
+    body["nonce"] = nonce()
+    return ORJSONResponse(
+        content=body,
+        headers={"Cache-Control": "no-store", "X-Cache": cache_status},
+    )
+
+
+def _cached_response(key, restricted, produce_body):
+    """
+    Try to serve a cached body; fall back to produce_body() on miss.
+
+    Cache is bypassed (both read and write) when *restricted* is truthy so
+    that access-controlled results are never served to other callers.
+
+    Args:
+        key:          Cache key string, or None to always compute fresh.
+        restricted:   The caller's restricted keyword set (falsy = unrestricted).
+        produce_body: Callable() -> dict  — builds the nonce-free response body.
+                      Only called on a cache miss.
+
+    Returns:
+        ORJSONResponse with X-Cache and Cache-Control headers.
+    """
+    if not restricted and key is not None:
+        hit = _RESP_CACHE.get(key)
+        if hit is not None:
+            return _finalize(hit, "HIT")
+
+    body = produce_body()
+
+    if not restricted and key is not None:
+        _RESP_CACHE.set(key, body, size=len(orjson.dumps(body)))
+
+    return _finalize(body, "MISS")
 
 
 class Query(BaseModel):
@@ -88,15 +143,19 @@ async def api_match(index: str, req: fastapi.Request, q: str, limit: int = None)
         # snapshot the current index generation for binding into continuation tokens
         gen = index_generation(ctx.engine, index)
 
-        # execute the query
-        keys, query_s = profile(query.match, ctx.config, ctx.engine, i, qs)
+        # restricted check (match has no portal auth filter, but obey bypass rule)
+        restricted = None
 
-        # allow an upper limit on the total number of keys returned
-        if limit is not None:
-            keys = itertools.islice(keys, limit)
+        cache_key = _query_cache_key(ctx.name, index, 'match', gen, qs)
 
-        # read the matched keys
-        return _match_keys(ctx, keys, index, qs, limit, generation=gen, query_s=query_s)
+        def _produce():
+            # execute the query
+            keys, query_s = profile(query.match, ctx.config, ctx.engine, i, qs)
+            # allow an upper limit on the total number of keys returned
+            bounded = itertools.islice(keys, limit) if limit is not None else keys
+            return _match_keys(ctx, bounded, index, qs, limit, generation=gen, query_s=query_s)
+
+        return _cached_response(cache_key, restricted, _produce)
     except KeyError:
         raise fastapi.HTTPException(
             status_code=400, detail=f'Invalid index: {index}')
@@ -185,21 +244,26 @@ async def api_all(index: str, req: fastapi.Request, fmt: str = 'row'):
             # discover what the user doesn't have access to see
             restricted, auth_s = profile(restricted_keywords, ctx.portal, req) if ctx.portal else (None, 0)
 
-            # lookup the schema for this index and perform the query
-            reader, query_s = profile(
-                query.fetch_all,
-                ctx.config,
-                idxs[0],
-                restricted=restricted,
-            )
+            cache_key = _query_cache_key(ctx.name, index, fmt, gen, None) if not restricted else None
 
-            # will this request exceed the limit?
-            if reader.bytes_total > ctx.config.response_limit_max:
-                raise fastapi.HTTPException(status_code=413)
+            def _produce():
+                # lookup the schema for this index and perform the query
+                reader, query_s = profile(
+                    query.fetch_all,
+                    ctx.config,
+                    idxs[0],
+                    restricted=restricted,
+                )
 
-            # fetch records from the reader
-            return _fetch_records(ctx, reader, index, None, fmt, restricted=restricted,
-                                  cont_type='all', generation=gen, query_s=auth_s + query_s)
+                # will this request exceed the limit?
+                if reader.bytes_total > ctx.config.response_limit_max:
+                    raise fastapi.HTTPException(status_code=413)
+
+                # fetch records from the reader
+                return _fetch_records(ctx, reader, index, None, fmt, restricted=restricted,
+                                      cont_type='all', generation=gen, query_s=auth_s + query_s)
+
+            return _cached_response(cache_key, restricted, _produce)
         else:
             raise ValueError(f'Multiple indexes found for {index}, try arity-specific endpoint')
     except KeyError:
@@ -227,21 +291,26 @@ async def api_all_arity(index: str, arity: int, req: fastapi.Request, fmt: str =
         # discover what the user doesn't have access to see
         restricted, auth_s = profile(restricted_keywords, ctx.portal, req) if ctx.portal else (None, 0)
 
-        # lookup the schema for this index and perform the query
-        reader, query_s = profile(
-            query.fetch_all,
-            ctx.config,
-            i,
-            restricted=restricted,
-        )
+        cache_key = _query_cache_key(ctx.name, index, fmt, gen, None) if not restricted else None
 
-        # will this request exceed the limit?
-        if reader.bytes_total > ctx.config.response_limit_max:
-            raise fastapi.HTTPException(status_code=413)
+        def _produce():
+            # lookup the schema for this index and perform the query
+            reader, query_s = profile(
+                query.fetch_all,
+                ctx.config,
+                i,
+                restricted=restricted,
+            )
 
-        # fetch records from the reader
-        return _fetch_records(ctx, reader, index, None, fmt, restricted=restricted,
-                              cont_type='all', generation=gen, query_s=auth_s + query_s)
+            # will this request exceed the limit?
+            if reader.bytes_total > ctx.config.response_limit_max:
+                raise fastapi.HTTPException(status_code=413)
+
+            # fetch records from the reader
+            return _fetch_records(ctx, reader, index, None, fmt, restricted=restricted,
+                                  cont_type='all', generation=gen, query_s=auth_s + query_s)
+
+        return _cached_response(cache_key, restricted, _produce)
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
@@ -350,27 +419,33 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
 
         # discover what the user doesn't have access to see
         restricted, auth_s = profile(restricted_keywords, ctx.portal, req) if ctx.portal else (None, 0)
-        # lookup the schema for this index and perform the query
-        reader, query_s = profile(
-            query.fetch,
-            ctx.config,
-            ctx.engine,
-            i,
-            qs,
-            restricted=restricted,
-        )
 
-        # with no limit, will this request exceed the limit?
-        if not limit and reader.bytes_total > ctx.config.response_limit_max:
-            raise fastapi.HTTPException(status_code=413)
+        cache_key = _query_cache_key(ctx.name, index, fmt, gen, qs) if not restricted else None
 
-        # use a zip to limit the total number of records that will be read
-        if limit is not None:
-            reader.set_limit(limit)
+        def _produce():
+            # lookup the schema for this index and perform the query
+            reader, query_s = profile(
+                query.fetch,
+                ctx.config,
+                ctx.engine,
+                i,
+                qs,
+                restricted=restricted,
+            )
 
-        # the results of the query
-        return _fetch_records(ctx, reader, index, qs, fmt, restricted=restricted,
-                              cont_type='fetch', generation=gen, query_s=auth_s + query_s)
+            # with no limit, will this request exceed the limit?
+            if not limit and reader.bytes_total > ctx.config.response_limit_max:
+                raise fastapi.HTTPException(status_code=413)
+
+            # use a zip to limit the total number of records that will be read
+            if limit is not None:
+                reader.set_limit(limit)
+
+            # the results of the query
+            return _fetch_records(ctx, reader, index, qs, fmt, restricted=restricted,
+                                  cont_type='fetch', generation=gen, query_s=auth_s + query_s)
+
+        return _cached_response(cache_key, restricted, _produce)
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
@@ -518,46 +593,59 @@ async def api_cont(token: str, req: fastapi.Request):
     # tokens don't grant the original requester's access to a third party.
     restricted, _ = profile(restricted_keywords, ctx.portal, req) if ctx.portal else (None, 0)
 
+    # The /cont cache key is the raw token string — deterministic because tokens
+    # encode position deterministically (no expiration / random salt).
+    cont_cache_key = f"c|{token}" if not restricted else None
+
     try:
         if state.type == 'fetch':
-            reader, query_s = profile(
-                query.fetch,
-                ctx.config,
-                ctx.engine,
-                i,
-                state.qs,
-                restricted=restricted,
-                start_source_index=state.source_index,
-                start_byte_offset=state.byte_offset,
-            )
-            if state.limit is not None:
-                reader.set_limit(state.limit)
-            return _fetch_records(ctx, reader, state.index_name, state.qs, state.fmt,
-                                  restricted=restricted, cont_type='fetch',
-                                  generation=current_gen, page=state.page, query_s=query_s)
+            def _produce_fetch():
+                reader, query_s = profile(
+                    query.fetch,
+                    ctx.config,
+                    ctx.engine,
+                    i,
+                    state.qs,
+                    restricted=restricted,
+                    start_source_index=state.source_index,
+                    start_byte_offset=state.byte_offset,
+                )
+                if state.limit is not None:
+                    reader.set_limit(state.limit)
+                return _fetch_records(ctx, reader, state.index_name, state.qs, state.fmt,
+                                      restricted=restricted, cont_type='fetch',
+                                      generation=current_gen, page=state.page, query_s=query_s)
+
+            return _cached_response(cont_cache_key, restricted, _produce_fetch)
 
         elif state.type == 'all':
-            reader, query_s = profile(
-                query.fetch_all,
-                ctx.config,
-                i,
-                restricted=restricted,
-                start_source_index=state.source_index,
-                start_byte_offset=state.byte_offset,
-            )
-            if state.limit is not None:
-                reader.set_limit(state.limit)
-            return _fetch_records(ctx, reader, state.index_name, state.qs, state.fmt,
-                                  restricted=restricted, cont_type='all',
-                                  generation=current_gen, page=state.page, query_s=query_s)
+            def _produce_all():
+                reader, query_s = profile(
+                    query.fetch_all,
+                    ctx.config,
+                    i,
+                    restricted=restricted,
+                    start_source_index=state.source_index,
+                    start_byte_offset=state.byte_offset,
+                )
+                if state.limit is not None:
+                    reader.set_limit(state.limit)
+                return _fetch_records(ctx, reader, state.index_name, state.qs, state.fmt,
+                                      restricted=restricted, cont_type='all',
+                                      generation=current_gen, page=state.page, query_s=query_s)
+
+            return _cached_response(cont_cache_key, restricted, _produce_all)
 
         elif state.type == 'match':
-            all_keys = query.match(ctx.config, ctx.engine, i, state.qs)
-            # skip past keys already returned on previous pages
-            if state.last_key is not None:
-                all_keys = itertools.dropwhile(lambda k: k <= state.last_key, all_keys)
-            return _match_keys(ctx, all_keys, state.index_name, state.qs, state.limit,
-                               generation=current_gen, page=state.page)
+            def _produce_match():
+                all_keys = query.match(ctx.config, ctx.engine, i, state.qs)
+                # skip past keys already returned on previous pages
+                if state.last_key is not None:
+                    all_keys = itertools.dropwhile(lambda k: k <= state.last_key, all_keys)
+                return _match_keys(ctx, all_keys, state.index_name, state.qs, state.limit,
+                                   generation=current_gen, page=state.page)
+
+            return _cached_response(cont_cache_key, restricted, _produce_match)
 
         else:
             raise fastapi.HTTPException(status_code=400, detail=f'Unknown continuation type: {state.type}')
@@ -581,7 +669,7 @@ def _parse_query(q, required=False):
 def _match_keys(ctx, keys, index, qs, limit, *, page=1, generation, query_s=None):
     """
     Collects up to match_limit keys from a database cursor and then
-    return a JSON response object with them.
+    return a nonce-free body dict (finalised by _cached_response / _finalize).
     """
     match_limit = ctx.config.match_limit
     fetched, fetch_s = profile(list, itertools.islice(keys, match_limit))
@@ -605,7 +693,7 @@ def _match_keys(ctx, keys, index, qs, limit, *, page=1, generation, query_s=None
         except signed_tokens.TokenError as e:
             raise fastapi.HTTPException(status_code=413, detail=str(e))
 
-    body = {
+    return {
         'profile': {
             'fetch': fetch_s,
             'query': query_s,
@@ -617,16 +705,13 @@ def _match_keys(ctx, keys, index, qs, limit, *, page=1, generation, query_s=None
         'count': len(fetched),
         'data': list(fetched),
         'continuation': token,
-        'nonce': nonce(),
     }
-    headers = {'Cache-Control': 'no-store'} if token is not None else None
-    return ORJSONResponse(content=body, headers=headers)
 
 
 def _fetch_records(ctx, reader, index, qs, fmt, *, restricted=None, cont_type='fetch', page=1, generation, query_s=None):
     """
     Reads up to response_limit bytes from a RecordReader, format them,
-    and then return a JSON response object with the records.
+    and return a nonce-free body dict (finalised by _cached_response / _finalize).
     """
     response_limit = ctx.config.response_limit
     response_limit_max = ctx.config.response_limit_max
@@ -686,8 +771,8 @@ def _fetch_records(ctx, reader, index, qs, fmt, *, restricted=None, cont_type='f
         except signed_tokens.TokenError as e:
             raise fastapi.HTTPException(status_code=413, detail=str(e))
 
-    # build JSON response
-    body = {
+    # build body dict (no nonce — injected at finalize time)
+    return {
         'profile': {
             'fetch': fetch_s,
             'query': query_s,
@@ -704,7 +789,4 @@ def _fetch_records(ctx, reader, index, qs, fmt, *, restricted=None, cont_type='f
         'limit': reader.limit,
         'data': fetched_records,
         'continuation': token,
-        'nonce': nonce(),
     }
-    headers = {'Cache-Control': 'no-store'} if token is not None else None
-    return ORJSONResponse(content=body, headers=headers)
