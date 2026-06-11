@@ -209,7 +209,7 @@ async def api_all(index: str, req: fastapi.Request, fmt: str = 'row'):
 
 
 @router.head('/all/{index}/{arity}', response_class=fastapi.responses.ORJSONResponse)
-async def api_all_arity(index: str, arity: int, req: fastapi.Request):
+async def api_all_arity(index: str, arity: int, req: fastapi.Request, fmt: str = 'row'):
     """
     Query the database fetch ALL records for a given index and arity. Don't read
     the records from S3, but instead set the Content-Length to the total
@@ -220,6 +220,9 @@ async def api_all_arity(index: str, arity: int, req: fastapi.Request):
         i = ctx.indexes.get((index, arity))
         if i is None:
             raise KeyError
+
+        # snapshot the current index generation for binding into continuation tokens
+        gen = index_generation(ctx.engine, index)
 
         # discover what the user doesn't have access to see
         restricted, auth_s = profile(restricted_keywords, ctx.portal, req) if ctx.portal else (None, 0)
@@ -238,7 +241,7 @@ async def api_all_arity(index: str, arity: int, req: fastapi.Request):
 
         # fetch records from the reader
         return _fetch_records(ctx, reader, index, None, fmt, restricted=restricted,
-                              cont_type='all', query_s=auth_s + query_s)
+                              cont_type='all', generation=gen, query_s=auth_s + query_s)
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
@@ -515,9 +518,6 @@ async def api_cont(token: str, req: fastapi.Request):
     # tokens don't grant the original requester's access to a third party.
     restricted, _ = profile(restricted_keywords, ctx.portal, req) if ctx.portal else (None, 0)
 
-    # snapshot generation for the next-page token minted by _fetch_records/_match_keys
-    gen = current_gen
-
     try:
         if state.type == 'fetch':
             reader, query_s = profile(
@@ -534,7 +534,7 @@ async def api_cont(token: str, req: fastapi.Request):
                 reader.set_limit(state.limit)
             return _fetch_records(ctx, reader, state.index_name, state.qs, state.fmt,
                                   restricted=restricted, cont_type='fetch',
-                                  generation=gen, page=state.page, query_s=query_s)
+                                  generation=current_gen, page=state.page, query_s=query_s)
 
         elif state.type == 'all':
             reader, query_s = profile(
@@ -549,7 +549,7 @@ async def api_cont(token: str, req: fastapi.Request):
                 reader.set_limit(state.limit)
             return _fetch_records(ctx, reader, state.index_name, state.qs, state.fmt,
                                   restricted=restricted, cont_type='all',
-                                  generation=gen, page=state.page, query_s=query_s)
+                                  generation=current_gen, page=state.page, query_s=query_s)
 
         elif state.type == 'match':
             all_keys = query.match(ctx.config, ctx.engine, i, state.qs)
@@ -557,7 +557,7 @@ async def api_cont(token: str, req: fastapi.Request):
             if state.last_key is not None:
                 all_keys = itertools.dropwhile(lambda k: k <= state.last_key, all_keys)
             return _match_keys(ctx, all_keys, state.index_name, state.qs, state.limit,
-                               generation=gen, page=state.page)
+                               generation=current_gen, page=state.page)
 
         else:
             raise fastapi.HTTPException(status_code=400, detail=f'Unknown continuation type: {state.type}')
@@ -578,7 +578,7 @@ def _parse_query(q, required=False):
     return q.split(',') if q else []
 
 
-def _match_keys(ctx, keys, index, qs, limit, page=1, generation="", query_s=None):
+def _match_keys(ctx, keys, index, qs, limit, *, page=1, generation, query_s=None):
     """
     Collects up to match_limit keys from a database cursor and then
     return a JSON response object with them.
@@ -623,7 +623,7 @@ def _match_keys(ctx, keys, index, qs, limit, page=1, generation="", query_s=None
     return ORJSONResponse(content=body, headers=headers)
 
 
-def _fetch_records(ctx, reader, index, qs, fmt, restricted=None, cont_type='fetch', page=1, generation="", query_s=None):
+def _fetch_records(ctx, reader, index, qs, fmt, *, restricted=None, cont_type='fetch', page=1, generation, query_s=None):
     """
     Reads up to response_limit bytes from a RecordReader, format them,
     and then return a JSON response object with the records.
