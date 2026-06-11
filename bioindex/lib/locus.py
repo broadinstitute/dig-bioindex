@@ -144,9 +144,12 @@ def chromosomes():
 
 def parse_chromosome(s):
     """
-    Parse and normalize a chromosome string, which may be prefixed with 'chr'.
+    Parse and normalize a chromosome, which may be prefixed with 'chr'.
+
+    Accepts numeric input (e.g. an int from a numeric JSON column) by coercing
+    to str before matching.
     """
-    match = re.fullmatch(r'(?:chr)?([1-9]|1\d|2[0-2]|x|y|xy|mt?)', s, re.IGNORECASE)
+    match = re.fullmatch(r'(?:chr)?([1-9]|1\d|2[0-2]|x|y|xy|mt?)', str(s), re.IGNORECASE)
 
     if not match:
         raise ValueError(f'Failed to match chromosome against {s}')
