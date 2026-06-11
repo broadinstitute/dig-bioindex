@@ -1,5 +1,4 @@
 import dataclasses
-import time
 from typing import List, Optional
 
 
@@ -37,4 +36,4 @@ class ContState:
     # match resume point
     last_key: Optional[str] = None
     limit: Optional[int] = None
-    expiration: float = dataclasses.field(default_factory=lambda: time.time() + 900)
+    generation: str = ""              # per-index content fingerprint; bound at issue time

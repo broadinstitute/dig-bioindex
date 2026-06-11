@@ -5,7 +5,6 @@ import hashlib
 import hmac
 import json
 import os
-import time
 
 from .continuation import ContState
 
@@ -54,10 +53,9 @@ def decode(token: str, key: bytes) -> ContState:
     """
     Verify the HMAC signature of `token` using `key`, then parse and return
     the embedded ContState. Raises TokenError on tampering, bad encoding,
-    bad payload, or expiration.
+    or bad payload.
 
-    Security order: verify signature (constant-time) BEFORE parsing JSON,
-    check expiration AFTER signature verification.
+    Security order: verify signature (constant-time) BEFORE parsing JSON.
     """
     # Reject oversize tokens before doing any decoding/HMAC work; otherwise an
     # attacker could force base64-decode + HMAC computation over an arbitrarily
@@ -87,8 +85,6 @@ def decode(token: str, key: bytes) -> ContState:
     except TypeError:
         raise TokenError("invalid payload schema")
 
-    if time.time() > state.expiration:
-        raise TokenError("expired")
     return state
 
 

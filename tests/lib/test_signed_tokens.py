@@ -1,5 +1,4 @@
 import pytest
-from freezegun import freeze_time
 
 from bioindex.lib.signed_tokens import (
     MAX_PAYLOAD_BYTES,
@@ -47,12 +46,15 @@ def test_wrong_key_rejected():
         decode(token, b"\x01" * 32)
 
 
-def test_expired_token_rejected():
-    with freeze_time("2026-01-01 00:00:00"):
-        token = encode(_state(), KEY)
-    with freeze_time("2026-01-01 00:05:00"):
-        with pytest.raises(TokenError, match="expired"):
-            decode(token, KEY)
+def test_token_is_deterministic_for_same_state():
+    det = ContState(type="fetch", index_name="i", index_arity=1, qs=["x"], generation="g1")
+    assert encode(det, KEY) == encode(det, KEY)
+
+
+def test_decode_never_expires():
+    det = ContState(type="fetch", index_name="i", index_arity=1, qs=["x"], generation="g1")
+    tok = encode(det, KEY)
+    assert decode(tok, KEY).generation == "g1"
 
 
 def test_oversized_state_returns_error():
