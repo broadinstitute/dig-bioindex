@@ -3,7 +3,7 @@ from collections import OrderedDict
 
 
 class ResponseCache:
-    """Per-process byte-bounded LRU. Thread-safe (workers use a 40-thread pool)."""
+    """Per-process byte-bounded LRU. Thread-safe (workers use a 20-thread pool)."""
 
     def __init__(self, max_bytes: int):
         self._max = max_bytes

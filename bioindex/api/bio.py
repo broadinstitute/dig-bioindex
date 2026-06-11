@@ -264,6 +264,7 @@ async def api_all(index: str, req: fastapi.Request, fmt: str = 'row'):
             # discover what the user doesn't have access to see
             restricted, auth_s = profile(restricted_keywords, ctx.portal, req) if ctx.portal else (None, 0)
 
+            # arity=0 is impossible for valid schemas (they require key columns), so it can't collide with /all/{index}/{arity} keys
             cache_key = _query_cache_key(ctx.name, index, 0, fmt, gen, None)
 
             def _produce():

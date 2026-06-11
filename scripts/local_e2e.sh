@@ -167,13 +167,10 @@ PY
 # ---------------------------------------------------------------------------
 # Test 2: Stale continuation → HTTP 409 after version mutation
 #
-# NOTE: This test depends on generation.py's fingerprint query matching the
-# rows that were just built.  The current query uses `WHERE built = 1` against
-# a DATETIME column; once that is corrected to `WHERE built IS NOT NULL` (or
-# equivalent), the version-bump below will produce a different fingerprint and
-# the 409 test will fire.  If the generation is always empty (no rows match),
-# both the token-time and check-time fingerprints are identical and no 409
-# is issued — the test is skipped with a warning in that case.
+# The UPDATE below simulates an index rebuild by appending 'X' to the version
+# of every built key for this index.  That changes the per-index generation
+# fingerprint, so the subsequent /cont with the token minted before the bump
+# must be rejected with 409 (stale continuation).
 # ---------------------------------------------------------------------------
 TOKEN="$(python3 -c 'import json; print(json.load(open("/tmp/r1.json")).get("continuation") or "")')"
 
@@ -191,10 +188,6 @@ if [ -n "$TOKEN" ]; then
 
   if [ "$HTTP_CODE" = "409" ]; then
     echo "    OK: rebuild invalidated old continuation (409)"
-  elif [ "$HTTP_CODE" = "200" ]; then
-    echo "    WARN: got 200 instead of 409 — generation fingerprint did not change."
-    echo "          Check that generation.py uses WHERE built IS NOT NULL (not WHERE built = 1)."
-    echo "          Stale-token test is inconclusive; skipping as non-fatal."
   else
     echo "FAIL: stale cont expected 409, got $HTTP_CODE"
     exit 1
