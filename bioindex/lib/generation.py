@@ -17,7 +17,7 @@ def _fingerprint(key_version_pairs) -> str:
 
 
 def _read(engine, index_name: str) -> str:
-    sql = text("SELECT `key`, `version` FROM `__Keys` WHERE `index` = :i AND `built` = 1")
+    sql = text("SELECT `key`, `version` FROM `__Keys` WHERE `index` = :i AND `built` IS NOT NULL")
     with engine.connect() as conn:
         rows = conn.execute(sql, {"i": index_name}).fetchall()
     return _fingerprint((r[0], r[1]) for r in rows)
