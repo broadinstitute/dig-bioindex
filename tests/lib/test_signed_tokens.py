@@ -51,7 +51,7 @@ def test_token_is_deterministic_for_same_state():
     assert encode(det, KEY) == encode(det, KEY)
 
 
-def test_decode_never_expires():
+def test_decode_round_trips_generation_field():
     det = ContState(type="fetch", index_name="i", index_arity=1, qs=["x"], generation="g1")
     tok = encode(det, KEY)
     assert decode(tok, KEY).generation == "g1"

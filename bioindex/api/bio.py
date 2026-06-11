@@ -464,7 +464,7 @@ async def api_cont(token: str, req: fastapi.Request):
     except signed_tokens.TokenError as e:
         raise fastapi.HTTPException(
             status_code=400,
-            detail=f'Invalid or expired continuation token: {e}',
+            detail=f'Invalid continuation token: {e}',
         )
 
     # C1: tokens are bound to the portal that issued them. A token minted
