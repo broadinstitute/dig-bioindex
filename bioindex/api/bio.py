@@ -27,7 +27,27 @@ router = fastapi.APIRouter()
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
 
 # ---------------------------------------------------------------------------
-# In-process response cache (Task 7)
+# In-process response cache
+# ---------------------------------------------------------------------------
+# Configuration
+#   BIOINDEX_RESP_CACHE_BYTES  (default: 64 MiB per worker)
+#       Controls the maximum byte budget of the per-process LRU response
+#       cache.  Each worker process has its own independent cache; there is
+#       no shared/distributed layer.  Set to 0 to disable caching entirely.
+#
+# Invariants enforced by _cached_response()
+#   1. Restricted requests are NEVER cached (neither read nor written).
+#      When the caller supplies a truthy `restricted` value the cache is
+#      bypassed completely so that access-controlled data is never served
+#      to a different caller.
+#   2. Every response — cached or not — carries "Cache-Control: no-store"
+#      so that downstream HTTP caches (browsers, CDNs, proxies) never store
+#      these responses.  The LRU cache here is internal-only.
+#   3. Because `generation` is embedded in every query cache key (via
+#      _query_cache_key), an index rebuild (generation bump) automatically
+#      invalidates all cached responses for that index: the same query
+#      parameters produce a new key that misses and repopulates with fresh
+#      data.  No explicit eviction is required.
 # ---------------------------------------------------------------------------
 
 _RESP_CACHE = ResponseCache(
