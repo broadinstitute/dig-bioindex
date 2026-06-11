@@ -6,10 +6,12 @@ TDD tests for Tasks 4 + 5:
 import os
 import types
 
+import orjson
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import bioindex.api.bio as bio
 from bioindex.api.bio import _match_keys, router as bio_router
 from bioindex.lib import signed_tokens
 from bioindex.lib.continuation import ContState
@@ -183,7 +185,6 @@ def test_cont_portal_binding_checked_before_generation(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_cached_response_produces_once_and_marks_hit_miss(monkeypatch):
-    import bioindex.api.bio as bio
     bio._RESP_CACHE = bio.ResponseCache(max_bytes=10_000)   # fresh cache
     calls = {"n": 0}
 
@@ -195,7 +196,6 @@ def test_cached_response_produces_once_and_marks_hit_miss(monkeypatch):
     r2 = bio._cached_response("k1", None, produce)
     assert calls["n"] == 1                                   # second served from cache
     assert r1.headers["X-Cache"] == "MISS" and r2.headers["X-Cache"] == "HIT"
-    import orjson
     b1 = orjson.loads(r1.body)
     b2 = orjson.loads(r2.body)
     assert b1["data"] == b2["data"]
@@ -203,7 +203,6 @@ def test_cached_response_produces_once_and_marks_hit_miss(monkeypatch):
 
 
 def test_cached_response_bypasses_when_restricted(monkeypatch):
-    import bioindex.api.bio as bio
     bio._RESP_CACHE = bio.ResponseCache(max_bytes=10_000)
     calls = {"n": 0}
 
@@ -218,8 +217,6 @@ def test_cached_response_bypasses_when_restricted(monkeypatch):
 
 def test_finalize_always_adds_nonce_and_cache_control():
     """Every _finalize call produces Cache-Control: no-store and a nonce."""
-    import bioindex.api.bio as bio
-    import orjson
     r = bio._finalize({"data": []}, "MISS")
     assert r.headers["Cache-Control"] == "no-store"
     assert r.headers["X-Cache"] == "MISS"
@@ -232,7 +229,6 @@ def test_finalize_always_adds_nonce_and_cache_control():
 
 def test_cached_response_miss_has_cache_control_no_store():
     """Cache-Control: no-store must be present on every response, hit or miss."""
-    import bioindex.api.bio as bio
     bio._RESP_CACHE = bio.ResponseCache(max_bytes=10_000)
 
     r_miss = bio._cached_response("km", None, lambda: {"data": []})
@@ -244,7 +240,6 @@ def test_cached_response_miss_has_cache_control_no_store():
 
 def test_cached_response_none_key_always_misses():
     """A None cache key means: compute fresh every time, always X-Cache: MISS."""
-    import bioindex.api.bio as bio
     bio._RESP_CACHE = bio.ResponseCache(max_bytes=10_000)
     calls = {"n": 0}
 
@@ -259,8 +254,6 @@ def test_cached_response_none_key_always_misses():
 
 def test_nonce_not_stored_in_cache():
     """The body stored in the cache must NOT contain a nonce key."""
-    import bioindex.api.bio as bio
-    import orjson
     bio._RESP_CACHE = bio.ResponseCache(max_bytes=10_000)
     bio._cached_response("knonce", None, lambda: {"data": [42]})
     cached = bio._RESP_CACHE.get("knonce")

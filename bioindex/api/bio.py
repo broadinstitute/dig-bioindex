@@ -2,7 +2,7 @@ import asyncio
 import concurrent.futures
 import itertools
 import os
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 import fastapi
 import graphql
@@ -35,9 +35,9 @@ _RESP_CACHE = ResponseCache(
 )
 
 
-def _query_cache_key(portal, index_name, fmt, generation, qs):
+def _query_cache_key(portal, index_name, arity, fmt, generation, qs):
     """Build a deterministic cache key for a query-type response."""
-    return f"q|{portal}|{index_name}|{fmt}|{generation}|{','.join(qs or [])}"
+    return f"q|{portal}|{index_name}|{arity}|{fmt}|{generation}|{','.join(qs or [])}"
 
 
 def _finalize(body: dict, cache_status: str) -> ORJSONResponse:
@@ -50,7 +50,7 @@ def _finalize(body: dict, cache_status: str) -> ORJSONResponse:
     )
 
 
-def _cached_response(key, restricted, produce_body):
+def _cached_response(key, restricted, produce_body: Callable[[], dict]):
     """
     Try to serve a cached body; fall back to produce_body() on miss.
 
@@ -146,7 +146,7 @@ async def api_match(index: str, req: fastapi.Request, q: str, limit: int = None)
         # restricted check (match has no portal auth filter, but obey bypass rule)
         restricted = None
 
-        cache_key = _query_cache_key(ctx.name, index, 'match', gen, qs)
+        cache_key = _query_cache_key(ctx.name, index, len(qs or []), 'match', gen, qs)
 
         def _produce():
             # execute the query
@@ -244,7 +244,7 @@ async def api_all(index: str, req: fastapi.Request, fmt: str = 'row'):
             # discover what the user doesn't have access to see
             restricted, auth_s = profile(restricted_keywords, ctx.portal, req) if ctx.portal else (None, 0)
 
-            cache_key = _query_cache_key(ctx.name, index, fmt, gen, None) if not restricted else None
+            cache_key = _query_cache_key(ctx.name, index, 0, fmt, gen, None)
 
             def _produce():
                 # lookup the schema for this index and perform the query
@@ -291,7 +291,7 @@ async def api_all_arity(index: str, arity: int, req: fastapi.Request, fmt: str =
         # discover what the user doesn't have access to see
         restricted, auth_s = profile(restricted_keywords, ctx.portal, req) if ctx.portal else (None, 0)
 
-        cache_key = _query_cache_key(ctx.name, index, fmt, gen, None) if not restricted else None
+        cache_key = _query_cache_key(ctx.name, index, arity, fmt, gen, None)
 
         def _produce():
             # lookup the schema for this index and perform the query
@@ -420,7 +420,7 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
         # discover what the user doesn't have access to see
         restricted, auth_s = profile(restricted_keywords, ctx.portal, req) if ctx.portal else (None, 0)
 
-        cache_key = _query_cache_key(ctx.name, index, fmt, gen, qs) if not restricted else None
+        cache_key = _query_cache_key(ctx.name, index, len(qs or []), fmt, gen, qs)
 
         def _produce():
             # lookup the schema for this index and perform the query
