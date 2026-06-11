@@ -259,3 +259,45 @@ def test_nonce_not_stored_in_cache():
     cached = bio._RESP_CACHE.get("knonce")
     assert cached is not None
     assert "nonce" not in cached  # nonce injected at finalize, not stored
+
+
+# ---------------------------------------------------------------------------
+# Task 8: Integration test — generation bump invalidates query cache
+# ---------------------------------------------------------------------------
+
+def test_generation_bump_invalidates_query_cache():
+    """
+    Integration test: because `generation` is part of the _query_cache_key,
+    an index rebuild (generation bump) produces a different key and therefore
+    a guaranteed cache MISS, repopulating from fresh data.
+
+    The /cont 409-on-rebuild path is separately covered by
+    test_cont_rejects_stale_generation above.
+    """
+    bio._RESP_CACHE = bio.ResponseCache(max_bytes=100_000)   # fresh cache
+    calls = {"n": 0}
+
+    def produce():
+        calls["n"] += 1
+        return {"data": [calls["n"]], "continuation": None}
+
+    # --- generation G1 ---
+    k1 = bio._query_cache_key("p", "idx", 1, "row", "GEN1", ["x"])
+    r1a = bio._cached_response(k1, None, produce)   # MISS (produce #1)
+    r1b = bio._cached_response(k1, None, produce)   # HIT  (no produce)
+    assert calls["n"] == 1, "produce() should have been called exactly once (cache hit on second call)"
+    assert r1a.headers["X-Cache"] == "MISS", "First call must be a MISS"
+    assert r1b.headers["X-Cache"] == "HIT",  "Second call with same key must be a HIT"
+
+    # --- index rebuilt -> generation G2 -> different key ---
+    k2 = bio._query_cache_key("p", "idx", 1, "row", "GEN2", ["x"])
+    assert k2 != k1, "generation is part of the cache key — G2 key must differ from G1 key"
+
+    r2 = bio._cached_response(k2, None, produce)    # MISS (produce #2) -> fresh data
+    assert calls["n"] == 2, "After generation bump the new key must MISS and call produce()"
+    assert r2.headers["X-Cache"] == "MISS", "New-generation key must be a MISS"
+
+    # Verify the fresh response actually returned the updated data (not the old cached body)
+    import orjson
+    body2 = orjson.loads(r2.body)
+    assert body2["data"] == [2], f"Expected fresh data=[2] after rebuild, got {body2['data']}"
