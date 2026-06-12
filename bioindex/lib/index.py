@@ -340,7 +340,7 @@ class Index:
             key, records = job.result()
 
             # perform the insert serially, so jobs don't block each other
-            self.insert_records(engine, list(records))
+            self.insert_records_iter(engine, records)
 
             # after inserting, set the key as being built
             self.set_key_built_flag(engine, key)
@@ -396,12 +396,36 @@ class Index:
         #       the entire duration of indexing.
         return key, ({**self.schema.column_values(k), **r} for k, r in records.items())
 
+    def _load_csv(self, engine, infile_name, quoted_fieldnames):
+        """LOAD DATA LOCAL INFILE the given CSV into this index's table (with deadlock retry)."""
+        infile = infile_name.replace('\\', '/')
+        fail_ex = None
+
+        sql = (
+            f"LOAD DATA LOCAL INFILE '{infile}' "
+            f"INTO TABLE `{self.table.name}` "
+            f"FIELDS TERMINATED BY ',' "
+            f"LINES TERMINATED BY '\\n' "
+            f"IGNORE 1 ROWS "
+            f"({','.join(quoted_fieldnames)}) "
+        )
+
+        # attempt to bulk load into the database
+        for _ in range(5):
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(sql))
+                break
+            except sqlalchemy.exc.OperationalError as ex:
+                fail_ex = ex
+                if ex.code == 1213:  # deadlock; wait and try again
+                    time.sleep(1)
+        else:
+            # failed to insert the rows, die
+            raise fail_ex
+
     def insert_records(self, engine, records):
-        """
-        Insert all the records into the index table. It does this as fast as
-        possible by writing the file to a CSV and then loading it directly
-        into the table.
-        """
+        """Bulk-load a list of record dicts via a temp CSV + LOAD DATA."""
         if len(records) == 0:
             return
 
@@ -422,34 +446,39 @@ class Index:
             tmp.close()
 
         try:
-            infile = tmp.name.replace('\\', '/')
-            fail_ex = None
-
-            sql = (
-                f"LOAD DATA LOCAL INFILE '{infile}' "
-                f"INTO TABLE `{self.table.name}` "
-                f"FIELDS TERMINATED BY ',' "
-                f"LINES TERMINATED BY '\\n' "
-                f"IGNORE 1 ROWS "
-                f"({','.join(quoted_fieldnames)}) "
-            )
-
-            # attempt to bulk load into the database
-            for _ in range(5):
-                try:
-                    with engine.begin() as conn:
-                        conn.execute(text(sql))
-                    break
-                except sqlalchemy.exc.OperationalError as ex:
-                    fail_ex = ex
-                    if ex.code == 1213:  # deadlock; wait and try again
-                        time.sleep(1)
-            else:
-                # failed to insert the rows, die
-                raise fail_ex
-
-            # output number of records
+            self._load_csv(engine, tmp.name, quoted_fieldnames)
             logging.info(f'Wrote {len(records):,} records')
+        finally:
+            os.remove(tmp.name)
+
+    def insert_records_iter(self, engine, records):
+        """Bulk-load a record *iterator* by streaming rows to the temp CSV — no full list copy.
+
+        Memory note: this removes the duplicate in-RAM list. The per-file records
+        dict produced by index_object() is still held alive by the iterator until
+        drained, so this halves (not bounds) peak; large indexes are kept out of
+        the in-process path by the strategy router in sync/.
+        """
+        it = iter(records)
+        try:
+            first = next(it)
+        except StopIteration:
+            return
+        fieldnames = list(first.keys())
+        quoted_fieldnames = [f'`{field}`' for field in fieldnames]
+        tmp = tempfile.NamedTemporaryFile(mode='w+t', delete=False)
+        n = 0
+        try:
+            w = csv.DictWriter(tmp, fieldnames)
+            w.writeheader()
+            w.writerow(first); n += 1
+            for r in it:
+                w.writerow(r); n += 1
+        finally:
+            tmp.close()
+        try:
+            self._load_csv(engine, tmp.name, quoted_fieldnames)
+            logging.info(f'Wrote {n:,} records')
         finally:
             os.remove(tmp.name)
 
