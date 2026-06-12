@@ -194,21 +194,22 @@ class RecordReader:
                         command = ['bgzip', '-b', f"{seek_start}", '-s', f"{seek_length}", s3_url]
                     else:
                         command = ['bgzip', '-b', f"{seek_start}", s3_url]
+                    # Read bgzip output in BINARY (no text=True). Binary line
+                    # iteration splits only on b'\n' with NO universal-newline
+                    # translation, so len(line) is the true uncompressed byte
+                    # count (including the newline) even for CRLF-terminated or
+                    # multi-byte records. text=True would collapse '\r\n' -> '\n'
+                    # and count characters, under-counting such a line by a byte
+                    # and landing the next resume's bgzip -b on a stranded
+                    # newline (orjson then fails with "input data is empty").
                     with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                          text=True, bufsize=1,
                                           env=_aws_env_for_htslib()) as proc:
                         for line in proc.stdout:
-                            # subprocess.stdout (text=True) yields lines WITH
-                            # the trailing newline. read_lined_object strips it,
-                            # which is why the non-bgzip branch adds +1. Keep
-                            # the two paths' byte accounting consistent so
-                            # _source_byte_offset can be used as a seek offset
-                            # back into bgzip's -b on resume.
                             line_bytes = len(line)
                             self.bytes_read += line_bytes
                             self._source_byte_offset += line_bytes
 
-                            # parse the record
+                            # parse the record (orjson.loads accepts bytes)
                             record = orjson.loads(line)
 
                             # Check for restrictions and filters, then yield records
@@ -222,7 +223,7 @@ class RecordReader:
 
                         proc.wait()
                         if proc.returncode != 0:
-                            stderr = proc.stderr.read()
+                            stderr = proc.stderr.read().decode(errors="replace")
                             raise subprocess.CalledProcessError(proc.returncode, command, output=stderr)
 
                 else:
@@ -234,7 +235,12 @@ class RecordReader:
                         raise FileNotFoundError(source.key)
 
                     for line in content:
-                        line_bytes = len(line) + 1  # eol character
+                        # read_lined_object yields decoded, newline-stripped str.
+                        # Count true UTF-8 bytes (+1 for the stripped \n) so this
+                        # matches the byte offsets stored in __Keys, which index.py
+                        # writes as len(line.encode('utf-8')) + 1. Plain len(line)
+                        # under-counts multi-byte chars and desyncs resume.
+                        line_bytes = len(line.encode('utf-8')) + 1  # eol byte
                         self.bytes_read += line_bytes
                         self._source_byte_offset += line_bytes
 
