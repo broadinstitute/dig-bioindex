@@ -142,7 +142,9 @@ class Index:
         logging.info('Creating %s table...', self.table.name)
         self.table.create(engine, checkfirst=True)
 
-    def build(self, config, engine, use_lambda=False, use_batch=False, workers=3, console=None):
+    def build(self, config, engine, use_lambda=False, use_batch=False, use_grouped=False,
+              group_size=50, group_max_bytes=2 * 1024 ** 3, workers=3,
+              prefer_compressed=False, console=None):
         """
         Builds the index table for objects in S3.
         """
@@ -150,8 +152,14 @@ class Index:
         json_objects = list(list_objects(config.s3_bucket, config.s3_path(self.s3_prefix), only='*.json'))
         gz_objects = list(list_objects(config.s3_bucket, config.s3_path(self.s3_prefix), only='*.json.gz'))
         if len(json_objects) > 0 and len(gz_objects) > 0:
-            raise ValueError(f'There are both compressed and uncompressed files in {self.s3_prefix}. '
-                             f'An index needs to be all one or the other.')
+            if prefer_compressed:
+                logging.info('Both .json and .json.gz present under %s; preferring .json.gz (%d) and '
+                             'ignoring %d pending-delete .json original(s).',
+                             self.s3_prefix, len(gz_objects), len(json_objects))
+                json_objects = []
+            else:
+                raise ValueError(f'There are both compressed and uncompressed files in {self.s3_prefix}. '
+                                 f'An index needs to be all one or the other.')
         s3_objects = json_objects + gz_objects
 
         # delete all stale keys; get the list of objects left to index
