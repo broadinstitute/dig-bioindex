@@ -1,3 +1,4 @@
+import boto3
 import concurrent.futures
 import csv
 import datetime
@@ -13,10 +14,34 @@ import time
 
 from sqlalchemy import text
 
-from .aws import invoke_lambda, start_and_wait_for_indexer_job
+from .aws import invoke_lambda, start_and_wait_for_indexer_job, start_and_wait_for_group_indexer_job
 from .s3 import list_objects, read_lined_object, relative_key
 from .schema import Schema
 from .utils import cap_case_str
+
+
+def _chunk_objects(objects, max_files, max_bytes):
+    """Partition S3 objects into groups bounded by file count and total bytes (count wins ties)."""
+    groups, cur, cur_bytes = [], [], 0
+    for o in objects:
+        size = o.get('Size', 0)
+        if cur and (len(cur) >= max_files or cur_bytes + size > max_bytes):
+            groups.append(cur)
+            cur, cur_bytes = [], 0
+        cur.append(o)
+        cur_bytes += size
+    if cur:
+        groups.append(cur)
+    return groups
+
+
+def _write_keys_manifest(bucket, index, keys):
+    """Write a newline-delimited manifest of keys to S3 and return its s3:// URI."""
+    import uuid
+    body = '\n'.join(keys).encode('utf-8')
+    key = f'__sync_manifests/{index}/{uuid.uuid4().hex}.txt'
+    boto3.client('s3').put_object(Bucket=bucket, Key=key, Body=body)
+    return f's3://{bucket}/{key}'
 
 
 class Index:
@@ -207,6 +232,10 @@ class Index:
                         progress,
                         overall,
                     )
+                elif use_grouped:
+                    self.index_objects_grouped(
+                        config, engine, objects, group_size, group_max_bytes, progress, overall,
+                    )
                 else:
                     self.index_objects_local(
                         config,
@@ -324,6 +353,33 @@ class Index:
             # update the overall bar
             if progress:
                 progress.advance(overall, advance=size)
+
+    def index_objects_grouped(self, config, engine, objects, group_size, group_max_bytes,
+                              progress=None, overall=None):
+        """Index objects via grouped Batch jobs: one job per chunk, each draining a key manifest.
+
+        The parent writes the manifest (so it knows each chunk's keys), submits the job, and on
+        SUCCESS sets the per-key built flag for every key in the chunk — mirroring the per-file
+        remote path but amortizing container cold-start across many small files.
+        """
+        chunks = _chunk_objects(objects, group_size, group_max_bytes)
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=min(len(chunks), 16) or 1)
+        future_to_chunk = {}
+        for chunk in chunks:
+            keys = [o['Key'] for o in chunk]
+            manifest_uri = _write_keys_manifest(config.s3_bucket, self.name, keys)
+            fut = pool.submit(start_and_wait_for_group_indexer_job, manifest_uri, self.name,
+                              self.schema.arity, config.s3_bucket, config.rds_secret, config.bio_schema)
+            future_to_chunk[fut] = chunk
+        for fut in concurrent.futures.as_completed(future_to_chunk):
+            job = fut.result()
+            if job['status'] != 'SUCCEEDED':
+                reason = job.get('statusReason', 'grouped indexer job FAILED')
+                raise RuntimeError(f'grouped indexer job failed for {self.name}: {reason}')
+            for o in future_to_chunk[fut]:
+                self.set_key_built_flag(engine, o['Key'])
+                if progress:
+                    progress.advance(overall, advance=o['Size'])
 
     def index_objects_local(self, config, engine, pool, objects, progress=None, overall=None):
         """

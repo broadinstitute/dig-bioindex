@@ -76,6 +76,26 @@ def start_and_wait_for_indexer_job(file: str, index: str, arity: int, bucket: st
         time.sleep(60)
 
 
+def start_and_wait_for_group_indexer_job(keys_uri: str, index: str, arity: int, bucket: str,
+                                         rds_secret: str, rds_schema: str):
+    """Submit one grouped indexer job (indexes every key listed in the S3 manifest at keys_uri)."""
+    batch_client = boto3.client('batch')
+    response = batch_client.submit_job(
+        jobName='batch-group-indexer-job',
+        jobQueue='indexer-job-queue',
+        jobDefinition='batch-group-indexer-job',
+        parameters={'keys-uri': keys_uri, 'index': index, 'arity': str(arity),
+                    'bucket': bucket, 'rds-secret': rds_secret, 'rds-schema': rds_schema},
+    )
+    job_id = response['jobId']
+    while True:
+        response = batch_client.describe_jobs(jobs=[job_id])
+        job_status = response['jobs'][0]['status']
+        if job_status in ['SUCCEEDED', 'FAILED']:
+            return response['jobs'][0]
+        time.sleep(60)
+
+
 def secret_lookup(secret_id):
     """
     Return the contents of a secret.
