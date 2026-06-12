@@ -81,6 +81,44 @@ Resources:
         FargatePlatformConfiguration:
           PlatformVersion: 'LATEST'
 
+  BatchGroupIndexerJobDefinition:
+    Type: 'AWS::Batch::JobDefinition'
+    Properties:
+      Type: 'container'
+      JobDefinitionName: 'batch-group-indexer-job'
+      PlatformCapabilities:
+        - 'FARGATE'
+      Timeout:
+        AttemptDurationSeconds: 14400
+      ContainerProperties:
+        Image: !Sub '${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/batch-indexer-repo'
+        Command:
+          - 'python3'
+          - 'index_group.py'
+          - '-k'
+          - 'Ref::keys-uri'
+          - '-i'
+          - 'Ref::index'
+          - '-a'
+          - 'Ref::arity'
+          - '-b'
+          - 'Ref::bucket'
+          - '-r'
+          - 'Ref::rds-secret'
+          - '-s'
+          - 'Ref::rds-schema'
+        JobRoleArn: !GetAtt IndexerRole.Arn
+        ExecutionRoleArn: !GetAtt IndexerRole.Arn
+        ResourceRequirements:
+          - Type: 'VCPU'
+            Value: '2.0'
+          - Type: 'MEMORY'
+            Value: '8192'
+        NetworkConfiguration:
+          AssignPublicIp: 'ENABLED'
+        FargatePlatformConfiguration:
+          PlatformVersion: 'LATEST'
+
   IndexerRole:
     Type: 'AWS::IAM::Role'
     Properties:
