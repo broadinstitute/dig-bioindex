@@ -19,7 +19,7 @@ class JsonFormatter(logging.Formatter):
             "portal", "request_id",
             "method", "route", "path", "query",
             "status", "response_bytes",
-            "latency_ms", "worker_pid", "client_ip",
+            "latency_ms", "worker_pid", "client_ip", "user_agent",
         ):
             if hasattr(record, attr):
                 payload[attr] = getattr(record, attr)

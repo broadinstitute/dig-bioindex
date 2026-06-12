@@ -132,3 +132,21 @@ def test_access_log_client_ip_falls_back_to_leftmost_xff_truncated(access_log_re
     records = [r for r in access_log_records.records if r.name == "bioindex.access"]
     assert len(records) == 1
     assert records[0].client_ip == "198.51.100.0"
+
+
+def test_access_log_captures_user_agent(access_log_records):
+    client = TestClient(_make_app())
+    client.get("/cfde/api/bio/query/gene?q=X",
+               headers={"User-Agent": "python-requests/2.31"})
+    records = [r for r in access_log_records.records if r.name == "bioindex.access"]
+    assert len(records) == 1
+    assert records[0].user_agent == "python-requests/2.31"
+
+
+def test_access_log_truncates_long_user_agent(access_log_records):
+    client = TestClient(_make_app())
+    client.get("/cfde/api/bio/query/gene?q=X",
+               headers={"User-Agent": "x" * 500})
+    records = [r for r in access_log_records.records if r.name == "bioindex.access"]
+    assert len(records) == 1
+    assert records[0].user_agent == "x" * 256

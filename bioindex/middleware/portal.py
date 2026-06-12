@@ -180,6 +180,7 @@ class PortalResolveMiddleware(BaseHTTPMiddleware):
                 "latency_ms": int((time.time() - start) * 1000),
                 "worker_pid": os.getpid(),
                 "client_ip": _client_ip(request),
+                "user_agent": (request.headers.get("user-agent") or "")[:256],
             },
         )
 
