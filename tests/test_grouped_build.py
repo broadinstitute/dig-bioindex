@@ -14,7 +14,12 @@ def test_chunk_objects_bounds_by_count_and_bytes():
     assert [len(g) for g in groups] == [3, 3, 3, 1]
     # max 25 bytes per group -> groups of <=2 files (10+10=20, +10 would be 30>25)
     groups = _chunk_objects(objs, max_files=99, max_bytes=25)
-    assert all(sum(o['Size'] for o in g) <= 25 or len(g) == 1 for g in groups)
+    # every multi-file group must respect the byte bound; a lone oversized file may exceed it
+    for g in groups:
+        if len(g) > 1:
+            assert sum(o['Size'] for o in g) <= 25
+    # 10-byte files, 25-byte budget -> at most 2 per group
+    assert all(len(g) <= 2 for g in groups)
 
 
 def test_index_objects_grouped_submits_one_job_per_chunk_and_sets_built_flags(monkeypatch):
