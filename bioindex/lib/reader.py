@@ -124,7 +124,7 @@ class RecordReader:
                         raise FileNotFoundError(source.key)
 
                     for line in content:
-                        self.bytes_read += len(line) + 1  # eol character
+                        self.bytes_read += len(line.encode('utf-8')) + 1  # eol character
 
                         # parse the record
                         record = orjson.loads(line)
