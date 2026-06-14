@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 python:3.8-slim as build
+FROM --platform=linux/amd64 python:3.12-slim AS build
 
 RUN apt-get update && \
     apt-get install -y default-libmysqlclient-dev pkg-config build-essential
