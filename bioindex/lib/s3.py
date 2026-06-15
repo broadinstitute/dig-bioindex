@@ -2,6 +2,7 @@ import gzip
 from io import BytesIO
 
 import botocore.errorfactory
+import botocore.exceptions
 import fnmatch
 import os
 import os.path
@@ -147,6 +148,15 @@ def read_object(bucket, path, offset=None, length=None):
     return s3_client.get_object(**kwargs).get('Body')
 
 
+def read_object_with_etag(bucket, path):
+    """
+    Fully read an S3 object and return (bytes, etag). The ETag is the
+    raw S3 value (double-quoted) and identifies the object's version.
+    """
+    resp = s3_client.get_object(Bucket=str(bucket), Key=str(path))
+    return resp['Body'].read(), resp['ETag']
+
+
 def read_lined_object(bucket, path, offset=None, length=None):
     raw = read_object(bucket, path, offset, length)
     if path.endswith('.gz'):
@@ -166,3 +176,14 @@ def test_object(bucket, s3_obj):
         return True
     except botocore.errorfactory.ClientError:
         return False
+
+
+def head_object(bucket, path):
+    """
+    Return the S3 HEAD response dict for an object (callers read 'ETag'),
+    or None if the object does not exist.
+    """
+    try:
+        return s3_client.head_object(Bucket=str(bucket), Key=str(path))
+    except botocore.exceptions.ClientError:
+        return None
