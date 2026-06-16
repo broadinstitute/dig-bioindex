@@ -49,7 +49,9 @@ Resources:
       PlatformCapabilities:
         - 'FARGATE'
       Timeout:
-        AttemptDurationSeconds: 3600
+        # 4h headroom: fanout indexes a single large file per job (falcon variant_files
+        # are ~6.6 GB). Was 3600 (1h); a big file can brush that ceiling.
+        AttemptDurationSeconds: 14400
       ContainerProperties:
         Image: !Sub '${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/batch-indexer-repo'
         Command:
@@ -73,9 +75,9 @@ Resources:
         ExecutionRoleArn: !GetAtt IndexerRole.Arn
         ResourceRequirements:
           - Type: 'VCPU'
-            Value: '1.0'
+            Value: '2.0'
           - Type: 'MEMORY'
-            Value: '8192'
+            Value: '16384'
         NetworkConfiguration:
           AssignPublicIp: 'ENABLED'
         FargatePlatformConfiguration:
@@ -86,6 +88,13 @@ Resources:
     Properties:
       Type: 'container'
       JobDefinitionName: 'batch-group-indexer-job'
+      # Intentionally NO RetryStrategy (attempts defaults to 1). Re-runs must go through
+      # the parent build(), whose delete_stale_keys() cleans any partially-indexed keys
+      # before re-indexing. A Batch auto-retry would re-run this worker directly, bypassing
+      # that cleanup and double-inserting records. Do not add retries without first adding a
+      # delete_key-before-reindex guard in index_group.py.
+      Parameters:
+        s3-subdir: ''
       PlatformCapabilities:
         - 'FARGATE'
       Timeout:
@@ -95,8 +104,6 @@ Resources:
         Command:
           - 'python3'
           - 'index_group.py'
-          - '-k'
-          - 'Ref::keys-uri'
           - '-i'
           - 'Ref::index'
           - '-a'
@@ -107,6 +114,22 @@ Resources:
           - 'Ref::rds-secret'
           - '-s'
           - 'Ref::rds-schema'
+          - '--s3-subdir'
+          - 'Ref::s3-subdir'
+          - '-p'
+          - 'Ref::prefix'
+          - '--prefer-compressed'
+          - 'Ref::prefer-compressed'
+          - '--chunk-index'
+          - 'Ref::chunk-index'
+          - '--chunk-count'
+          - 'Ref::chunk-count'
+          - '--group-size'
+          - 'Ref::group-size'
+          - '--group-max-bytes'
+          - 'Ref::group-max-bytes'
+          - '--expected-total'
+          - 'Ref::expected-total'
         JobRoleArn: !GetAtt IndexerRole.Arn
         ExecutionRoleArn: !GetAtt IndexerRole.Arn
         ResourceRequirements:

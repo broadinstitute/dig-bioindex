@@ -1,4 +1,3 @@
-import boto3
 import concurrent.futures
 import csv
 import datetime
@@ -11,8 +10,6 @@ import rich.progress
 import sqlalchemy
 import tempfile
 import time
-import uuid
-
 from sqlalchemy import text
 
 from .aws import invoke_lambda, start_and_wait_for_indexer_job, start_and_wait_for_group_indexer_job
@@ -36,12 +33,27 @@ def _chunk_objects(objects, max_files, max_bytes):
     return groups
 
 
-def _write_keys_manifest(bucket, index, keys):
-    """Write a newline-delimited manifest of keys to S3 and return its s3:// URI."""
-    body = '\n'.join(keys).encode('utf-8')
-    key = f'__sync_manifests/{index}/{uuid.uuid4().hex}.txt'
-    boto3.client('s3').put_object(Bucket=bucket, Key=key, Body=body)
-    return f's3://{bucket}/{key}'
+def _key_is_current(db_keys, obj):
+    """True if obj's key is already indexed at its current S3 version (ETag)."""
+    k = obj['Key']
+    return k in db_keys and db_keys[k]['version'] == obj['ETag'].strip('"')[:32]
+
+
+def list_index_objects(bucket, s3_path, prefer_compressed):
+    """Deterministic ordered object listing for an index prefix (shared by parent and worker)."""
+    json_objects = list(list_objects(bucket, s3_path, only='*.json'))
+    gz_objects = list(list_objects(bucket, s3_path, only='*.json.gz'))
+    if json_objects and gz_objects:
+        if prefer_compressed:
+            logging.info('%s has both .json and .json.gz; preferring .json.gz (%d) and ignoring %d '
+                         'pending-delete .json original(s).', s3_path, len(gz_objects), len(json_objects))
+            json_objects = []
+        else:
+            raise ValueError(
+                f'{s3_path} has both .json and .json.gz; an index must be all one or the other.'
+            )
+    return json_objects + gz_objects
+
 
 
 class Index:
@@ -174,24 +186,16 @@ class Index:
         Builds the index table for objects in S3.
         """
         logging.info('Finding keys in %s...', self.s3_prefix)
-        json_objects = list(list_objects(config.s3_bucket, config.s3_path(self.s3_prefix), only='*.json'))
-        gz_objects = list(list_objects(config.s3_bucket, config.s3_path(self.s3_prefix), only='*.json.gz'))
-        if len(json_objects) > 0 and len(gz_objects) > 0:
-            if prefer_compressed:
-                logging.info('Both .json and .json.gz present under %s; preferring .json.gz (%d) and '
-                             'ignoring %d pending-delete .json original(s).',
-                             self.s3_prefix, len(gz_objects), len(json_objects))
-                json_objects = []
-            else:
-                raise ValueError(f'There are both compressed and uncompressed files in {self.s3_prefix}. '
-                                 f'An index needs to be all one or the other.')
-        s3_objects = json_objects + gz_objects
+        s3_objects = list_index_objects(
+            config.s3_bucket, config.s3_path(self.s3_prefix), prefer_compressed
+        )
 
         # delete all stale keys; get the list of objects left to index
         objects = self.delete_stale_keys(config, engine, s3_objects, console=console)
 
         # calculate the total size of all the objects
-        total_size = functools.reduce(lambda a, b: a + b['Size'], objects, 0)
+        total_size = functools.reduce(lambda a, b: a + b['Size'],
+                                      s3_objects if use_grouped else objects, 0)
 
         # progress format
         p_fmt = [
@@ -234,7 +238,8 @@ class Index:
                     )
                 elif use_grouped:
                     self.index_objects_grouped(
-                        config, engine, objects, group_size, group_max_bytes, progress, overall,
+                        config, engine, s3_objects, prefer_compressed, group_size, group_max_bytes,
+                        progress, overall,
                     )
                 else:
                     self.index_objects_local(
@@ -270,7 +275,7 @@ class Index:
         db_keys = self.lookup_keys(config, engine)
         # if a file in s3 is in the db but the version is different from what's in s3 we delete
         updated_files_for_db = [{'id': db_keys[o['Key']]['id'], 'key': o['Key']} for o in objects
-                                if o['Key'] in db_keys and db_keys[o['Key']]['version'] != o['ETag'].strip('"')[:32]]
+                                if o['Key'] in db_keys and not _key_is_current(db_keys, o)]
         updated_files_for_return = [o for o in objects if o['Key'] in set([f['key'] for f in updated_files_for_db])]
         s3_keys = set([o['Key'] for o in objects])
         deleted_files = [{'id': db_keys[k]['id'], 'key': k} for k in db_keys if k not in s3_keys]
@@ -354,22 +359,27 @@ class Index:
             if progress:
                 progress.advance(overall, advance=size)
 
-    def index_objects_grouped(self, config, engine, objects, group_size, group_max_bytes,
-                              progress=None, overall=None):
-        """Index objects via grouped Batch jobs: one job per chunk, each draining a key manifest.
+    def index_objects_grouped(self, config, engine, objects, prefer_compressed,
+                              group_size, group_max_bytes, progress=None, overall=None):
+        """Index objects via grouped Batch jobs, one per chunk.
 
-        The parent writes the manifest (so it knows each chunk's keys), submits the job, and on
-        SUCCESS sets the per-key built flag for every key in the chunk — mirroring the per-file
-        remote path but amortizing container cold-start across many small files.
+        The parent chunks the full listing and passes each worker only coordinates
+        (prefix, prefer_compressed, chunk_index, chunk_count, group bounds, expected_total);
+        the worker re-lists S3 and re-runs _chunk_objects to recover the same chunk. No S3
+        manifest is written. On SUCCESS the parent sets the per-key built flag for the chunk.
         """
         chunks = _chunk_objects(objects, group_size, group_max_bytes)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(chunks), 16) or 1) as pool:
+        n = len(chunks)
+        expected_total = len(objects)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(n, 16) or 1) as pool:
             future_to_chunk = {}
-            for chunk in chunks:
-                keys = [o['Key'] for o in chunk]
-                manifest_uri = _write_keys_manifest(config.s3_bucket, self.name, keys)
-                fut = pool.submit(start_and_wait_for_group_indexer_job, manifest_uri, self.name,
-                                  self.schema.arity, config.s3_bucket, config.rds_secret, config.bio_schema)
+            for i, chunk in enumerate(chunks):
+                fut = pool.submit(
+                    start_and_wait_for_group_indexer_job, self.name, self.schema.arity,
+                    config.s3_bucket, config.rds_secret, config.bio_schema,
+                    config.s3_subdir, self.s3_prefix, prefer_compressed, i, n,
+                    group_size, group_max_bytes, expected_total,
+                )
                 future_to_chunk[fut] = chunk
             for fut in concurrent.futures.as_completed(future_to_chunk):
                 job = fut.result()

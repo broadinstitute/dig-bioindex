@@ -76,16 +76,32 @@ def start_and_wait_for_indexer_job(file: str, index: str, arity: int, bucket: st
         time.sleep(60)
 
 
-def start_and_wait_for_group_indexer_job(keys_uri: str, index: str, arity: int, bucket: str,
-                                         rds_secret: str, rds_schema: str):
-    """Submit one grouped indexer job (indexes every key listed in the S3 manifest at keys_uri)."""
+def start_and_wait_for_group_indexer_job(index: str, arity: int, bucket: str, rds_secret: str,
+                                         rds_schema: str, s3_subdir: str, prefix: str,
+                                         prefer_compressed: bool, chunk_index: int,
+                                         chunk_count: int, group_size: int,
+                                         group_max_bytes: int, expected_total: int):
+    """Submit one grouped indexer job; the worker re-derives its chunk from these coordinates."""
     batch_client = boto3.client('batch')
     response = batch_client.submit_job(
         jobName='batch-group-indexer-job',
         jobQueue='indexer-job-queue',
         jobDefinition='batch-group-indexer-job',
-        parameters={'keys-uri': keys_uri, 'index': index, 'arity': str(arity),
-                    'bucket': bucket, 'rds-secret': rds_secret, 'rds-schema': rds_schema},
+        parameters={
+            'index': index,
+            'arity': str(arity),
+            'bucket': bucket,
+            'rds-secret': rds_secret,
+            'rds-schema': rds_schema,
+            's3-subdir': s3_subdir or '',
+            'prefix': prefix,
+            'prefer-compressed': '1' if prefer_compressed else '0',
+            'chunk-index': str(chunk_index),
+            'chunk-count': str(chunk_count),
+            'group-size': str(group_size),
+            'group-max-bytes': str(group_max_bytes),
+            'expected-total': str(expected_total),
+        },
     )
     job_id = response['jobId']
     while True:
