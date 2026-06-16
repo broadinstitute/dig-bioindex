@@ -138,11 +138,12 @@ def _run_submit(monkeypatch, s3_subdir):
     return captured['parameters']
 
 
-def test_submit_omits_empty_s3_subdir(monkeypatch):
-    # Batch SubmitJob rejects empty parameter values; s3-subdir must be omitted, not ''.
+def test_submit_maps_empty_s3_subdir_to_sentinel(monkeypatch):
+    # Batch SubmitJob rejects empty values AND drops empty defaults, so '' must go on the
+    # wire as the sentinel (never '' and never omitted).
+    from bioindex.lib.aws import GROUP_NO_SUBDIR
     params = _run_submit(monkeypatch, s3_subdir='')
-    assert 's3-subdir' not in params
-    # and no other parameter is ever submitted empty
+    assert params['s3-subdir'] == GROUP_NO_SUBDIR
     assert all(v != '' for v in params.values())
 
 

@@ -2,6 +2,7 @@ import os
 
 import click
 
+from bioindex.lib.aws import GROUP_NO_SUBDIR
 from bioindex.lib.config import Config
 from bioindex.lib.index import Index, _chunk_objects, _key_is_current, list_index_objects
 from bioindex.lib.migrate import migrate
@@ -49,7 +50,9 @@ def main(index_name, arity, bucket, rds_secret, rds_schema, s3_subdir, prefix, p
     os.environ['BIOINDEX_S3_BUCKET'] = bucket
     os.environ['BIOINDEX_RDS_SECRET'] = rds_secret
     os.environ['BIOINDEX_BIO_SCHEMA'] = rds_schema
-    if s3_subdir:
+    # GROUP_NO_SUBDIR is the on-the-wire stand-in for an empty subdir (Batch forbids '');
+    # treat it as "no subdir" so Config.s3_path stays bare for non-subdir portals.
+    if s3_subdir and s3_subdir != GROUP_NO_SUBDIR:
         os.environ['BIOINDEX_S3_SUBDIR'] = s3_subdir
 
     config = Config()

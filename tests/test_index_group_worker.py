@@ -90,3 +90,41 @@ def test_main_sets_subdir_env_and_lists_qualified_prefix(monkeypatch):
     )
     assert os.environ.get('BIOINDEX_S3_SUBDIR') == 'bioindex'
     assert captured['s3_path'] == 'bioindex/pre/'
+
+
+def test_main_sentinel_subdir_leaves_env_unset_and_lists_bare_prefix(monkeypatch):
+    # Non-subdir portals arrive as the GROUP_NO_SUBDIR sentinel (Batch can't carry ''); the
+    # worker must NOT set the env, so Config.s3_path stays bare and lookup_keys filters bare.
+    from bioindex.lib.aws import GROUP_NO_SUBDIR
+    _spec.loader.exec_module(index_group)
+    monkeypatch.delenv('BIOINDEX_S3_SUBDIR', raising=False)
+    captured = {}
+
+    class FakeConfig:
+        def s3_path(self, path):
+            sub = os.environ.get('BIOINDEX_S3_SUBDIR')
+            return f'{sub}/{path}' if sub else path
+
+    monkeypatch.setattr(index_group, 'Config', lambda: FakeConfig())
+    monkeypatch.setattr(index_group, 'migrate', lambda config: object())
+    fake_index = MagicMock()
+    fake_index.lookup_keys.return_value = {}
+    fake_index.index_object.side_effect = lambda engine, bucket, obj: (obj['Key'], iter([]))
+    monkeypatch.setattr(
+        index_group.Index, 'lookup', staticmethod(lambda engine, name, arity: fake_index)
+    )
+
+    def fake_list(bucket, s3_path, prefer_compressed):
+        captured['s3_path'] = s3_path
+        return [{'Key': f'{s3_path}part-0.json.gz', 'Size': 10, 'ETag': '"v"'}]
+
+    monkeypatch.setattr(index_group, 'list_index_objects', fake_list)
+    monkeypatch.setattr(index_group, '_chunk_objects', lambda objs, gs, gmb: [objs])
+
+    index_group.main.callback(
+        index_name='idx', arity='1', bucket='bkt', rds_secret='sec', rds_schema='sch',
+        s3_subdir=GROUP_NO_SUBDIR, prefix='pre/', prefer_compressed=1, chunk_index=0, chunk_count=1,
+        group_size=2, group_max_bytes=1000000, expected_total=1,
+    )
+    assert os.environ.get('BIOINDEX_S3_SUBDIR') is None
+    assert captured['s3_path'] == 'pre/'
