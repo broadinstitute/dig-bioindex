@@ -83,25 +83,31 @@ def start_and_wait_for_group_indexer_job(index: str, arity: int, bucket: str, rd
                                          group_max_bytes: int, expected_total: int):
     """Submit one grouped indexer job; the worker re-derives its chunk from these coordinates."""
     batch_client = boto3.client('batch')
+    # AWS Batch SubmitJob rejects empty parameter VALUES ("Parameter values must be
+    # provided"). s3-subdir is empty for non-subdir portals (e.g. main-test), so omit it
+    # and let the job def's empty default apply — the worker treats an absent/empty subdir
+    # as "no subdir". Every other parameter here is always non-empty for a valid build.
+    parameters = {
+        'index': index,
+        'arity': str(arity),
+        'bucket': bucket,
+        'rds-secret': rds_secret,
+        'rds-schema': rds_schema,
+        'prefix': prefix,
+        'prefer-compressed': '1' if prefer_compressed else '0',
+        'chunk-index': str(chunk_index),
+        'chunk-count': str(chunk_count),
+        'group-size': str(group_size),
+        'group-max-bytes': str(group_max_bytes),
+        'expected-total': str(expected_total),
+    }
+    if s3_subdir:
+        parameters['s3-subdir'] = s3_subdir
     response = batch_client.submit_job(
         jobName='batch-group-indexer-job',
         jobQueue='indexer-job-queue',
         jobDefinition='batch-group-indexer-job',
-        parameters={
-            'index': index,
-            'arity': str(arity),
-            'bucket': bucket,
-            'rds-secret': rds_secret,
-            'rds-schema': rds_schema,
-            's3-subdir': s3_subdir or '',
-            'prefix': prefix,
-            'prefer-compressed': '1' if prefer_compressed else '0',
-            'chunk-index': str(chunk_index),
-            'chunk-count': str(chunk_count),
-            'group-size': str(group_size),
-            'group-max-bytes': str(group_max_bytes),
-            'expected-total': str(expected_total),
-        },
+        parameters=parameters,
     )
     job_id = response['jobId']
     while True:

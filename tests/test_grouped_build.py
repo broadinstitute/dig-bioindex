@@ -112,6 +112,45 @@ def test_list_index_objects_json_only():
     assert [o['Key'] for o in objs] == ['p/a.json', 'p/b.json']
 
 
+class _FakeBatch:
+    """Records submit_job params; reports SUCCEEDED immediately (no polling sleep)."""
+
+    def __init__(self, captured):
+        self._captured = captured
+
+    def submit_job(self, **kwargs):
+        self._captured['parameters'] = kwargs['parameters']
+        return {'jobId': 'j1'}
+
+    def describe_jobs(self, jobs):
+        return {'jobs': [{'status': 'SUCCEEDED'}]}
+
+
+def _run_submit(monkeypatch, s3_subdir):
+    import bioindex.lib.aws as aws_mod
+    captured = {}
+    monkeypatch.setattr(aws_mod.boto3, 'client', lambda *a, **k: _FakeBatch(captured))
+    aws_mod.start_and_wait_for_group_indexer_job(
+        index='i', arity=1, bucket='b', rds_secret='sec', rds_schema='sch',
+        s3_subdir=s3_subdir, prefix='p/', prefer_compressed=True, chunk_index=0,
+        chunk_count=1, group_size=2, group_max_bytes=10 ** 9, expected_total=5,
+    )
+    return captured['parameters']
+
+
+def test_submit_omits_empty_s3_subdir(monkeypatch):
+    # Batch SubmitJob rejects empty parameter values; s3-subdir must be omitted, not ''.
+    params = _run_submit(monkeypatch, s3_subdir='')
+    assert 's3-subdir' not in params
+    # and no other parameter is ever submitted empty
+    assert all(v != '' for v in params.values())
+
+
+def test_submit_includes_nonempty_s3_subdir(monkeypatch):
+    params = _run_submit(monkeypatch, s3_subdir='bioindex')
+    assert params['s3-subdir'] == 'bioindex'
+
+
 def test_key_is_current_matches_version():
     from bioindex.lib.index import _key_is_current
     db_keys = {'p/a.json.gz': {'id': 1, 'version': 'v'}}
