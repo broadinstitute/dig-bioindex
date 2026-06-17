@@ -142,21 +142,54 @@ class PortalResolveMiddleware(BaseHTTPMiddleware):
                 # safety fallback if raw_path doesn't have the expected prefix
                 request.scope["raw_path"] = remainder.encode("utf-8")
 
-        response = await call_next(request)
-
-        # Pull route template from the matched route, if any
-        route_template = None
-        matched = request.scope.get("route")
-        if matched is not None and hasattr(matched, "path"):
-            route_template = matched.path
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            # A handler raised: emit the access line the normal path would
+            # skip (status 500 + traceback via exc_info), then own the 500 so
+            # uvicorn does not log a second, context-free traceback.
+            self._log_error(
+                request, start, request_id, exc,
+                portal=portal_name,
+                route=self._route_template(request),
+                path=request.scope.get("path") or original_path,
+            )
+            return JSONResponse(
+                {"detail": "Internal server error", "request_id": request_id},
+                status_code=500,
+            )
 
         self._log(
             request, response, start, request_id,
             portal=portal_name,
-            route=route_template,
+            route=self._route_template(request),
             path=request.scope.get("path") or original_path,
         )
         return response
+
+    @staticmethod
+    def _route_template(request):
+        matched = request.scope.get("route")
+        if matched is not None and hasattr(matched, "path"):
+            return matched.path
+        return None
+
+    def _extra(self, request, start, request_id, *, portal, route, path,
+               status, response_bytes):
+        return {
+            "portal": portal,
+            "request_id": request_id,
+            "method": request.method,
+            "route": route,
+            "path": path,
+            "query": _scrub_query(request.url.query),
+            "status": status,
+            "response_bytes": response_bytes,
+            "latency_ms": int((time.time() - start) * 1000),
+            "worker_pid": os.getpid(),
+            "client_ip": _client_ip(request),
+            "user_agent": (request.headers.get("user-agent") or "")[:256],
+        }
 
     def _log(self, request, response, start, request_id, *, portal, route, path):
         response_bytes = 0
@@ -168,20 +201,22 @@ class PortalResolveMiddleware(BaseHTTPMiddleware):
                 response_bytes = 0
         _access_log.info(
             "request",
-            extra={
-                "portal": portal,
-                "request_id": request_id,
-                "method": request.method,
-                "route": route,
-                "path": path,
-                "query": _scrub_query(request.url.query),
-                "status": response.status_code,
-                "response_bytes": response_bytes,
-                "latency_ms": int((time.time() - start) * 1000),
-                "worker_pid": os.getpid(),
-                "client_ip": _client_ip(request),
-                "user_agent": (request.headers.get("user-agent") or "")[:256],
-            },
+            extra=self._extra(
+                request, start, request_id,
+                portal=portal, route=route, path=path,
+                status=response.status_code, response_bytes=response_bytes,
+            ),
+        )
+
+    def _log_error(self, request, start, request_id, exc, *, portal, route, path):
+        _access_log.error(
+            "request",
+            exc_info=exc,
+            extra=self._extra(
+                request, start, request_id,
+                portal=portal, route=route, path=path,
+                status=500, response_bytes=0,
+            ),
         )
 
 

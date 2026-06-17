@@ -31,6 +31,11 @@ def _make_app():
     @app.get("/health")
     def health():
         return {"ok": True}
+
+    @app.get("/api/bio/boom")
+    def boom(request: Request):
+        raise RuntimeError("kaboom")
+
     return app
 
 
@@ -150,3 +155,22 @@ def test_access_log_truncates_long_user_agent(access_log_records):
     records = [r for r in access_log_records.records if r.name == "bioindex.access"]
     assert len(records) == 1
     assert records[0].user_agent == "x" * 256
+
+
+def test_access_log_emitted_on_unhandled_exception(access_log_records):
+    client = TestClient(_make_app())
+    r = client.get("/cfde/api/bio/boom?q=x")
+
+    assert r.status_code == 500
+    assert isinstance(r.json()["request_id"], str)
+
+    records = [rec for rec in access_log_records.records
+               if rec.name == "bioindex.access"]
+    assert len(records) == 1
+    rec = records[0]
+    assert rec.status == 500
+    assert rec.levelno == logging.ERROR
+    assert rec.path == "/api/bio/boom"
+    assert rec.portal == "cfde"
+    assert isinstance(rec.request_id, str)
+    assert rec.exc_info is not None
