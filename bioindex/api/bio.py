@@ -109,11 +109,8 @@ async def api_match(index: str, req: fastapi.Request, q: str, limit: int = None)
         # execute the query
         keys, query_s = profile(query.match, CONFIG, engine, i, qs)
 
-        # allow an upper limit on the total number of keys returned
-        if limit is not None:
-            keys = itertools.islice(keys, limit)
-
-        # read the matched keys
+        # read the matched keys (budget is enforced inside _match_keys so it
+        # also applies on /cont resumptions)
         return _match_keys(keys, index, qs, limit, query_s=query_s)
     except KeyError:
         raise fastapi.HTTPException(
@@ -215,12 +212,10 @@ async def api_all(index: str, req: fastapi.Request, fmt: str = 'row'):
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
-@router.head('/all/{index}/{arity}', response_class=fastapi.responses.ORJSONResponse)
-async def api_all_arity(index: str, arity: int, req: fastapi.Request):
+@router.get('/all/{index}/{arity}', response_class=fastapi.responses.ORJSONResponse)
+async def api_all_arity(index: str, arity: int, req: fastapi.Request, fmt: str = 'row'):
     """
-    Query the database fetch ALL records for a given index and arity. Don't read
-    the records from S3, but instead set the Content-Length to the total
-    number of bytes what would be read.
+    Query the database and return ALL records for a given index and arity.
     """
     try:
         i = INDEXES[(index, arity)]
@@ -549,21 +544,29 @@ def _parse_query(q, required=False):
 
 def _match_keys(keys, index, qs, limit, page=1, query_s=None):
     """
-    Collects up to MATCH_LIMIT keys from a database cursor and then
-    return a JSON response object with them.
+    Collects up to MATCH_LIMIT keys (or the remaining `limit` budget, whichever
+    is smaller) from a database cursor and returns a JSON response object. The
+    budget is enforced here so `limit` caps TOTAL keys across continuation
+    pages, not per page.
     """
-    fetched, fetch_s = profile(list, itertools.islice(keys, MATCH_LIMIT))
+    # per-page cap, further bounded by the remaining budget
+    page_size = MATCH_LIMIT if limit is None else min(MATCH_LIMIT, limit)
+    fetched, fetch_s = profile(list, itertools.islice(keys, page_size))
 
-    # create a signed continuation token if there is more data
+    # remaining budget after this page (None == unlimited)
+    remaining = None if limit is None else limit - len(fetched)
+
+    # mint a continuation only if this page filled (more data likely) AND the
+    # budget is not exhausted; carry the decremented budget into the token.
     token = None
-    if len(fetched) >= MATCH_LIMIT:
+    if len(fetched) >= page_size and (remaining is None or remaining > 0):
         state = continuation.ContState(
             type='match',
             index_name=index,
             index_arity=len(qs),
             qs=qs,
             fmt=None,
-            limit=limit,
+            limit=remaining,
             last_key=fetched[-1] if fetched else None,
             page=page + 1,
             generation=index_generation(engine, index),
@@ -631,11 +634,10 @@ def _fetch_records(reader, index, qs, fmt, cont_type='fetch', page=1, query_s=No
         state = continuation.ContState(
             type=cont_type,
             index_name=index,
-            # qs is None on the /all path; INDEXES is keyed by (name, schema
-            # arity), so a token must carry the index's real arity (not 0) or
-            # api_cont's resume lookup misses and 400s. On the /query path
-            # len(qs) already equals the index's schema arity.
-            index_arity=len(qs) if qs is not None else int(reader.index.schema.arity),
+            # Always carry the reader's index schema arity. This is correct for
+            # /query (where len(qs) == schema arity) and for /all on every page
+            # including resume (where qs is [] so len(qs)==0 would be wrong).
+            index_arity=int(reader.index.schema.arity),
             qs=qs or [],
             fmt=fmt,
             page=page + 1,

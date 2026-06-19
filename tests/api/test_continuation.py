@@ -308,3 +308,60 @@ async def test_api_cont_resumes_all_for_nonzero_arity_index():
     _, kwargs = mock_all.call_args
     assert kwargs.get("start_source_index") == 0
     assert kwargs.get("start_byte_offset") == 256
+
+
+# ---------------------------------------------------------------------------
+# NEW tests for review fixes #1, #2, #3/#4
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_api_cont_all_resume_keeps_real_arity_on_later_pages():
+    """Regression (#2): /all stores qs=[] in its token; the resume passes []
+    back into _fetch_records. The page-2 mint must carry the index's real arity
+    (reader.index.schema.arity), not len([])==0, or the page-3 /cont 400s."""
+    state = ContState(type="all", index_name="myindex", index_arity=2, qs=[],
+                      fmt="row", page=2, source_index=1, byte_offset=128,
+                      generation="gen-test-fixed")
+    token = signed_tokens.encode(state, signed_tokens.signing_key())
+    resume_reader = _make_reader(records=[{"x": 1}], at_end=False,
+                                 source_index=1, source_byte_offset=256)
+    resume_reader.index.schema.arity = 2
+    with patch.dict(bio.INDEXES, {("myindex", 2): MagicMock()}):
+        with patch("bioindex.api.bio.query.fetch_all", return_value=resume_reader):
+            result = await bio.api_cont(token=token, req=_make_req())
+    page3 = result["continuation"]
+    assert page3 is not None
+    assert signed_tokens.decode(page3, signed_tokens.signing_key()).index_arity == 2
+
+
+@pytest.mark.asyncio
+async def test_match_limit_capped_across_continuation_pages(monkeypatch):
+    """Regression (#3/#4): /match?limit=N caps TOTAL keys across pages. With
+    MATCH_LIMIT=2 and limit=3: page1 returns 2 (+token carrying remaining=1),
+    page2 returns only 1 more and no further token. Total == 3."""
+    monkeypatch.setattr(bio, "MATCH_LIMIT", 2)
+    keys = [f"k{i:02d}" for i in range(10)]
+    page1 = bio._match_keys(iter(keys), "myindex", ["q1"], 3, page=1)
+    assert page1["count"] == 2
+    assert page1["data"] == ["k00", "k01"]
+    token = page1["continuation"]
+    assert token is not None
+    assert signed_tokens.decode(token, signed_tokens.signing_key()).limit == 1
+    with patch.dict(bio.INDEXES, {("myindex", 1): MagicMock()}):
+        with patch("bioindex.api.bio.query.match", return_value=iter(keys)):
+            page2 = await bio.api_cont(token=token, req=_make_req())
+    assert page2["count"] == 1
+    assert page2["data"] == ["k02"]
+    assert page2["continuation"] is None
+
+
+@pytest.mark.asyncio
+async def test_api_all_arity_get_returns_records():
+    """Regression (#1): api_all_arity must be a working GET (fmt defaults to
+    'row'), not a HEAD handler referencing an undefined fmt."""
+    reader = _make_reader(records=[{"x": 1}], at_end=True, bytes_total=10)
+    with patch.dict(bio.INDEXES, {("myindex", 1): MagicMock()}):
+        with patch("bioindex.api.bio.query.fetch_all", return_value=reader):
+            result = await bio.api_all_arity("myindex", 1, _make_req())
+    assert result["count"] == 1
+    assert result["data"] == [{"x": 1}]
