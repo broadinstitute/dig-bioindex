@@ -17,3 +17,6 @@ _utils.connect_to_portal = lambda config: None
 
 import bioindex.lib.index as _index
 _index.Index.list_indexes = staticmethod(lambda *a, **k: [])
+
+import bioindex.api.bio as _bio
+_bio.index_generation = lambda engine, name, ttl=30: "gen-test-fixed"

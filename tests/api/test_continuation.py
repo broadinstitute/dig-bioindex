@@ -5,7 +5,6 @@ conftest.py stubs out AWS/DB calls so bio.py can be imported offline.
 """
 import asyncio
 import itertools
-import time
 import types
 from unittest.mock import MagicMock, patch
 
@@ -77,6 +76,21 @@ def test_fetch_records_no_token_when_at_end():
     assert result["continuation"] is None
 
 
+def test_fetch_records_minted_token_carries_generation():
+    """A minted token must carry the stubbed generation value from conftest."""
+    reader = _make_reader(
+        records=[{"x": 1}],
+        at_end=False,
+        source_index=0,
+        source_byte_offset=128,
+    )
+    result = bio._fetch_records(reader, "myindex", ["q1"], "row", cont_type="fetch", page=1)
+    token = result["continuation"]
+    assert token is not None
+    state = signed_tokens.decode(token, signed_tokens.signing_key())
+    assert state.generation == "gen-test-fixed"
+
+
 # ---------------------------------------------------------------------------
 # (b) api_cont resumes a fetch continuation (page == 2)
 # ---------------------------------------------------------------------------
@@ -98,7 +112,7 @@ async def test_api_cont_resumes_fetch():
         source_index=1,
         byte_offset=512,
         limit=None,
-        issued_at=time.time(),
+        generation="gen-test-fixed",
     )
     token = signed_tokens.encode(state, signed_tokens.signing_key())
 
@@ -140,15 +154,17 @@ async def test_api_cont_tampered_token_400():
 
 
 # ---------------------------------------------------------------------------
-# (d) Expired token (issued_at too old) → HTTP 400
+# (d) Stale generation (index was rebuilt) → HTTP 409
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_api_cont_expired_token_400():
-    """A token whose issued_at is older than CONT_TTL raises HTTPException(400)."""
+async def test_api_cont_stale_generation_409():
+    """
+    A token whose generation does not match the current index generation
+    raises HTTPException(409) — the index was rebuilt; client must re-run.
+    """
     import fastapi
 
-    old_issued_at = time.time() - (bio.CONT_TTL + 120)
     state = ContState(
         type="fetch",
         index_name="myindex",
@@ -159,14 +175,19 @@ async def test_api_cont_expired_token_400():
         source_index=0,
         byte_offset=0,
         limit=None,
-        issued_at=old_issued_at,
+        generation="old-gen",  # does NOT match the stubbed "gen-test-fixed"
     )
     token = signed_tokens.encode(state, signed_tokens.signing_key())
 
-    with pytest.raises(fastapi.HTTPException) as exc_info:
-        await bio.api_cont(token=token, req=_make_req())
-    assert exc_info.value.status_code == 400
-    assert "expired" in exc_info.value.detail.lower()
+    fake_index = MagicMock()
+    fake_index.schema.arity = 1
+
+    with patch.dict(bio.INDEXES, {("myindex", 1): fake_index}):
+        with pytest.raises(fastapi.HTTPException) as exc_info:
+            await bio.api_cont(token=token, req=_make_req())
+
+    assert exc_info.value.status_code == 409
+    assert "stale" in exc_info.value.detail.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +233,7 @@ async def test_api_cont_resumes_match_no_repeats():
         page=2,
         last_key=last_key,
         limit=None,
-        issued_at=time.time(),
+        generation="gen-test-fixed",
     )
     token = signed_tokens.encode(state, signed_tokens.signing_key())
 

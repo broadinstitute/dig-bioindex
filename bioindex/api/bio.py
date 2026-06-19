@@ -1,9 +1,7 @@
 import asyncio
 import concurrent.futures
 import itertools
-import os
 import re
-import time
 from enum import Enum
 from typing import List, Optional
 
@@ -19,6 +17,7 @@ from ..lib import ql
 from ..lib import query
 from ..lib import signed_tokens
 from ..lib.auth import restricted_keywords
+from ..lib.generation import index_generation
 from ..lib.utils import nonce, profile, profile_async
 
 # load dot files and configuration
@@ -35,9 +34,6 @@ portal = connect_to_portal(CONFIG)
 RESPONSE_LIMIT = CONFIG.response_limit
 RESPONSE_LIMIT_MAX = CONFIG.response_limit_max
 MATCH_LIMIT = CONFIG.match_limit
-
-# continuation token TTL in seconds (default: 60s)
-CONT_TTL = int(os.environ.get("BIOINDEX_CONT_TTL", "60"))
 
 # multi-query executor
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
@@ -469,13 +465,6 @@ async def api_cont(token: str, req: fastapi.Request):
             detail=f'Invalid continuation token: {e}',
         )
 
-    # TTL check — reject stale tokens
-    if time.time() - state.issued_at > CONT_TTL:
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail='continuation expired',
-        )
-
     # Look up the index (refresh once on miss in case a new index was added)
     i = INDEXES.get((state.index_name, state.index_arity))
     if i is None:
@@ -486,6 +475,14 @@ async def api_cont(token: str, req: fastapi.Request):
                 status_code=400,
                 detail=f"Index '{state.index_name}' no longer present",
             )
+
+    # Generation check — reject if the index was rebuilt since the token was issued
+    current_gen = index_generation(engine, state.index_name)
+    if state.generation != current_gen:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail="continuation is stale (index was rebuilt); re-run the query",
+        )
 
     # Re-derive restricted set from current requester (not from token)
     restricted, _ = profile(restricted_keywords, portal, req) if portal else (None, 0)
@@ -569,7 +566,7 @@ def _match_keys(keys, index, qs, limit, page=1, query_s=None):
             limit=limit,
             last_key=fetched[-1] if fetched else None,
             page=page + 1,
-            issued_at=time.time(),
+            generation=index_generation(engine, index),
         )
         try:
             token = signed_tokens.encode(state, signed_tokens.signing_key())
@@ -648,7 +645,7 @@ def _fetch_records(reader, index, qs, fmt, cont_type='fetch', page=1, query_s=No
             # the full reader.limit would let /cont re-issue up to N records per
             # page, returning far more than N total across pages.
             limit=(reader.limit - count) if reader.limit is not None else None,
-            issued_at=time.time(),
+            generation=index_generation(engine, index),
         )
         try:
             token = signed_tokens.encode(state, signed_tokens.signing_key())

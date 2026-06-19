@@ -34,4 +34,4 @@ class ContState:
     byte_offset: int = 0
     last_key: Optional[str] = None
     limit: Optional[int] = None
-    issued_at: float = 0.0
+    generation: str = ""
