@@ -8,7 +8,7 @@ from .reader import MultiRecordReader, RecordReader, RecordSource
 from .s3 import list_objects
 
 
-def fetch(config, engine, index, q, restricted=None):
+def fetch(config, engine, index, q, restricted=None, start_source_index=0, start_byte_offset=0):
     """
     Use the table schema to determine the type of query to execute. Returns
     a RecordReader of all the results.
@@ -17,7 +17,7 @@ def fetch(config, engine, index, q, restricted=None):
         raise ValueError(f'Arity mismatch for index schema "{index.schema}"')
 
     # execute the query and fetch the records from s3
-    return _run_query(config, engine, index, q, restricted)
+    return _run_query(config, engine, index, q, restricted, start_source_index, start_byte_offset)
 
 
 def fetch_multi(executor, config, engine, index, queries, restricted=None):
@@ -35,7 +35,7 @@ def fetch_multi(executor, config, engine, index, queries, restricted=None):
     return MultiRecordReader(readers)
 
 
-def fetch_all(config, index, restricted=None, key_limit=None):
+def fetch_all(config, index, restricted=None, key_limit=None, start_source_index=0, start_byte_offset=0):
     """
     Scans for all the S3 files in the schema and creates a dummy cursor
     to read all the records from all the files. Returns a RecordReader
@@ -47,11 +47,21 @@ def fetch_all(config, index, restricted=None, key_limit=None):
     if key_limit:
         s3_objects = [o[1] for o in zip(range(key_limit), s3_objects)]
 
+    # bioindex's compressed-index workflow writes a bgzip index file alongside
+    # each data file (.json.gz.gzi or .json.gz.gzi.gz). S3 listing returns
+    # everything under the prefix, so without this filter the reader would
+    # try to parse the bgzip index as JSON records and fail.
+    def _is_data(o):
+        key = o['Key']
+        return not (key.endswith('.gzi') or key.endswith('.gzi.gz'))
+    s3_objects = filter(_is_data, s3_objects)
+
     # create a RecordSource for each object
     sources = [RecordSource.from_s3_object(obj) for obj in s3_objects]
 
     # create the reader object, begin reading the records
-    return RecordReader(config, sources, index, restricted=restricted)
+    return RecordReader(config, sources, index, restricted=restricted,
+                        start_source_index=start_source_index, start_byte_offset=start_byte_offset)
 
 
 def fetch_keys(engine, index, columns, restricted=None, key_limit=None):
@@ -145,7 +155,7 @@ def match(config, engine, index, q):
             prev_key = r[0]
 
 
-def _run_query(config, engine, index, q, restricted):
+def _run_query(config, engine, index, q, restricted, start_source_index=0, start_byte_offset=0):
     """
     Construct a SQL query to fetch S3 objects and byte offsets. Run it and
     return a RecordReader to the results.
@@ -211,4 +221,6 @@ def _run_query(config, engine, index, q, restricted):
             index,
             record_filter=record_filter,
             restricted=restricted,
+            start_source_index=start_source_index,
+            start_byte_offset=start_byte_offset,
         )
