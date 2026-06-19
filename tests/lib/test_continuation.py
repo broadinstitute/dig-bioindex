@@ -8,5 +8,9 @@ def test_contstate_defaults():
 
 def test_contstate_asdict_round_trips():
     s = ContState(type="match", index_name="g", index_arity=2, qs=["a", "b"], fmt="row",
-                  last_key="k", page=3, issued_at=123.0)
-    assert ContState(**dataclasses.asdict(s)) == s
+                  last_key="k", page=3, issued_at=123.0,
+                  limit=7, source_index=2)
+    d = dataclasses.asdict(s)
+    assert d["limit"] == 7
+    assert d["source_index"] == 2
+    assert ContState(**d) == s

@@ -644,7 +644,10 @@ def _fetch_records(reader, index, qs, fmt, cont_type='fetch', page=1, query_s=No
             page=page + 1,
             source_index=reader._source_index,
             byte_offset=reader._source_byte_offset,
-            limit=reader.limit,
+            # Carry the REMAINING budget so each page decrements it. Carrying
+            # the full reader.limit would let /cont re-issue up to N records per
+            # page, returning far more than N total across pages.
+            limit=(reader.limit - count) if reader.limit is not None else None,
             issued_at=time.time(),
         )
         try:

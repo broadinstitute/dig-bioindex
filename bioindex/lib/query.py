@@ -136,6 +136,11 @@ def match(config, engine, index, q):
     if len(tests) > 0:
         sql += f'WHERE {" AND ".join(tests)} '
 
+    # Explicit ascending order guarantees the stateless /cont resume via
+    # dropwhile(k <= last_key) is correct; without ORDER BY MySQL does not
+    # contractually guarantee scan order even with USE INDEX.
+    sql += f'ORDER BY `{distinct_column}` ASC '
+
     # create the match pattern
     pattern = '%' if q[-1] in ['_', '*'] else re.sub(r'_|%|$', lambda m: f'%{m.group(0)}', q[-1])
     prev_key = None

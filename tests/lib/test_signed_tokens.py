@@ -31,6 +31,16 @@ def test_oversize_payload_rejected():
     with pytest.raises(signed_tokens.TokenError):
         signed_tokens.encode(big, KEY)
 
+def test_truncated_signature_rejected():
+    """A token whose signature has the last character removed must raise TokenError."""
+    tok = signed_tokens.encode(_state(), KEY)
+    # Drop the last character of the signature part (after the final '.')
+    payload_b64, sig_b64 = tok.rsplit(".", 1)
+    bad = f"{payload_b64}.{sig_b64[:-1]}"
+    with pytest.raises(signed_tokens.TokenError):
+        signed_tokens.decode(bad, KEY)
+
+
 def test_signing_key_requires_min_length(monkeypatch):
     signed_tokens.signing_key.cache_clear()
     monkeypatch.setenv("BIOINDEX_TOKEN_SIGNING_KEY", "00" * 16)  # 16 bytes < 32

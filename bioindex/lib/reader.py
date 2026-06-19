@@ -146,8 +146,11 @@ class RecordReader:
                 logging.warning('Bad index record: end offset <= start; skipping...')
                 continue
 
-            if seek_length <= 0:
-                # already at/past end of this source (e.g. byte_offset == source.length)
+            if source.bounded and seek_length <= 0:
+                # already at/past end of this bounded source (e.g. byte_offset == source.length).
+                # Guard applies only to bounded sources: for unbounded sources (e.g. /all),
+                # source.end is the compressed byte size — not comparable to the uncompressed
+                # seek_start — so the guard must not fire even when seek_start > source.end.
                 continue
 
             try:

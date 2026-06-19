@@ -236,6 +236,25 @@ async def test_api_cont_resumes_match_no_repeats():
 # (f) /all continuation carries the index's real arity (regression)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# (g) Fix 2: limit in continuation token is the REMAINING budget, not original
+# ---------------------------------------------------------------------------
+
+def test_limit_is_decremented_into_continuation_token():
+    """
+    When page 1 returns `count` records and reader.at_end is False,
+    the minted token's limit must be (original_limit - count), not original_limit.
+    Otherwise /cont re-applies the full N, so a limit=10 query could return 10*pages records.
+    """
+    reader = _make_reader(records=[{"x": i} for i in range(4)], at_end=False,
+                          limit=10, source_index=0, source_byte_offset=128)
+    result = bio._fetch_records(reader, "myindex", ["q1"], "row", cont_type="fetch", page=1)
+    token = result["continuation"]
+    assert token is not None
+    state = signed_tokens.decode(token, signed_tokens.signing_key())
+    assert state.limit == 6   # 10 original - 4 returned this page; NOT 10
+
+
 @pytest.mark.asyncio
 async def test_api_cont_resumes_all_for_nonzero_arity_index():
     """

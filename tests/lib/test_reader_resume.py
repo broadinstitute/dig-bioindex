@@ -115,6 +115,31 @@ def test_uncompressed_resume_after_multibyte_lands_on_record_boundary(patch_unco
     assert next(iter(r2.records)) == {"v": "x"}
 
 
+# --- Unbounded-source resume (Fix 1): compressed /all path ------------------
+# For unbounded sources (bounded=False), source.end is the COMPRESSED byte
+# size, NOT an uncompressed offset. The original `seek_length <= 0` guard
+# fires whenever start_byte_offset > source.end (uncompressed offset > compressed
+# size), silently skipping the whole source and reporting completion.
+# The fix guards only bounded sources: `if source.bounded and seek_length <= 0`.
+
+
+def _reader_unbounded(end, start_source_index=0, start_byte_offset=0):
+    config = types.SimpleNamespace(s3_bucket="test-bucket")
+    index = types.SimpleNamespace(compressed=True)
+    source = RecordSource(key="data.json.gz", start=0, end=end, bounded=False)
+    return RecordReader(config, [source], index,
+                        start_source_index=start_source_index,
+                        start_byte_offset=start_byte_offset)
+
+
+def test_unbounded_resume_not_skipped_when_offset_exceeds_compressed_end(local_bgzip):
+    # end=5 stands in for a small COMPRESSED size; resume at uncompressed
+    # offset 17 (REC2_OFFSET) exceeds it. The old `seek_length<=0` guard would
+    # skip the whole source; the fix must still read rec2 and rec3.
+    r = _reader_unbounded(end=5, start_source_index=0, start_byte_offset=REC2_OFFSET)
+    assert list(r.records) == [{"i": 2}, {"i": 3}]
+
+
 # --- Multi-source resume: an index spans several S3 files -------------------
 # Resume must pick up at the correct source_index — neither re-reading earlier
 # sources nor skipping records across a file boundary. This is the real
