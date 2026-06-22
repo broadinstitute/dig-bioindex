@@ -4,7 +4,7 @@ import time
 
 from sqlalchemy import text
 
-_CACHE: dict[str, tuple[float, str]] = {}   # index_name -> (expires_at, fingerprint)
+_CACHE: dict[tuple, tuple[float, str]] = {}  # (id(engine), index_name) -> (expires_at, fingerprint)
 _CACHE_LOCK = threading.Lock()
 
 
@@ -25,15 +25,15 @@ def _read(engine, index_name: str) -> str:
 
 def index_generation(engine, index_name: str, ttl: int = 30) -> str:
     now = time.time()
+    cache_key = (id(engine), index_name)
     with _CACHE_LOCK:
-        hit = _CACHE.get(index_name)
+        hit = _CACHE.get(cache_key)
         if hit and hit[0] > now:
             return hit[1]
     fp = _read(engine, index_name)
     with _CACHE_LOCK:
-        # re-check under the lock in case another thread already populated the entry
-        hit = _CACHE.get(index_name)
+        hit = _CACHE.get(cache_key)
         if not (hit and hit[0] > now):
             if ttl > 0:
-                _CACHE[index_name] = (now + ttl, fp)
+                _CACHE[cache_key] = (now + ttl, fp)
     return fp
