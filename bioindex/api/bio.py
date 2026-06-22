@@ -54,9 +54,16 @@ _RESP_CACHE = ResponseCache(
 )
 
 
-def _query_cache_key(portal, index_name, arity, fmt, generation, qs):
-    """Build a deterministic cache key for a query-type response."""
-    return f"q|{portal}|{index_name}|{arity}|{fmt}|{generation}|{','.join(qs or [])}"
+def _query_cache_key(portal, index_name, arity, fmt, generation, qs, limit=None):
+    """Build a deterministic cache key for a query-type response.
+
+    `limit` bounds the page/budget for /match and /query, so it must be part of
+    the key: otherwise the first-cached variant for a given query answers every
+    later request regardless of its limit (e.g. a no-limit page of keys served
+    to a later ?limit=3 request, or vice-versa). Endpoints without a limit pass
+    None, which keeps their key stable.
+    """
+    return f"q|{portal}|{index_name}|{arity}|{fmt}|{generation}|{','.join(qs or [])}|{limit}"
 
 
 def _finalize(body: dict, cache_status: str) -> ORJSONResponse:
@@ -165,7 +172,7 @@ async def api_match(index: str, req: fastapi.Request, q: str, limit: int = None)
         # restricted check (match has no portal auth filter, but obey bypass rule)
         restricted = None
 
-        cache_key = _query_cache_key(ctx.name, index, len(qs or []), 'match', gen, qs)
+        cache_key = _query_cache_key(ctx.name, index, len(qs or []), 'match', gen, qs, limit)
 
         def _produce():
             return _match_keys(ctx, i, qs, limit, generation=gen)
@@ -440,7 +447,7 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
         # discover what the user doesn't have access to see
         restricted, auth_s = profile(restricted_keywords, ctx.portal, req) if ctx.portal else (None, 0)
 
-        cache_key = _query_cache_key(ctx.name, index, len(qs or []), fmt, gen, qs)
+        cache_key = _query_cache_key(ctx.name, index, len(qs or []), fmt, gen, qs, limit)
 
         def _produce():
             # lookup the schema for this index and perform the query

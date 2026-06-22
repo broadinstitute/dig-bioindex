@@ -303,3 +303,26 @@ def test_generation_bump_invalidates_query_cache():
     import orjson
     body2 = orjson.loads(r2.body)
     assert body2["data"] == [2], f"Expected fresh data=[2] after rebuild, got {body2['data']}"
+
+
+# ---------------------------------------------------------------------------
+# limit must be part of _query_cache_key
+#
+# /match and /query both accept a `limit` that bounds the page/budget. If limit
+# is not part of the cache key, the first-cached variant for a given query is
+# served to every later request regardless of its limit — e.g. a no-limit page
+# of 100 keys answers a later ?limit=3 request (and vice-versa). The key must
+# distinguish requests that differ only in `limit`.
+# ---------------------------------------------------------------------------
+
+def test_limit_is_part_of_query_cache_key():
+    base = ("p", "idx", 1, "match", "GEN1", ["x"])
+
+    k_none = bio._query_cache_key(*base)
+    k_5 = bio._query_cache_key(*base, limit=5)
+    k_50 = bio._query_cache_key(*base, limit=50)
+
+    assert k_5 != k_none, "limit=5 must not collide with the no-limit (unbounded) key"
+    assert k_5 != k_50, "requests differing only in limit must produce different keys"
+    assert k_5 == bio._query_cache_key(*base, limit=5), "same inputs (incl. limit) must be stable"
+    assert k_none == bio._query_cache_key(*base), "omitting limit must remain backwards-compatible/stable"
