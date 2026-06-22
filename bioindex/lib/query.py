@@ -136,6 +136,13 @@ def match(config, engine, index, q):
     if len(tests) > 0:
         sql += f'WHERE {" AND ".join(tests)} '
 
+    # The stateless /cont resume skips already-returned keys with a Python
+    # dropwhile(k <= last_key) — a case-sensitive, codepoint comparison. Order
+    # by the BINARY (byte) value so the SQL order matches that cursor; the
+    # column's default (case-insensitive) collation — or no ORDER BY at all —
+    # desyncs it and a match that paginates re-returns keys on page 2+.
+    sql += f'ORDER BY BINARY `{distinct_column}` ASC '
+
     # create the match pattern
     pattern = '%' if q[-1] in ['_', '*'] else re.sub(r'_|%|$', lambda m: f'%{m.group(0)}', q[-1])
     prev_key = None
