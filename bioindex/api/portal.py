@@ -1,7 +1,6 @@
 import fastapi
 from sqlalchemy import text
 
-from .utils import *
 from .bio import _finalize
 
 from ..lib.auth import restrictions

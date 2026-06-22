@@ -10,7 +10,6 @@ from pydantic import BaseModel
 from .utils import *
 from ..lib import continuation
 from ..lib import index
-from ..lib import ql
 from ..lib import query
 from ..lib import signed_tokens
 from ..lib.auth import restricted_keywords
@@ -241,7 +240,7 @@ async def api_cont(token: str, req: fastapi.Request):
     except signed_tokens.TokenError as e:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid continuation token: {e}')
 
-    if state.portal_name and state.portal_name != ctx.name:
+    if not state.portal_name or state.portal_name != ctx.name:
         raise fastapi.HTTPException(
             status_code=400,
             detail="continuation token is for a different portal",

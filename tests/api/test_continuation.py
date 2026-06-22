@@ -343,6 +343,34 @@ async def test_cont_portal_enforcement():
     assert "different portal" in exc_info.value.detail.lower()
 
 
+@pytest.mark.asyncio
+async def test_cont_empty_portal_name_rejected():
+    """Token with portal_name='' must be rejected under any portal → 400."""
+    import fastapi
+    state = ContState(
+        type="fetch",
+        index_name="myindex",
+        index_arity=1,
+        qs=["q1"],
+        fmt="row",
+        page=2,
+        source_index=0,
+        byte_offset=0,
+        limit=None,
+        generation="gen-test-fixed",
+        portal_name="",
+    )
+    token = signed_tokens.encode(state, signed_tokens.signing_key())
+
+    ctx = _make_ctx(name="anyportal")
+    req = _make_req(portal_ctx=ctx)
+    with pytest.raises(fastapi.HTTPException) as exc_info:
+        await bio.api_cont(token=token, req=req)
+
+    assert exc_info.value.status_code == 400
+    assert "different portal" in exc_info.value.detail.lower()
+
+
 # ---------------------------------------------------------------------------
 # (h) 3-page resume-of-resume: match walks page1 -> page2 -> page3
 # ---------------------------------------------------------------------------

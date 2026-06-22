@@ -34,9 +34,9 @@ some env, omit its `envs.<env>` block.
 ## Smoke checks (after `serve` is running)
 
 ```bash
-curl -fsS http://localhost:5000/health
-
-curl -fsS http://localhost:5000/ready | jq .
+# NOTE: /health and /ready are not yet implemented (deferred); these will 404.
+# curl -fsS http://localhost:5000/health
+# curl -fsS http://localhost:5000/ready | jq .
 
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5000/nope/api/bio/indexes
 

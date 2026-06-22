@@ -2,8 +2,6 @@ import mimetypes
 
 import fastapi
 
-from .utils import *
-
 from ..lib import s3
 from ..lib.auth import verify_permissions
 from ..middleware.portal import get_portal_ctx
