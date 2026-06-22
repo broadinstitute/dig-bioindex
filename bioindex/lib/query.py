@@ -136,10 +136,12 @@ def match(config, engine, index, q):
     if len(tests) > 0:
         sql += f'WHERE {" AND ".join(tests)} '
 
-    # Explicit ascending order guarantees the stateless /cont resume via
-    # dropwhile(k <= last_key) is correct; without ORDER BY MySQL does not
-    # contractually guarantee scan order even with USE INDEX.
-    sql += f'ORDER BY `{distinct_column}` ASC '
+    # The stateless /cont resume skips already-returned keys with a Python
+    # dropwhile(k <= last_key) — a case-sensitive, codepoint comparison. Order
+    # by the BINARY (byte) value, not the column's default (case-insensitive)
+    # collation, so the SQL order matches that cursor; otherwise a match that
+    # paginates re-returns keys on page 2+ (duplicates).
+    sql += f'ORDER BY BINARY `{distinct_column}` ASC '
 
     # create the match pattern
     pattern = '%' if q[-1] in ['_', '*'] else re.sub(r'_|%|$', lambda m: f'%{m.group(0)}', q[-1])
