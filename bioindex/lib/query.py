@@ -103,12 +103,18 @@ def count(config, engine, index, q):
     return int(len(records) * reader.bytes_total / reader.bytes_read)
 
 
-def match(config, engine, index, q):
+def match(config, engine, index, q, after=None, limit=None):
     """
-    Returns a subset of unique keys that match the query.
+    Return distinct keys matching the query, in BINARY (byte) order.
 
-    If the final column being indexed is a locus, it is an error and
-    no keys will be returned.
+    Keyset pagination: pass `after` (the previous page's last key) to resume
+    strictly past it, and `limit` to bound the page. The cursor comparison and
+    the ordering both use BINARY so the order is total and case-sensitive —
+    this is what lets /cont resume correctly. A case-insensitive collation (or
+    no ORDER BY) desyncs the cursor and returns duplicate keys.
+
+    If the final column being indexed is a locus, it is an error and no keys
+    will be returned.
     """
     if not 0 < len(q) <= len(index.schema.key_columns):
         raise ValueError(f'Too few/many keys for index schema "{index.schema}"')
@@ -120,46 +126,40 @@ def match(config, engine, index, q):
     # which column will be returned?
     distinct_column = index.schema.key_columns[len(q) - 1]
 
-    # exact query parameters and match parameter
+    # exact match on the leading key columns; LIKE on the final column
     tests = [f'`{k}` = :{k}' for k in index.schema.key_columns[:len(q) - 1]]
-
-    # append the matching query
     tests.append(f'`{distinct_column}` LIKE :{distinct_column}')
 
-    # build the SQL statement
+    # keyset cursor: resume strictly after the previous page's last key (BINARY
+    # so it matches the ORDER BY BINARY below).
+    if after is not None:
+        tests.append(f'BINARY `{distinct_column}` > :__after')
+
+    # build the SQL statement (DISTINCT replaces the old per-row dedup loop)
     sql = (
-        f'SELECT `{distinct_column}` FROM `{index.table}` '
+        f'SELECT DISTINCT `{distinct_column}` FROM `{index.table}` '
         f'USE INDEX (`schema_idx`) '
     )
-
-    # add match conditionals
     if len(tests) > 0:
         sql += f'WHERE {" AND ".join(tests)} '
-
-    # The stateless /cont resume skips already-returned keys with a Python
-    # dropwhile(k <= last_key) — a case-sensitive, codepoint comparison. Order
-    # by the BINARY (byte) value, not the column's default (case-insensitive)
-    # collation, so the SQL order matches that cursor; otherwise a match that
-    # paginates re-returns keys on page 2+ (duplicates).
     sql += f'ORDER BY BINARY `{distinct_column}` ASC '
+    if limit is not None:
+        # limit is the page size / budget — an int we control, not user input
+        sql += f'LIMIT {int(limit)} '
 
     # create the match pattern
     pattern = '%' if q[-1] in ['_', '*'] else re.sub(r'_|%|$', lambda m: f'%{m.group(0)}', q[-1])
-    prev_key = None
 
-    # fetch all the results
+    # fetch the page (buffered: the LIMIT bounds it, so no streaming cursor is
+    # left half-read for the connection pool to drain on its next use)
     with engine.connect() as conn:
         params = dict(zip(index.schema.key_columns, q[:-1]))
         params.update({distinct_column: pattern})
-        cursor = conn.execution_options(stream_results=True).execute(text(sql), params)
+        if after is not None:
+            params['__after'] = after
+        rows = conn.execute(text(sql), params).fetchall()
 
-        # yield all the results until no more matches
-        for r in cursor:
-            if r[0] != prev_key:
-                yield r[0]
-
-            # don't return this key again
-            prev_key = r[0]
+    return [r[0] for r in rows]
 
 
 def _run_query(config, engine, index, q, restricted, start_source_index=0, start_byte_offset=0):

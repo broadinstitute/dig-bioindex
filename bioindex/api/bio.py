@@ -1,6 +1,5 @@
 import asyncio
 import concurrent.futures
-import itertools
 import re
 from enum import Enum
 from typing import List, Optional
@@ -106,12 +105,8 @@ async def api_match(index: str, req: fastapi.Request, q: str, limit: int = None)
         qs = _parse_query(q)
         i = INDEXES[(index, len(qs))]
 
-        # execute the query
-        keys, query_s = profile(query.match, CONFIG, engine, i, qs)
-
-        # read the matched keys (budget is enforced inside _match_keys so it
-        # also applies on /cont resumptions)
-        return _match_keys(keys, index, qs, limit, query_s=query_s)
+        # budget is enforced inside _match_keys so it also applies on /cont
+        return _match_keys(i, qs, limit)
     except KeyError:
         raise fastapi.HTTPException(
             status_code=400, detail=f'Invalid index: {index}')
@@ -372,11 +367,8 @@ async def api_cont(token: str, req: fastapi.Request):
                                   page=state.page, query_s=query_s)
 
         elif state.type == 'match':
-            all_keys = query.match(CONFIG, engine, i, state.qs)
-            if state.last_key is not None:
-                all_keys = itertools.dropwhile(lambda k: k <= state.last_key, all_keys)
-            return _match_keys(all_keys, state.index_name, state.qs, state.limit,
-                               page=state.page)
+            return _match_keys(i, state.qs, state.limit,
+                               after=state.last_key, page=state.page)
 
         else:
             raise fastapi.HTTPException(
@@ -400,16 +392,16 @@ def _parse_query(q, required=False):
     return q.split(',') if q else []
 
 
-def _match_keys(keys, index, qs, limit, page=1, query_s=None):
+def _match_keys(i, qs, limit, after=None, page=1):
     """
-    Collects up to MATCH_LIMIT keys (or the remaining `limit` budget, whichever
-    is smaller) from a database cursor and returns a JSON response object. The
-    budget is enforced here so `limit` caps TOTAL keys across continuation
-    pages, not per page.
+    Fetch one page of distinct match keys for index object `i` via keyset
+    pagination and build the JSON response. `limit` caps TOTAL keys across
+    continuation pages (not per page); `after` resumes past the previous page's
+    last key.
     """
     # per-page cap, further bounded by the remaining budget
     page_size = MATCH_LIMIT if limit is None else min(MATCH_LIMIT, limit)
-    fetched, fetch_s = profile(list, itertools.islice(keys, page_size))
+    fetched, query_s = profile(query.match, CONFIG, engine, i, qs, after, page_size)
 
     # remaining budget after this page (None == unlimited)
     remaining = None if limit is None else limit - len(fetched)
@@ -420,14 +412,14 @@ def _match_keys(keys, index, qs, limit, page=1, query_s=None):
     if len(fetched) >= page_size and (remaining is None or remaining > 0):
         state = continuation.ContState(
             type='match',
-            index_name=index,
+            index_name=i.name,
             index_arity=len(qs),
             qs=qs,
             fmt=None,
             limit=remaining,
             last_key=fetched[-1] if fetched else None,
             page=page + 1,
-            generation=index_generation(engine, index),
+            generation=index_generation(engine, i.name),
         )
         try:
             token = signed_tokens.encode(state, signed_tokens.signing_key())
@@ -436,10 +428,10 @@ def _match_keys(keys, index, qs, limit, page=1, query_s=None):
 
     return {
         'profile': {
-            'fetch': fetch_s,
+            'fetch': query_s,
             'query': query_s,
         },
-        'index': index,
+        'index': i.name,
         'qs': qs,
         'limit': limit,
         'page': page,

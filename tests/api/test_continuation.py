@@ -195,12 +195,12 @@ async def test_api_cont_stale_generation_409():
 # ---------------------------------------------------------------------------
 
 def test_match_keys_mints_token_at_limit():
-    """_match_keys mints a continuation when exactly MATCH_LIMIT keys are returned."""
-    # We need exactly MATCH_LIMIT keys so the condition triggers
+    """_match_keys mints a continuation when query.match fills the page."""
     limit_count = bio.MATCH_LIMIT
-    keys = iter(range(limit_count))
-
-    result = bio._match_keys(keys, "myindex", ["q1"], None, page=1)
+    fake_index = MagicMock()
+    fake_index.name = "myindex"
+    with patch("bioindex.api.bio.query.match", return_value=list(range(limit_count))):
+        result = bio._match_keys(fake_index, ["q1"], None, page=1)
 
     assert result["continuation"] is not None
     assert result["count"] == limit_count
@@ -208,21 +208,22 @@ def test_match_keys_mints_token_at_limit():
 
 
 def test_match_keys_no_token_below_limit():
-    """_match_keys returns null continuation when fewer than MATCH_LIMIT keys returned."""
-    keys = iter(["a", "b"])
-
-    result = bio._match_keys(keys, "myindex", ["q1"], None, page=1)
+    """_match_keys returns null continuation when query.match returns a partial page."""
+    fake_index = MagicMock()
+    fake_index.name = "myindex"
+    with patch("bioindex.api.bio.query.match", return_value=["a", "b"]):
+        result = bio._match_keys(fake_index, ["q1"], None, page=1)
 
     assert result["continuation"] is None
 
 
 @pytest.mark.asyncio
-async def test_api_cont_resumes_match_no_repeats():
+async def test_api_cont_resumes_match_via_keyset_cursor():
     """
-    api_cont with a match token calls query.match and dropwhile(k <= last_key)
-    so no previously-seen keys are repeated.
+    api_cont resumes a match by passing after=last_key to query.match (the
+    keyset cursor), so the SQL returns only keys strictly after last_key — no
+    Python dropwhile, no repeats.
     """
-    # Page 1 ended at last_key = "key_002"
     last_key = "key_002"
     state = ContState(
         type="match",
@@ -238,18 +239,17 @@ async def test_api_cont_resumes_match_no_repeats():
     token = signed_tokens.encode(state, signed_tokens.signing_key())
 
     fake_index = MagicMock()
-    # query.match returns all keys including ones already seen
-    all_keys = ["key_001", "key_002", "key_003", "key_004"]
+    fake_index.name = "myindex"
+    next_keys = ["key_003", "key_004"]   # keyset query.match returns only post-cursor
 
     with patch.dict(bio.INDEXES, {("myindex", 1): fake_index}):
-        with patch("bioindex.api.bio.query.match", return_value=iter(all_keys)):
+        with patch("bioindex.api.bio.query.match", return_value=next_keys) as mock_match:
             result = await bio.api_cont(token=token, req=_make_req())
 
-    # Only keys strictly after last_key should appear
-    assert "key_001" not in result["data"]
+    # query.match called as (config, engine, index, qs, after, page_size)
+    assert mock_match.call_args.args[4] == last_key
+    assert result["data"] == ["key_003", "key_004"]
     assert "key_002" not in result["data"]
-    assert "key_003" in result["data"]
-    assert "key_004" in result["data"]
     assert result["page"] == 2
 
 
@@ -282,16 +282,27 @@ async def test_match_limit_capped_across_continuation_pages(monkeypatch):
     MATCH_LIMIT=2 and limit=3: page1 returns 2 (+token carrying remaining=1),
     page2 returns only 1 more and no further token. Total == 3."""
     monkeypatch.setattr(bio, "MATCH_LIMIT", 2)
-    keys = [f"k{i:02d}" for i in range(10)]
-    page1 = bio._match_keys(iter(keys), "myindex", ["q1"], 3, page=1)
+    all_keys = [f"k{i:02d}" for i in range(10)]
+
+    def fake_match(config, engine, index, q, after=None, limit=None):
+        ks = [k for k in all_keys if after is None or k > after]
+        return ks[:limit] if limit is not None else ks
+
+    monkeypatch.setattr(bio.query, "match", fake_match)
+    fake_index = MagicMock()
+    fake_index.name = "myindex"
+
+    # page 1: limit=3 -> page_size=min(2,3)=2 -> ["k00","k01"], remaining=1
+    page1 = bio._match_keys(fake_index, ["q1"], 3, page=1)
     assert page1["count"] == 2
     assert page1["data"] == ["k00", "k01"]
     token = page1["continuation"]
     assert token is not None
     assert signed_tokens.decode(token, signed_tokens.signing_key()).limit == 1
-    with patch.dict(bio.INDEXES, {("myindex", 1): MagicMock()}):
-        with patch("bioindex.api.bio.query.match", return_value=iter(keys)):
-            page2 = await bio.api_cont(token=token, req=_make_req())
+
+    # page 2 via /cont: budget 1, after="k01" -> page_size=min(2,1)=1 -> ["k02"]
+    with patch.dict(bio.INDEXES, {("myindex", 1): fake_index}):
+        page2 = await bio.api_cont(token=token, req=_make_req())
     assert page2["count"] == 1
     assert page2["data"] == ["k02"]
     assert page2["continuation"] is None
