@@ -3,7 +3,6 @@ import mimetypes
 import fastapi
 
 from .utils import *
-from .bio import _finalize
 
 from ..lib import s3
 from ..lib.auth import verify_permissions

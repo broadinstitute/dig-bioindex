@@ -5,7 +5,7 @@ from .utils import *
 from .bio import _finalize
 
 from ..lib.auth import restrictions
-from ..lib.utils import nonce, profile
+from ..lib.utils import profile
 from ..middleware.portal import get_portal_ctx
 
 # create web server
@@ -93,33 +93,21 @@ def fetch_added_phenotypes(portal, include: list):
         return phenotypes
 
 
-@router.get("/phenotypes", response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_phenotypes(req: fastapi.Request, q: str = None):
-    """
-    Returns all available phenotypes or just those for a given
-    disease group.
-    """
-    ctx = get_portal_ctx(req)
-    portal = _require_portal(ctx)
+def _fetch_phenotypes(portal, q) -> dict:
+    """Query Phenotypes (optionally filtered by DiseaseGroup q); return plain body dict."""
     sql = "SELECT `name`, `description`, `group`, `dichotomous` FROM Phenotypes"
-
     groups = None
     include = None
     exclude = None
 
     with portal.connect() as conn:
-
         if q and q != "":
             resp = conn.execute(text("SELECT `groups`, include, exclude FROM DiseaseGroups WHERE `name` = :name"),
                                 {"name": q})
             rows = resp.fetchone()
 
             if rows is None:
-                return _finalize({
-                    "profile": {"query": ""},
-                    "data": [],
-                    "count": 0,
-                })
+                return {"profile": {"query": ""}, "data": [], "count": 0}
 
             groups = rows[0].split(",")
             include = rows[1].split(",") if rows[1] else None
@@ -151,11 +139,18 @@ async def api_portal_phenotypes(req: fastapi.Request, q: str = None):
         if include:
             phenotypes.extend(fetch_added_phenotypes(portal, include))
 
-        return _finalize({
-            "profile": {"query": query_s},
-            "data": phenotypes,
-            "count": len(phenotypes),
-        })
+        return {"profile": {"query": query_s}, "data": phenotypes, "count": len(phenotypes)}
+
+
+@router.get("/phenotypes", response_class=fastapi.responses.ORJSONResponse)
+async def api_portal_phenotypes(req: fastapi.Request, q: str = None):
+    """
+    Returns all available phenotypes or just those for a given
+    disease group.
+    """
+    ctx = get_portal_ctx(req)
+    portal = _require_portal(ctx)
+    return _finalize(_fetch_phenotypes(portal, q))
 
 
 @router.get("/complications", response_class=fastapi.responses.ORJSONResponse)
@@ -213,10 +208,7 @@ async def api_portal_datasets(req: fastapi.Request, q: str = None):
     """
     ctx = get_portal_ctx(req)
     portal = _require_portal(ctx)
-    resp = await api_portal_phenotypes(req, q)
-
-    import orjson
-    resp_data = orjson.loads(resp.body)
+    resp_data = _fetch_phenotypes(portal, q)
     phenotypes = set(p["name"] for p in resp_data["data"])
     query_p = resp_data["profile"]["query"]
 
