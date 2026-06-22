@@ -17,11 +17,7 @@ def config_var(type=str, default=None):
     def decorator(f):
         def wrapper(self):
             key = f(self)
-            val = (
-                self._overrides.get(key)
-                if getattr(self, '_overrides', None)
-                else None
-            )
+            val = self._overrides.get(key)
             if val is None:
                 val = os.environ.get(key, default)
 
