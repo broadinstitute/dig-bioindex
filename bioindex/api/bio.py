@@ -1,7 +1,5 @@
 import asyncio
 import concurrent.futures
-import re
-from enum import Enum
 from typing import List, Optional
 
 import fastapi
@@ -127,12 +125,13 @@ async def api_lookup_variant_for_rs_id(rsid: str, req: fastapi.Request):
     ctx = get_portal_ctx(req)
     dynamodb_table = ctx.config.variant_dynamodb_table
     data, fetch_s = profile(aws.look_up_var_id, rsid, dynamodb_table)
-    return {
+    body = {
         'profile': {'dynamo_fetch': fetch_s},
         'index': dynamodb_table,
         'q': rsid,
         'data': data,
     }
+    return _finalize(body)
 
 
 @router.get('/query/{index}', response_class=fastapi.responses.ORJSONResponse)

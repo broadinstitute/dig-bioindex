@@ -7,6 +7,7 @@ import asyncio
 import types
 from unittest.mock import MagicMock, patch
 
+import orjson
 import pytest
 
 import bioindex.api.bio as bio
@@ -17,20 +18,6 @@ from bioindex.lib import signed_tokens
 # ---------------------------------------------------------------------------
 # Fake ctx / reader helpers
 # ---------------------------------------------------------------------------
-
-class _FakeConfig:
-    match_limit = bio.index.Index.list_indexes.__module__ and 100  # will be overridden per test
-    response_limit = 10_000_000
-    response_limit_max = 20_000_000
-
-
-class _FakeCtx:
-    name = "testportal"
-    config = _FakeConfig()
-    engine = None
-    portal = None
-    indexes = {}
-
 
 def _make_ctx(name="testportal", indexes=None):
     ctx = types.SimpleNamespace(
@@ -153,7 +140,6 @@ async def test_api_cont_resumes_fetch():
         result = await bio.api_cont(token=token, req=req)
 
     body = result.body
-    import orjson
     data = orjson.loads(body)
     assert data["page"] == 2
     assert data["count"] == 1
@@ -268,7 +254,6 @@ async def test_api_cont_resumes_match_via_keyset_cursor():
     with patch("bioindex.api.bio.query.match", return_value=next_keys) as mock_match:
         result = await bio.api_cont(token=token, req=req)
 
-    import orjson
     data = orjson.loads(result.body)
     # query.match called as (config, engine, index, qs, after, page_size)
     assert mock_match.call_args.args[4] == last_key
@@ -320,7 +305,6 @@ async def test_match_limit_capped_across_continuation_pages(monkeypatch):
     ctx.indexes = {("myindex", 1): fake_index}
     req = _make_req(portal_ctx=ctx)
     page2_resp = await bio.api_cont(token=token, req=req)
-    import orjson
     page2 = orjson.loads(page2_resp.body)
     assert page2["count"] == 1
     assert page2["data"] == ["k02"]
@@ -357,3 +341,65 @@ async def test_cont_portal_enforcement():
 
     assert exc_info.value.status_code == 400
     assert "different portal" in exc_info.value.detail.lower()
+
+
+# ---------------------------------------------------------------------------
+# (h) 3-page resume-of-resume: match walks page1 -> page2 -> page3
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_match_three_page_resume_of_resume(monkeypatch):
+    """
+    Walk three match pages via api_cont. Verifies:
+    - page-3 data is correct
+    - page-2 continuation token decodes to a valid ContState
+    - total items across all pages <= limit
+    """
+    ctx = _make_ctx(name="testportal")
+    ctx.config.match_limit = 2  # force 2 keys per page
+    all_keys = [f"k{i:02d}" for i in range(10)]
+
+    def fake_match(config, engine, index, q, after=None, limit=None):
+        ks = [k for k in all_keys if after is None or k > after]
+        return ks[:limit] if limit is not None else ks
+
+    monkeypatch.setattr(bio.query, "match", fake_match)
+    fake_index = MagicMock()
+    fake_index.name = "myindex"
+    ctx.indexes = {("myindex", 1): fake_index}
+
+    # page 1: limit=5, match_limit=2 -> page_size=2 -> ["k00","k01"], remaining=3
+    page1 = bio._match_keys(ctx, fake_index, ["q1"], 5, generation="gen-test-fixed", page=1)
+    assert page1["count"] == 2
+    assert page1["data"] == ["k00", "k01"]
+    token1 = page1["continuation"]
+    assert token1 is not None
+
+    # page 2 via api_cont: budget=3, after="k01" -> page_size=min(2,3)=2 -> ["k02","k03"], remaining=1
+    req = _make_req(portal_ctx=ctx)
+    page2_resp = await bio.api_cont(token=token1, req=req)
+    page2 = orjson.loads(page2_resp.body)
+    assert page2["count"] == 2
+    assert page2["data"] == ["k02", "k03"]
+    token2 = page2["continuation"]
+    assert token2 is not None
+
+    # verify page-2 token decodes to a valid ContState with correct remaining budget
+    state2 = signed_tokens.decode(token2, signed_tokens.signing_key())
+    assert isinstance(state2, ContState)
+    assert state2.type == "match"
+    assert state2.index_name == "myindex"
+    assert state2.last_key == "k03"
+    assert state2.limit == 1  # 5 - 2 - 2 = 1 remaining
+
+    # page 3 via api_cont: budget=1, after="k03" -> page_size=min(2,1)=1 -> ["k04"]
+    page3_resp = await bio.api_cont(token=token2, req=req)
+    page3 = orjson.loads(page3_resp.body)
+    assert page3["count"] == 1
+    assert page3["data"] == ["k04"]
+    assert page3["continuation"] is None
+
+    # total across all pages <= limit=5
+    total = page1["count"] + page2["count"] + page3["count"]
+    assert total <= 5
+    assert total == 5
