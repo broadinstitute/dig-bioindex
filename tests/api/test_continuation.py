@@ -57,7 +57,7 @@ def test_fetch_records_mints_token_when_not_at_end():
         bytes_total=2000,
     )
 
-    result = bio._fetch_records(reader, "myindex", ["q1"], "row", cont_type="fetch", page=1)
+    result = bio._fetch_records(reader, "myindex", ["q1"], "row", page=1)
 
     assert result["continuation"] is not None, "expected a continuation token"
     assert result["page"] == 1
@@ -84,7 +84,7 @@ def test_fetch_records_minted_token_carries_generation():
         source_index=0,
         source_byte_offset=128,
     )
-    result = bio._fetch_records(reader, "myindex", ["q1"], "row", cont_type="fetch", page=1)
+    result = bio._fetch_records(reader, "myindex", ["q1"], "row", page=1)
     token = result["continuation"]
     assert token is not None
     state = signed_tokens.decode(token, signed_tokens.signing_key())
@@ -269,69 +269,11 @@ def test_limit_is_decremented_into_continuation_token():
     """
     reader = _make_reader(records=[{"x": i} for i in range(4)], at_end=False,
                           limit=10, source_index=0, source_byte_offset=128)
-    result = bio._fetch_records(reader, "myindex", ["q1"], "row", cont_type="fetch", page=1)
+    result = bio._fetch_records(reader, "myindex", ["q1"], "row", page=1)
     token = result["continuation"]
     assert token is not None
     state = signed_tokens.decode(token, signed_tokens.signing_key())
     assert state.limit == 6   # 10 original - 4 returned this page; NOT 10
-
-
-@pytest.mark.asyncio
-async def test_api_cont_resumes_all_for_nonzero_arity_index():
-    """
-    On the /all path qs is None, so a naive len(qs or []) would mint
-    index_arity=0. INDEXES is keyed by (name, schema_arity), so resuming
-    such a token would miss the index and 400. The token must carry the
-    index's real arity, and api_cont must resume via query.fetch_all.
-    """
-    mint_reader = _make_reader(records=[{"x": 1}], at_end=False,
-                               source_index=0, source_byte_offset=256)
-    mint_reader.index.schema.arity = 2  # a non-zero-arity index, as /all serves
-
-    page1 = bio._fetch_records(mint_reader, "myindex", None, "row",
-                               cont_type="all", page=1)
-    token = page1["continuation"]
-    assert token is not None
-    # The token must NOT carry arity 0.
-    assert signed_tokens.decode(token, signed_tokens.signing_key()).index_arity == 2
-
-    fake_index = MagicMock()
-    resume_reader = _make_reader(records=[{"x": 2}], at_end=True)
-
-    with patch.dict(bio.INDEXES, {("myindex", 2): fake_index}):
-        with patch("bioindex.api.bio.query.fetch_all",
-                   return_value=resume_reader) as mock_all:
-            result = await bio.api_cont(token=token, req=_make_req())
-
-    assert result["page"] == 2   # resumed cleanly, not a 400
-    assert result["count"] == 1
-    _, kwargs = mock_all.call_args
-    assert kwargs.get("start_source_index") == 0
-    assert kwargs.get("start_byte_offset") == 256
-
-
-# ---------------------------------------------------------------------------
-# NEW tests for review fixes #1, #2, #3/#4
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_api_cont_all_resume_keeps_real_arity_on_later_pages():
-    """Regression (#2): /all stores qs=[] in its token; the resume passes []
-    back into _fetch_records. The page-2 mint must carry the index's real arity
-    (reader.index.schema.arity), not len([])==0, or the page-3 /cont 400s."""
-    state = ContState(type="all", index_name="myindex", index_arity=2, qs=[],
-                      fmt="row", page=2, source_index=1, byte_offset=128,
-                      generation="gen-test-fixed")
-    token = signed_tokens.encode(state, signed_tokens.signing_key())
-    resume_reader = _make_reader(records=[{"x": 1}], at_end=False,
-                                 source_index=1, source_byte_offset=256)
-    resume_reader.index.schema.arity = 2
-    with patch.dict(bio.INDEXES, {("myindex", 2): MagicMock()}):
-        with patch("bioindex.api.bio.query.fetch_all", return_value=resume_reader):
-            result = await bio.api_cont(token=token, req=_make_req())
-    page3 = result["continuation"]
-    assert page3 is not None
-    assert signed_tokens.decode(page3, signed_tokens.signing_key()).index_arity == 2
 
 
 @pytest.mark.asyncio
@@ -355,13 +297,3 @@ async def test_match_limit_capped_across_continuation_pages(monkeypatch):
     assert page2["continuation"] is None
 
 
-@pytest.mark.asyncio
-async def test_api_all_arity_get_returns_records():
-    """Regression (#1): api_all_arity must be a working GET (fmt defaults to
-    'row'), not a HEAD handler referencing an undefined fmt."""
-    reader = _make_reader(records=[{"x": 1}], at_end=True, bytes_total=10)
-    with patch.dict(bio.INDEXES, {("myindex", 1): MagicMock()}):
-        with patch("bioindex.api.bio.query.fetch_all", return_value=reader):
-            result = await bio.api_all_arity("myindex", 1, _make_req())
-    assert result["count"] == 1
-    assert result["data"] == [{"x": 1}]

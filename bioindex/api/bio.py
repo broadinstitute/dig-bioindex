@@ -173,134 +173,6 @@ async def api_keys_index(index: str, arity: int, req: fastapi.Request, columns: 
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
-@router.get('/all/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_all(index: str, req: fastapi.Request, fmt: str = 'row'):
-    """
-    Query the database and return ALL records for a given index. If the
-    total number of bytes read exceeds a pre-configured server limit, then
-    a 413 response will be returned. If multiple indexes share a name
-    with different arity it'll throw a 400.
-    """
-    try:
-        idxs = [idx for key, idx in INDEXES.items() if key[0] == index]
-
-        if len(idxs) == 0:
-            raise KeyError
-        elif len(idxs) == 1:
-            # discover what the user doesn't have access to see
-            restricted, auth_s = profile(restricted_keywords, portal, req) if portal else (None, 0)
-
-            # lookup the schema for this index and perform the query
-            reader, query_s = profile(
-                query.fetch_all,
-                CONFIG,
-                idxs[0],
-                restricted=restricted,
-            )
-
-            # will this request exceed the limit?
-            if reader.bytes_total > RESPONSE_LIMIT_MAX:
-                raise fastapi.HTTPException(status_code=413)
-
-            # fetch records from the reader
-            return _fetch_records(reader, index, None, fmt, cont_type='all', query_s=auth_s + query_s)
-        else:
-            raise ValueError(f'Multiple indexes found for {index}, try arity-specific endpoint')
-    except KeyError:
-        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
-    except ValueError as e:
-        raise fastapi.HTTPException(status_code=400, detail=str(e))
-
-
-@router.get('/all/{index}/{arity}', response_class=fastapi.responses.ORJSONResponse)
-async def api_all_arity(index: str, arity: int, req: fastapi.Request, fmt: str = 'row'):
-    """
-    Query the database and return ALL records for a given index and arity.
-    """
-    try:
-        i = INDEXES[(index, arity)]
-
-        # discover what the user doesn't have access to see
-        restricted, auth_s = profile(restricted_keywords, portal, req) if portal else (None, 0)
-
-        # lookup the schema for this index and perform the query
-        reader, query_s = profile(
-            query.fetch_all,
-            CONFIG,
-            i,
-            restricted=restricted,
-        )
-
-        # will this request exceed the limit?
-        if reader.bytes_total > RESPONSE_LIMIT_MAX:
-            raise fastapi.HTTPException(status_code=413)
-
-        # fetch records from the reader
-        return _fetch_records(reader, index, None, fmt, cont_type='all', query_s=auth_s + query_s)
-    except KeyError:
-        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
-    except ValueError as e:
-        raise fastapi.HTTPException(status_code=400, detail=str(e))
-
-
-@router.head('/all/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_test_all(index: str, req: fastapi.Request):
-    """
-    Query the database fetch ALL records for a given index. Don't read
-    the records from S3, but instead set the Content-Length to the total
-    number of bytes what would be read. If multiple indexes share a name
-    with different arity it'll throw a 400.
-    """
-    try:
-        idxs = [idx for key, idx in INDEXES.items() if key[0] == index]
-
-        if len(idxs) == 0:
-            raise KeyError
-        elif len(idxs) == 1:
-            # lookup the schema for this index and perform the query
-            reader, query_s = profile(
-                query.fetch_all,
-                CONFIG,
-                idxs[0],
-            )
-
-            # return the total number of bytes that need to be read
-            return fastapi.Response(headers={'Content-Length': str(reader.bytes_total)})
-        else:
-            raise ValueError(f'Multiple indexes found for {index}, try arity-specific endpoint')
-    except KeyError:
-        raise fastapi.HTTPException(
-            status_code=400, detail=f'Invalid index: {index}')
-    except ValueError as e:
-        raise fastapi.HTTPException(status_code=400, detail=str(e))
-
-
-@router.head('/all/{index}/{arity}', response_class=fastapi.responses.ORJSONResponse)
-async def api_test_all_arity(index: str, arity: int, req: fastapi.Request):
-    """
-    Query the database fetch ALL records for a given index and arity. Don't read
-    the records from S3, but instead set the Content-Length to the total
-    number of bytes what would be read.
-    """
-    try:
-        i = INDEXES[(index, arity)]
-
-        # lookup the schema for this index and perform the query
-        reader, query_s = profile(
-            query.fetch_all,
-            CONFIG,
-            i,
-        )
-
-        # return the total number of bytes that need to be read
-        return fastapi.Response(headers={'Content-Length': str(reader.bytes_total)})
-    except KeyError:
-        raise fastapi.HTTPException(
-            status_code=400, detail=f'Invalid index: {index}')
-    except ValueError as e:
-        raise fastapi.HTTPException(status_code=400, detail=str(e))
-
-
 @router.get('/varIdLookup/{rsid}', response_class=fastapi.responses.ORJSONResponse)
 async def api_lookup_variant_for_rs_id(rsid: str):
     """
@@ -354,7 +226,7 @@ async def api_query_index(index: str, q: str, req: fastapi.Request, fmt='row', l
             reader.set_limit(limit)
 
         # the results of the query
-        return _fetch_records(reader, index, qs, fmt, cont_type='fetch', query_s=auth_s + query_s)
+        return _fetch_records(reader, index, qs, fmt, query_s=auth_s + query_s)
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
@@ -497,21 +369,7 @@ async def api_cont(token: str, req: fastapi.Request):
             if state.limit is not None:
                 reader.set_limit(state.limit)
             return _fetch_records(reader, state.index_name, state.qs, state.fmt,
-                                  cont_type='fetch', page=state.page, query_s=query_s)
-
-        elif state.type == 'all':
-            reader, query_s = profile(
-                query.fetch_all,
-                CONFIG,
-                i,
-                restricted=restricted,
-                start_source_index=state.source_index,
-                start_byte_offset=state.byte_offset,
-            )
-            if state.limit is not None:
-                reader.set_limit(state.limit)
-            return _fetch_records(reader, state.index_name, state.qs, state.fmt,
-                                  cont_type='all', page=state.page, query_s=query_s)
+                                  page=state.page, query_s=query_s)
 
         elif state.type == 'match':
             all_keys = query.match(CONFIG, engine, i, state.qs)
@@ -592,7 +450,7 @@ def _match_keys(keys, index, qs, limit, page=1, query_s=None):
     }
 
 
-def _fetch_records(reader, index, qs, fmt, cont_type='fetch', page=1, query_s=None):
+def _fetch_records(reader, index, qs, fmt, page=1, query_s=None):
     """
     Reads up to RESPONSE_LIMIT bytes from a RecordReader, format them,
     and then return a JSON response object with the records.
@@ -632,7 +490,7 @@ def _fetch_records(reader, index, qs, fmt, cont_type='fetch', page=1, query_s=No
     token = None
     if not reader.at_end:
         state = continuation.ContState(
-            type=cont_type,
+            type='fetch',
             index_name=index,
             # Always carry the reader's index schema arity. This is correct for
             # /query (where len(qs) == schema arity) and for /all on every page
