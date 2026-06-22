@@ -15,9 +15,15 @@ def config_var(type=str, default=None):
     various places where that value may be set.
     """
     def decorator(f):
-        def wrapper(*args):
-            key = f(*args)
-            val = os.environ.get(key, default)
+        def wrapper(self):
+            key = f(self)
+            val = (
+                self._overrides.get(key)
+                if getattr(self, '_overrides', None)
+                else None
+            )
+            if val is None:
+                val = os.environ.get(key, default)
 
             # cast to the appropriate type
             if type == list:
@@ -34,28 +40,29 @@ class Config:
     Configuration file.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, _overrides=None, **kwargs):
         """
         Loads the configuration file using environment.
         """
+        self._overrides = _overrides or {}
         try:
-            if self.bioindex_env is not None:
-                secret = secret_lookup(self.bioindex_env)
-                assert secret, f'Failed to lookup secret {self.bioindex_env}'
+            if not self._overrides:
+                if self.bioindex_env is not None:
+                    secret = secret_lookup(self.bioindex_env)
+                    assert secret, f'Failed to lookup secret {self.bioindex_env}'
+                    Config.set_default_env(secret)
+                Config.set_default_env(kwargs)
 
-                # set environment keys if not already set
-                Config.set_default_env(secret)
-
-            # use keyword arguments if environment not yet set
-            Config.set_default_env(kwargs)
-
-            # validate required settings
             assert self.s3_bucket, 'BIOINDEX_S3_BUCKET not set in the environment'
             assert self.rds_config, 'BIOINDEX_RDS_SECRET nor BIOINDEX_RDS_INSTANCE set in the environment'
             assert self.bio_schema, 'BIOINDEX_BIO_SCHEMA not set in the environment'
         except AssertionError as ex:
             logging.error(ex)
             sys.exit(-1)
+
+    @classmethod
+    def from_dict(cls, env_dict: dict) -> 'Config':
+        return cls(_overrides=dict(env_dict))
 
     @staticmethod
     def set_default_env(env):
