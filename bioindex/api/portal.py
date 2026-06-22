@@ -2,38 +2,39 @@ import fastapi
 from sqlalchemy import text
 
 from .utils import *
+from .bio import _finalize
 
-from ..lib import config
 from ..lib.auth import restrictions
 from ..lib.utils import nonce, profile
-
-# load dot files and configuration
-CONFIG = config.Config()
+from ..middleware.portal import get_portal_ctx
 
 # create web server
 router = fastapi.APIRouter()
 
-# optionally connect to the portal/metadata schema
-portal = connect_to_portal(CONFIG)
 
-# if there is no portal schema defined, then patch the router
-if not portal:
-    monkey_patch_router(router)
+def _require_portal(ctx):
+    """Raise 501 if this portal has no portal/metadata schema configured."""
+    if ctx.portal is None:
+        raise fastapi.HTTPException(
+            status_code=501,
+            detail='Portal metadata schema not configured for this portal',
+        )
+    return ctx.portal
 
 
 @router.get("/groups", response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_groups():
+async def api_portal_groups(req: fastapi.Request):
     """
     Returns the list of portals available.
     """
+    ctx = get_portal_ctx(req)
+    portal = _require_portal(ctx)
     sql = "SELECT `name`, `title`, `description`, `default`, `portalGroup` FROM DiseaseGroups"
 
-    # run the query
     with portal.connect() as conn:
         resp, query_s = profile(conn.execute, text(sql))
         disease_groups = []
 
-        # transform response
         for name, title, desc, default, portalGroup in resp:
             disease_groups.append(
                 {
@@ -45,14 +46,11 @@ async def api_portal_groups():
                 }
             )
 
-    return {
-        "profile": {
-            "query": query_s,
-        },
+    return _finalize({
+        "profile": {"query": query_s},
         "data": disease_groups,
         "count": len(disease_groups),
-        "nonce": nonce(),
-    }
+    })
 
 
 @router.get("/restrictions", response_class=fastapi.responses.ORJSONResponse)
@@ -60,18 +58,17 @@ async def api_portal_restrictions(req: fastapi.Request):
     """
     Returns all restrictions for the current user.
     """
+    ctx = get_portal_ctx(req)
+    portal = _require_portal(ctx)
     keyword_restrictions, query_s = profile(restrictions, portal, req)
 
-    return {
-        "profile": {
-            "query": query_s,
-        },
+    return _finalize({
+        "profile": {"query": query_s},
         "data": keyword_restrictions,
-        "nonce": nonce(),
-    }
+    })
 
 
-def fetch_added_phenotypes(include: list):
+def fetch_added_phenotypes(portal, include: list):
     """
     Returns named phenotypes specified by include
     """
@@ -83,7 +80,6 @@ def fetch_added_phenotypes(include: list):
         resp, query_s = profile(conn.execute, text(sql), dict(zip(escaped_param_names, include)))
         phenotypes = []
 
-        # transform response
         for name, desc, group, dichotomous in resp:
             phenotypes.append(
                 {
@@ -98,48 +94,42 @@ def fetch_added_phenotypes(include: list):
 
 
 @router.get("/phenotypes", response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_phenotypes(q: str = None):
+async def api_portal_phenotypes(req: fastapi.Request, q: str = None):
     """
     Returns all available phenotypes or just those for a given
     disease group.
     """
+    ctx = get_portal_ctx(req)
+    portal = _require_portal(ctx)
     sql = "SELECT `name`, `description`, `group`, `dichotomous` FROM Phenotypes"
 
-    # groups to match
     groups = None
     include = None
     exclude = None
 
     with portal.connect() as conn:
 
-        # optionally filter by disease group
         if q and q != "":
             resp = conn.execute(text("SELECT `groups`, include, exclude FROM DiseaseGroups WHERE `name` = :name"),
                                 {"name": q})
             rows = resp.fetchone()
 
             if rows is None:
-                return {
-                    "profile": {
-                        "query": "",
-                    },
+                return _finalize({
+                    "profile": {"query": ""},
                     "data": [],
                     "count": 0,
-                    "nonce": nonce(),
-                }
+                })
 
-            # groups are a comma-separated set
             groups = rows[0].split(",")
             include = rows[1].split(",") if rows[1] else None
             exclude = rows[2].split(",") if rows[2] else None
 
-        # collect phenotype groups by union
         group_params = []
         if groups is not None and groups[0] != '':
             group_params = [f"{group.replace(' ', '').replace('-', '_')}" for group in groups]
             sql = f"({sql} WHERE `group` in ({','.join([':' + param for param in group_params])}))"
 
-        # run the query
         resp, query_s = (
             profile(conn.execute, text(sql), dict(zip(group_params, groups)))
             if groups
@@ -147,7 +137,6 @@ async def api_portal_phenotypes(q: str = None):
         )
         phenotypes = []
 
-        # transform response
         for name, desc, group, dichotomous in resp:
             if exclude and name in exclude:
                 continue
@@ -160,23 +149,22 @@ async def api_portal_phenotypes(q: str = None):
                 }
             )
         if include:
-            phenotypes.extend(fetch_added_phenotypes(include))
+            phenotypes.extend(fetch_added_phenotypes(portal, include))
 
-        return {
-            "profile": {
-                "query": query_s,
-            },
+        return _finalize({
+            "profile": {"query": query_s},
             "data": phenotypes,
             "count": len(phenotypes),
-            "nonce": nonce(),
-        }
+        })
 
 
 @router.get("/complications", response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_complications(q: str = None):
+async def api_portal_complications(req: fastapi.Request, q: str = None):
     """
     Returns all available complication phenotype pairs.
     """
+    ctx = get_portal_ctx(req)
+    portal = _require_portal(ctx)
     sql = (
         "SELECT Complications.`name`, Phenotypes.`group`, Complications.`phenotype`, Complications.`withComplication` "
         "FROM Complications "
@@ -184,26 +172,21 @@ async def api_portal_complications(q: str = None):
         "ON Phenotypes.`name` = Complications.`name` "
     )
 
-    # groups to match
     groups = None
 
     with portal.connect() as conn:
-        # optionally filter by disease group
         if q and q != "":
             resp = portal.execute("SELECT `groups` FROM DiseaseGroups WHERE `name` = :name", {"name": q})
             rows = resp.fetchone() or [""]
 
-            # groups are a comma-separated set
             groups = rows[0].split(",")
             escaped_param_names = [group.replace(' ', '').replace('-', '_') for group in groups]
 
-        # collect phenotype groups by union
         if groups is not None:
             sql = " UNION ".join(
                 f"({sql} WHERE FIND_IN_SET(:{group}, Phenotypes.`group`))" for group in escaped_param_names
             )
 
-        # run the query
         if sql:
             resp, query_s = (
                 profile(conn.execute, text(sql), dict(zip(escaped_param_names, groups)))
@@ -211,21 +194,16 @@ async def api_portal_complications(q: str = None):
                 else profile(conn.execute, text(sql))
             )
 
-        # distinct complications
         complications = {}
 
-        # collect all complication phenotypes together into a dict
         for name, _, phenotype, with_complication in resp:
             complications.setdefault(name, dict())[phenotype] = with_complication
 
-        return {
-            "profile": {
-                "query": query_s,
-            },
+        return _finalize({
+            "profile": {"query": query_s},
             "data": [{"name": k, "phenotypes": v} for k, v in complications.items()],
             "count": len(complications),
-            "nonce": nonce(),
-        }
+        })
 
 
 @router.get("/datasets", response_class=fastapi.responses.ORJSONResponse)
@@ -233,13 +211,15 @@ async def api_portal_datasets(req: fastapi.Request, q: str = None):
     """
     Returns all available datasets for a given disease group.
     """
-    resp = await api_portal_phenotypes(q)
+    ctx = get_portal_ctx(req)
+    portal = _require_portal(ctx)
+    resp = await api_portal_phenotypes(req, q)
 
-    # map all the phenotypes for this portal group
-    phenotypes = set(p["name"] for p in resp["data"])
-    query_p = resp["profile"]["query"]
+    import orjson
+    resp_data = orjson.loads(resp.body)
+    phenotypes = set(p["name"] for p in resp_data["data"])
+    query_p = resp_data["profile"]["query"]
 
-    # query for datasets
     sql = (
         "SELECT `name`, "
         "       `description`, "
@@ -256,12 +236,10 @@ async def api_portal_datasets(req: fastapi.Request, q: str = None):
         "FROM Datasets"
     )
 
-    # get all datasets
     with portal.connect() as conn:
         resp, query_s = profile(conn.execute, text(sql))
         datasets = []
 
-        # filter all the datasets
         for r in resp:
             ps = [p for p in r[3].split(",") if p in phenotypes]
 
@@ -283,26 +261,26 @@ async def api_portal_datasets(req: fastapi.Request, q: str = None):
             if len(ps) > 0:
                 datasets.append(dataset)
 
-        return {
+        return _finalize({
             "profile": {
                 "query": query_s if not isinstance(query_p, float) else query_p + query_s,
             },
             "data": datasets,
             "count": len(datasets),
-            "nonce": nonce(),
-        }
+        })
 
 
 @router.get("/documentation", response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_documentation(q: str, group: str = None):
+async def api_portal_documentation(req: fastapi.Request, q: str, group: str = None):
     """
     Returns all available phenotypes or just those for a given
     portal group.
     """
+    ctx = get_portal_ctx(req)
+    portal = _require_portal(ctx)
     sql = "SELECT `group`, `content` FROM Documentation WHERE `name` = :name "
     params = {'name': q}
 
-    # additionally get the the group
     if group is not None:
         sql += "AND `group` = :group "
         params.update({'group': group})
@@ -310,25 +288,21 @@ async def api_portal_documentation(q: str, group: str = None):
     with portal.connect() as conn:
         resp, query_s = profile(conn.execute, text(sql), params)
 
-        # transform response
         data = [{"group": group, "content": content} for group, content in resp.fetchall()]
 
-        return {
-            "profile": {
-                "query": query_s,
-            },
+        return _finalize({
+            "profile": {"query": query_s},
             "data": data,
             "count": len(data),
-            "nonce": nonce(),
-        }
+        })
 
 
-# Returns all documentations for a given group, and any modification to default group md
 @router.get("/documentations", response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_documentations(q: str):
+async def api_portal_documentations(req: fastapi.Request, q: str):
+    ctx = get_portal_ctx(req)
+    portal = _require_portal(ctx)
     sql = "SELECT `group`, `name`, `content` FROM Documentation "
 
-    # if q is not equal to md, then add md to group, else add q to group
     if q != "md":
         sql += "WHERE `group` IN (:q, 'md')"
     else:
@@ -337,20 +311,16 @@ async def api_portal_documentations(q: str):
     with portal.connect() as conn:
         resp, query_s = profile(conn.execute, text(sql).bindparams(q=q))
 
-        # transform results
         data = [
             {"group": group, "name": name, "content": content}
             for group, name, content in resp.fetchall()
         ]
 
-        return {
-            "profile": {
-                "query": query_s,
-            },
+        return _finalize({
+            "profile": {"query": query_s},
             "data": data,
             "count": len(data),
-            "nonce": nonce(),
-        }
+        })
 
 
 @router.get("/systems", response_class=fastapi.responses.ORJSONResponse)
@@ -358,8 +328,9 @@ async def api_portal_systems(req: fastapi.Request):
     """
     Returns system-disease-phenotype for all systems.
     """
+    ctx = get_portal_ctx(req)
+    portal = _require_portal(ctx)
 
-    # fetch all systems, join to diseases and phenotype groups
     sql = """
         SELECT s.system, s.portals, d.disease, g.group, p.name as phenotype
             FROM SystemToDisease stod
@@ -374,10 +345,8 @@ async def api_portal_systems(req: fastapi.Request):
 
     with portal.connect() as conn:
         resp, query_s = profile(conn.execute, text(sql))
-        # get all systems
         systems = []
 
-        # filter all the systems
         for r in resp:
             system = {
                 "system": r[0],
@@ -389,27 +358,25 @@ async def api_portal_systems(req: fastapi.Request):
 
             systems.append(system)
 
-        return {
-            "profile": {
-                "query": query_s,
-            },
+        return _finalize({
+            "profile": {"query": query_s},
             "data": systems,
             "count": len(systems),
-            "nonce": nonce(),
-        }
+        })
 
 
 @router.get("/links", response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_links(q: str = None, group: str = None):
+async def api_portal_links(req: fastapi.Request, q: str = None, group: str = None):
     """
     Returns one - or all - redirect links.
     """
+    ctx = get_portal_ctx(req)
+    portal = _require_portal(ctx)
     sql = "SELECT `path`, `group`, `redirect`, `description` FROM Links "
     tests = []
     data = []
     sql_params = {}
 
-    # create conditionals
     if q:
         tests.append(text(":path LIKE `path`"))
         sql_params['path'] = q
@@ -417,15 +384,12 @@ async def api_portal_links(q: str = None, group: str = None):
         tests.append(text("`group` = :group"))
         sql_params['group'] = group
 
-    # add all the tests
     if tests:
         sql += f'WHERE {" AND ".join(str(test) for test in tests)}'
 
-    # run the query
     with portal.connect() as conn:
         resp, query_s = profile(conn.execute, text(sql).bindparams(**sql_params))
 
-        # transform results
         for path, group, redirect, description in resp:
             data.append(
                 {
@@ -436,11 +400,8 @@ async def api_portal_links(q: str = None, group: str = None):
                 }
             )
 
-        return {
-            "profile": {
-                "query": query_s,
-            },
+        return _finalize({
+            "profile": {"query": query_s},
             "data": data,
             "count": len(data),
-            "nonce": nonce(),
-        }
+        })
