@@ -1,6 +1,5 @@
 import asyncio
 import concurrent.futures
-import itertools
 import os
 from typing import Callable, List, Optional
 
@@ -169,11 +168,7 @@ async def api_match(index: str, req: fastapi.Request, q: str, limit: int = None)
         cache_key = _query_cache_key(ctx.name, index, len(qs or []), 'match', gen, qs)
 
         def _produce():
-            # execute the query
-            keys, query_s = profile(query.match, ctx.config, ctx.engine, i, qs)
-            # allow an upper limit on the total number of keys returned
-            bounded = itertools.islice(keys, limit) if limit is not None else keys
-            return _match_keys(ctx, bounded, index, qs, limit, generation=gen, query_s=query_s)
+            return _match_keys(ctx, i, qs, limit, generation=gen)
 
         return _cached_response(cache_key, restricted, _produce)
     except KeyError:
@@ -663,12 +658,9 @@ async def api_cont(token: str, req: fastapi.Request):
 
         elif state.type == 'match':
             def _produce_match():
-                all_keys = query.match(ctx.config, ctx.engine, i, state.qs)
-                # skip past keys already returned on previous pages
-                if state.last_key is not None:
-                    all_keys = itertools.dropwhile(lambda k: k <= state.last_key, all_keys)
-                return _match_keys(ctx, all_keys, state.index_name, state.qs, state.limit,
-                                   generation=current_gen, page=state.page)
+                return _match_keys(ctx, i, state.qs, state.limit,
+                                   after=state.last_key, generation=current_gen,
+                                   page=state.page)
 
             return _cached_response(cont_cache_key, restricted, _produce_match)
 
@@ -691,24 +683,32 @@ def _parse_query(q, required=False):
     return q.split(',') if q else []
 
 
-def _match_keys(ctx, keys, index, qs, limit, *, page=1, generation, query_s=None):
+def _match_keys(ctx, i, qs, limit, *, after=None, page=1, generation):
     """
-    Collects up to match_limit keys from a database cursor and then
-    return a nonce-free body dict (finalised by _cached_response / _finalize).
+    Fetch one page of distinct match keys for index object `i` via keyset
+    pagination and return a nonce-free body dict (finalised by _cached_response
+    / _finalize). `limit` caps TOTAL keys across continuation pages (not per
+    page); `after` resumes past the previous page's last key.
     """
     match_limit = ctx.config.match_limit
-    fetched, fetch_s = profile(list, itertools.islice(keys, match_limit))
+    # per-page cap, further bounded by the remaining budget
+    page_size = match_limit if limit is None else min(match_limit, limit)
+    fetched, query_s = profile(query.match, ctx.config, ctx.engine, i, qs, after, page_size)
 
-    # create a continuation if there is more data
+    # remaining budget after this page (None == unlimited)
+    remaining = None if limit is None else limit - len(fetched)
+
+    # mint a continuation only if this page filled (more data likely) AND the
+    # budget is not exhausted; carry the decremented budget into the token.
     token = None
-    if len(fetched) >= match_limit:
+    if len(fetched) >= page_size and (remaining is None or remaining > 0):
         state = continuation.ContState(
             type='match',
-            index_name=index,
+            index_name=i.name,
             index_arity=len(qs),
             qs=qs,
             portal_name=ctx.name,
-            limit=limit,
+            limit=remaining,
             last_key=fetched[-1] if fetched else None,
             page=page + 1,
             generation=generation,
@@ -720,10 +720,10 @@ def _match_keys(ctx, keys, index, qs, limit, *, page=1, generation, query_s=None
 
     return {
         'profile': {
-            'fetch': fetch_s,
+            'fetch': query_s,
             'query': query_s,
         },
-        'index': index,
+        'index': i.name,
         'qs': qs,
         'limit': limit,
         'page': page,

@@ -59,19 +59,21 @@ class _FakeConfig:
 class _FakeCtx:
     name = "myportal"
     config = _FakeConfig()
+    engine = None
 
 
-def test_match_keys_mints_generation():
+def test_match_keys_mints_generation(monkeypatch):
     """
     _match_keys should embed the generation value it receives into the
     ContState that it encodes as the continuation token.
     """
     ctx = _FakeCtx()
-    # Provide enough keys to hit match_limit (2), so a continuation is minted.
-    keys = iter(["key_a", "key_b", "key_c"])
+    fake_index = types.SimpleNamespace(name="idx")
+    # query.match (keyset) returns 3 keys >= match_limit (2), so a token is minted.
+    monkeypatch.setattr(bio.query, "match", lambda *a, **k: ["key_a", "key_b", "key_c"])
 
     # _match_keys now returns a nonce-free body dict (finalised by _cached_response)
-    data = _match_keys(ctx, keys, "idx", ["q"], limit=None, generation="GENx")
+    data = _match_keys(ctx, fake_index, ["q"], None, generation="GENx")
 
     token = data["continuation"]
     assert token is not None, "Expected a continuation token (3 keys >= match_limit 2)"
