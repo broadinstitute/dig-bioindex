@@ -67,6 +67,19 @@ SERVER_LOGGING_CONFIG = {
 @click.option('--port', '-p', type=int, default=5000)
 @click.option('--workers', '-w', type=int, default=1)
 def cli_serve(port, workers):
+    # Fail fast: the server signs continuation tokens, so the signing key must
+    # be present at startup. Without this check a missing key only surfaces as a
+    # 500 on the first paginated request.
+    from .lib import signed_tokens
+    try:
+        signed_tokens.signing_key()
+    except RuntimeError as e:
+        raise SystemExit(
+            f'{e}\nThe server requires BIOINDEX_TOKEN_SIGNING_KEY (>=32 bytes; '
+            f'hex/base64url). For local dev: '
+            f'export BIOINDEX_TOKEN_SIGNING_KEY=$(openssl rand -hex 32)'
+        )
+
     uvicorn.run(
         'bioindex.server:app',
         host='0.0.0.0',

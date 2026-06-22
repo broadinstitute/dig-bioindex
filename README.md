@@ -62,9 +62,12 @@ BIOINDEX_GENES_URI          # Location of a GFF gene source (default=genes/genes
 BIOINDEX_RESPONSE_LIMIT     # Number of bytes to read from S3 per request (default=1 MB)
 BIOINDEX_RESPONSE_LIMIT_MAX # Total amount of data a call is allowed to read through (default=100MB)
 BIOINDEX_MATCH_LIMIT        # Number of matches to return per request (default=100)
+BIOINDEX_TOKEN_SIGNING_KEY  # HMAC key (>=32 bytes; hex/base64url) used to sign continuation tokens (***)
 
-(*)  - Either BIOINDEX_RDS_SECRET or BIOINDEX_RDS_INSTANCE is required
-(**) - If BIOINDEX_RDS_INSTANCE is used, then username and password are required
+(*)   - Either BIOINDEX_RDS_SECRET or BIOINDEX_RDS_INSTANCE is required
+(**)  - If BIOINDEX_RDS_INSTANCE is used, then username and password are required
+(***) - Required to run `serve` (the server signs continuation tokens, which lets any
+        worker resume a query). Generate one for local dev: openssl rand -hex 32
 ```
 
 Additionally, one can set a single environment variable (`BIOINDEX_ENVIRONMENT`), which should be the name of an AWS secret. If set, the BioIndex will read that secret as JSON and expects it to contain the rest of the environment setup.
