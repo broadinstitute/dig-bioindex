@@ -15,7 +15,9 @@ from ..lib import continuation
 from ..lib import index
 from ..lib import ql
 from ..lib import query
+from ..lib import signed_tokens
 from ..lib.auth import restricted_keywords
+from ..lib.generation import index_generation
 from ..lib.utils import nonce, profile, profile_async
 
 # load dot files and configuration
@@ -107,11 +109,8 @@ async def api_match(index: str, req: fastapi.Request, q: str, limit: int = None)
         # execute the query
         keys, query_s = profile(query.match, CONFIG, engine, i, qs)
 
-        # allow an upper limit on the total number of keys returned
-        if limit is not None:
-            keys = itertools.islice(keys, limit)
-
-        # read the matched keys
+        # read the matched keys (budget is enforced inside _match_keys so it
+        # also applies on /cont resumptions)
         return _match_keys(keys, index, qs, limit, query_s=query_s)
     except KeyError:
         raise fastapi.HTTPException(
@@ -170,136 +169,6 @@ async def api_keys_index(index: str, arity: int, req: fastapi.Request, columns: 
         }
     except KeyError:
         raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
-    except ValueError as e:
-        raise fastapi.HTTPException(status_code=400, detail=str(e))
-
-
-@router.get('/all/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_all(index: str, req: fastapi.Request, fmt: str = 'row'):
-    """
-    Query the database and return ALL records for a given index. If the
-    total number of bytes read exceeds a pre-configured server limit, then
-    a 413 response will be returned. If multiple indexes share a name
-    with different arity it'll throw a 400.
-    """
-    try:
-        idxs = [idx for key, idx in INDEXES.items() if key[0] == index]
-
-        if len(idxs) == 0:
-            raise KeyError
-        elif len(idxs) == 1:
-            # discover what the user doesn't have access to see
-            restricted, auth_s = profile(restricted_keywords, portal, req) if portal else (None, 0)
-
-            # lookup the schema for this index and perform the query
-            reader, query_s = profile(
-                query.fetch_all,
-                CONFIG,
-                idxs[0],
-                restricted=restricted,
-            )
-
-            # will this request exceed the limit?
-            if reader.bytes_total > RESPONSE_LIMIT_MAX:
-                raise fastapi.HTTPException(status_code=413)
-
-            # fetch records from the reader
-            return _fetch_records(reader, index, None, fmt, query_s=auth_s + query_s)
-        else:
-            raise ValueError(f'Multiple indexes found for {index}, try arity-specific endpoint')
-    except KeyError:
-        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
-    except ValueError as e:
-        raise fastapi.HTTPException(status_code=400, detail=str(e))
-
-
-@router.head('/all/{index}/{arity}', response_class=fastapi.responses.ORJSONResponse)
-async def api_all_arity(index: str, arity: int, req: fastapi.Request):
-    """
-    Query the database fetch ALL records for a given index and arity. Don't read
-    the records from S3, but instead set the Content-Length to the total
-    number of bytes what would be read.
-    """
-    try:
-        i = INDEXES[(index, arity)]
-
-        # discover what the user doesn't have access to see
-        restricted, auth_s = profile(restricted_keywords, portal, req) if portal else (None, 0)
-
-        # lookup the schema for this index and perform the query
-        reader, query_s = profile(
-            query.fetch_all,
-            CONFIG,
-            i,
-            restricted=restricted,
-        )
-
-        # will this request exceed the limit?
-        if reader.bytes_total > RESPONSE_LIMIT_MAX:
-            raise fastapi.HTTPException(status_code=413)
-
-        # fetch records from the reader
-        return _fetch_records(reader, index, None, fmt, query_s=auth_s + query_s)
-    except KeyError:
-        raise fastapi.HTTPException(status_code=400, detail=f'Invalid index: {index}')
-    except ValueError as e:
-        raise fastapi.HTTPException(status_code=400, detail=str(e))
-
-
-@router.head('/all/{index}', response_class=fastapi.responses.ORJSONResponse)
-async def api_test_all(index: str, req: fastapi.Request):
-    """
-    Query the database fetch ALL records for a given index. Don't read
-    the records from S3, but instead set the Content-Length to the total
-    number of bytes what would be read. If multiple indexes share a name
-    with different arity it'll throw a 400.
-    """
-    try:
-        idxs = [idx for key, idx in INDEXES.items() if key[0] == index]
-
-        if len(idxs) == 0:
-            raise KeyError
-        elif len(idxs) == 1:
-            # lookup the schema for this index and perform the query
-            reader, query_s = profile(
-                query.fetch_all,
-                CONFIG,
-                idxs[0],
-            )
-
-            # return the total number of bytes that need to be read
-            return fastapi.Response(headers={'Content-Length': str(reader.bytes_total)})
-        else:
-            raise ValueError(f'Multiple indexes found for {index}, try arity-specific endpoint')
-    except KeyError:
-        raise fastapi.HTTPException(
-            status_code=400, detail=f'Invalid index: {index}')
-    except ValueError as e:
-        raise fastapi.HTTPException(status_code=400, detail=str(e))
-
-
-@router.head('/all/{index}/{arity}', response_class=fastapi.responses.ORJSONResponse)
-async def api_test_all_arity(index: str, arity: int, req: fastapi.Request):
-    """
-    Query the database fetch ALL records for a given index and arity. Don't read
-    the records from S3, but instead set the Content-Length to the total
-    number of bytes what would be read.
-    """
-    try:
-        i = INDEXES[(index, arity)]
-
-        # lookup the schema for this index and perform the query
-        reader, query_s = profile(
-            query.fetch_all,
-            CONFIG,
-            i,
-        )
-
-        # return the total number of bytes that need to be read
-        return fastapi.Response(headers={'Content-Length': str(reader.bytes_total)})
-    except KeyError:
-        raise fastapi.HTTPException(
-            status_code=400, detail=f'Invalid index: {index}')
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
@@ -448,23 +317,73 @@ async def api_test_index(index: str, q: str, req: fastapi.Request):
 
 
 @router.get('/cont', response_class=fastapi.responses.ORJSONResponse)
-async def api_cont(token: str):
+async def api_cont(token: str, req: fastapi.Request):
     """
-    Lookup a continuation token and get the next set of records.
+    Decode a signed continuation token and resume the paginated query.
     """
+    global INDEXES
+
+    # Verify HMAC signature — constant-time, before any parsing
     try:
-        cont = continuation.lookup_continuation(token)
-
-        # the token is no longer valid
-        continuation.remove_continuation(token)
-
-        # execute the continuation callback
-        return cont.callback(cont)
-
-    except KeyError:
+        state = signed_tokens.decode(token, signed_tokens.signing_key())
+    except signed_tokens.TokenError as e:
         raise fastapi.HTTPException(
             status_code=400,
-            detail='Invalid, expired, or missing continuation token')
+            detail=f'Invalid continuation token: {e}',
+        )
+
+    # Look up the index (refresh once on miss in case a new index was added)
+    i = INDEXES.get((state.index_name, state.index_arity))
+    if i is None:
+        INDEXES = _load_indexes()
+        i = INDEXES.get((state.index_name, state.index_arity))
+        if i is None:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=f"Index '{state.index_name}' no longer present",
+            )
+
+    # Generation check — reject if the index was rebuilt since the token was issued
+    current_gen = index_generation(engine, state.index_name)
+    if state.generation != current_gen:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail="continuation is stale (index was rebuilt); re-run the query",
+        )
+
+    # Re-derive restricted set from current requester (not from token)
+    restricted, _ = profile(restricted_keywords, portal, req) if portal else (None, 0)
+
+    try:
+        if state.type == 'fetch':
+            reader, query_s = profile(
+                query.fetch,
+                CONFIG,
+                engine,
+                i,
+                state.qs,
+                restricted=restricted,
+                start_source_index=state.source_index,
+                start_byte_offset=state.byte_offset,
+            )
+            if state.limit is not None:
+                reader.set_limit(state.limit)
+            return _fetch_records(reader, state.index_name, state.qs, state.fmt,
+                                  page=state.page, query_s=query_s)
+
+        elif state.type == 'match':
+            all_keys = query.match(CONFIG, engine, i, state.qs)
+            if state.last_key is not None:
+                all_keys = itertools.dropwhile(lambda k: k <= state.last_key, all_keys)
+            return _match_keys(all_keys, state.index_name, state.qs, state.limit,
+                               page=state.page)
+
+        else:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=f'Unknown continuation type: {state.type}',
+            )
+
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=str(e))
 
@@ -483,15 +402,37 @@ def _parse_query(q, required=False):
 
 def _match_keys(keys, index, qs, limit, page=1, query_s=None):
     """
-    Collects up to MATCH_LIMIT keys from a database cursor and then
-    return a JSON response object with them.
+    Collects up to MATCH_LIMIT keys (or the remaining `limit` budget, whichever
+    is smaller) from a database cursor and returns a JSON response object. The
+    budget is enforced here so `limit` caps TOTAL keys across continuation
+    pages, not per page.
     """
-    fetched, fetch_s = profile(list, itertools.islice(keys, MATCH_LIMIT))
+    # per-page cap, further bounded by the remaining budget
+    page_size = MATCH_LIMIT if limit is None else min(MATCH_LIMIT, limit)
+    fetched, fetch_s = profile(list, itertools.islice(keys, page_size))
 
-    # create a continuation if there is more data
-    token = None if len(fetched) < MATCH_LIMIT else continuation.make_continuation(
-        callback=lambda cont: _match_keys(keys, index, limit, qs, page=page + 1),
-    )
+    # remaining budget after this page (None == unlimited)
+    remaining = None if limit is None else limit - len(fetched)
+
+    # mint a continuation only if this page filled (more data likely) AND the
+    # budget is not exhausted; carry the decremented budget into the token.
+    token = None
+    if len(fetched) >= page_size and (remaining is None or remaining > 0):
+        state = continuation.ContState(
+            type='match',
+            index_name=index,
+            index_arity=len(qs),
+            qs=qs,
+            fmt=None,
+            limit=remaining,
+            last_key=fetched[-1] if fetched else None,
+            page=page + 1,
+            generation=index_generation(engine, index),
+        )
+        try:
+            token = signed_tokens.encode(state, signed_tokens.signing_key())
+        except signed_tokens.TokenError as e:
+            raise fastapi.HTTPException(status_code=413, detail=str(e))
 
     return {
         'profile': {
@@ -545,10 +486,31 @@ def _fetch_records(reader, index, qs, fmt, page=1, query_s=None):
             for k in fetched_records[0].keys()
         }
 
-    # create a continuation if there is more data
-    token = None if reader.at_end else continuation.make_continuation(
-        callback=lambda cont: _fetch_records(reader, index, qs, fmt, page=page + 1),
-    )
+    # create a signed continuation token if there is more data
+    token = None
+    if not reader.at_end:
+        state = continuation.ContState(
+            type='fetch',
+            index_name=index,
+            # Always carry the reader's index schema arity. This is correct for
+            # /query (where len(qs) == schema arity) and for /all on every page
+            # including resume (where qs is [] so len(qs)==0 would be wrong).
+            index_arity=int(reader.index.schema.arity),
+            qs=qs or [],
+            fmt=fmt,
+            page=page + 1,
+            source_index=reader._source_index,
+            byte_offset=reader._source_byte_offset,
+            # Carry the REMAINING budget so each page decrements it. Carrying
+            # the full reader.limit would let /cont re-issue up to N records per
+            # page, returning far more than N total across pages.
+            limit=(reader.limit - count) if reader.limit is not None else None,
+            generation=index_generation(engine, index),
+        )
+        try:
+            token = signed_tokens.encode(state, signed_tokens.signing_key())
+        except signed_tokens.TokenError as e:
+            raise fastapi.HTTPException(status_code=413, detail=str(e))
 
     # build JSON response
     return {

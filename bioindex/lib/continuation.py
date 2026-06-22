@@ -1,74 +1,37 @@
 import dataclasses
-import threading
-import time
-
-from .utils import nonce
+from typing import List, Optional
 
 
-_cont_map = {}
-_cont_lock = threading.RLock()
-
-
-@dataclasses.dataclass()
-class Cont:
-    callback: any
-    expiration: float = None
-
-    def __post_init__(self):
-        """
-        Set the default expiration.
-        """
-        self.expiration = time.time() + 60
-
-
-def make_continuation(**kwargs):
+@dataclasses.dataclass
+class ContState:
     """
-    Create a continuation and return a token to it.
+    Serializable snapshot of everything needed to resume a paginated query.
+
+    type == 'fetch': resume a query.fetch() — re-runs SQL to get sources,
+                     seeks to source_index / byte_offset.
+    type == 'all':   resume a query.fetch_all() — re-scans S3 prefix,
+                     seeks to source_index / byte_offset.
+    type == 'match': resume a query.match() — re-runs match query and
+                     skips keys already returned (via last_key).
+
+    portal_name is bound at issue time so a token issued under one portal
+    cannot be replayed against another. Empty string means "legacy /
+    unbound" and should be rejected when a portal context is required.
+
+    NOTE: `restricted` is intentionally NOT stored here. The set of
+    restricted phenotypes is re-derived from the requesting identity on
+    every /cont call so that tokens cannot carry stale or borrowed
+    authorization.
     """
-    cont = Cont(**kwargs)
-    token = nonce()
-
-    # add it to the map
-    with _cont_lock:
-        _cont_map[token] = cont
-
-    return token
-
-
-def lookup_continuation(token):
-    """
-    Return a continuation from its token.
-    """
-    with _cont_lock:
-        return _cont_map[token]
-
-
-def remove_continuation(token):
-    """
-    Remove a continuation token from the map.
-    """
-    with _cont_lock:
-        del _cont_map[token]
-
-
-def cleanup_continuations():
-    """
-    Runs forever in the background, every minute it will remove any expired
-    continues from the map.
-    """
-    while True:
-        time.sleep(60)
-
-        with _cont_lock:
-            now = time.time()
-            tokens = list(_cont_map.keys())
-
-            # remove all expired continuations
-            for token in tokens:
-                if now > _cont_map[token].expiration:
-                    del _cont_map[token]
-
-
-# Spin up a thread that periodically removes old continuations.
-threading.Thread(target=cleanup_continuations, daemon=True). \
-    start()
+    type: str
+    index_name: str
+    index_arity: int
+    qs: List
+    portal_name: str = ""
+    fmt: Optional[str] = None
+    page: int = 1
+    source_index: int = 0
+    byte_offset: int = 0
+    last_key: Optional[str] = None
+    limit: Optional[int] = None
+    generation: str = ""
