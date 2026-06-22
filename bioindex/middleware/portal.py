@@ -1,5 +1,4 @@
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from ..lib.portal_registry import get_registry
@@ -20,11 +19,11 @@ class PortalResolveMiddleware(BaseHTTPMiddleware):
                     status_code=404)
             request.state.portal_ctx = ctx
             ctx.touch()
-            remainder = "/" + rest
-            request.scope["path"] = remainder
-            raw = request.scope.get("raw_path") or request.url.path.encode()
+            request.scope["path"] = "/" + rest
             prefix = ("/" + head).encode()
-            request.scope["raw_path"] = (raw[len(prefix):] or b"/") if raw.startswith(prefix) else remainder.encode()
+            raw = request.scope.get("raw_path")
+            if raw and raw.startswith(prefix):
+                request.scope["raw_path"] = raw[len(prefix):] or b"/"
         return await call_next(request)
 
 
