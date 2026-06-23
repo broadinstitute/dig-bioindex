@@ -55,3 +55,12 @@ def test_from_dict_sentinel_not_environ(monkeypatch):
     monkeypatch.setenv('BIOINDEX_S3_BUCKET', 'env-bucket')
     cfg = _make()
     assert cfg.s3_bucket == 'test-bucket'
+
+
+def test_from_dict_omitted_key_does_not_bleed_env(monkeypatch):
+    monkeypatch.setenv('BIOINDEX_BIO_SCHEMA', 'env-leak')
+    d = dict(MINIMAL)
+    del d['BIOINDEX_BIO_SCHEMA']
+    with patch('bioindex.lib.config.describe_rds_instance', return_value={'host': 'h', 'port': 3306, 'name': 'test-instance'}):
+        cfg = Config.from_dict(d)
+    assert cfg.bio_schema == 'bio'

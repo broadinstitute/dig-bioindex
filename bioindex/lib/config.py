@@ -17,8 +17,9 @@ def config_var(type=str, default=None):
     def decorator(f):
         def wrapper(self):
             key = f(self)
-            val = self._overrides.get(key)
-            if val is None:
+            if self._overrides:
+                val = self._overrides.get(key, default)
+            else:
                 val = os.environ.get(key, default)
 
             # cast to the appropriate type
