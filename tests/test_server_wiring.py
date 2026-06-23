@@ -1,9 +1,10 @@
 """
 Integration smoke-test: multi-portal wiring in server.py.
 
-Sets up env vars and patches build_portal_contexts before importing server.py
-so no real DB/S3 is needed.  The patch is scoped to the import so it does not
-corrupt the portal_loader module for other tests.
+Registry init runs in the lifespan handler, not at import, so importing
+server.py has no side effects (no DB/S3).  Tests populate the registry
+directly via the autouse fixture and drive the app with a plain TestClient
+(no lifespan).
 """
 import os
 import types
@@ -12,8 +13,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 os.environ.setdefault("BIOINDEX_TOKEN_SIGNING_KEY", "00" * 32)
-os.environ["BIOINDEX_ENV"] = "test"
-os.environ.setdefault("BIOINDEX_CONFIG_DIR", "/tmp/no-such-bioindex-dir")
 
 from bioindex.lib.portal_context import PortalContext  # noqa: E402
 from bioindex.lib.portal_registry import init_registry  # noqa: E402
@@ -37,8 +36,7 @@ _STUB_CTX = PortalContext(
     indexes=dict(_STUB_INDEXES),
 )
 
-with patch("bioindex.lib.portal_loader.build_portal_contexts", return_value=[_STUB_CTX]):
-    import bioindex.server as server  # noqa: E402
+import bioindex.server as server  # noqa: E402
 
 from fastapi.testclient import TestClient  # noqa: E402
 

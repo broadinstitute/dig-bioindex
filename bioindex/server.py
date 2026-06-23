@@ -1,3 +1,4 @@
+import contextlib
 import os
 
 import fastapi
@@ -27,13 +28,10 @@ def _init_registry_from_env():
     init_registry(contexts)
 
 
-_init_registry_from_env()
-
-app = fastapi.FastAPI(title='BioIndex', redoc_url=None)
-
-
-@app.on_event("shutdown")
-async def _dispose_engines():
+@contextlib.asynccontextmanager
+async def lifespan(app):
+    _init_registry_from_env()
+    yield
     from .lib.portal_registry import get_registry
     try:
         registry = get_registry()
@@ -50,6 +48,8 @@ async def _dispose_engines():
         except Exception:
             pass
 
+
+app = fastapi.FastAPI(title='BioIndex', redoc_url=None, lifespan=lifespan)
 
 app.add_middleware(PortalResolveMiddleware, reserved_prefixes=("static", "docs", "openapi.json"))
 
