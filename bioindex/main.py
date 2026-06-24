@@ -1,4 +1,5 @@
 import concurrent
+import os
 import time
 from enum import Enum
 
@@ -63,20 +64,37 @@ SERVER_LOGGING_CONFIG = {
 }
 
 
+def _maybe_dev_signing_key(dev):
+    # Local dev: generate an ephemeral signing key if none is set, so continuation
+    # tokens work without setup. Never overrides an existing key. Returns a warning
+    # string if one was generated, else None. Insecure; not for production.
+    if not dev or os.environ.get('BIOINDEX_TOKEN_SIGNING_KEY'):
+        return None
+    import secrets
+    os.environ['BIOINDEX_TOKEN_SIGNING_KEY'] = secrets.token_hex(32)
+    return ('--dev: generated an ephemeral BIOINDEX_TOKEN_SIGNING_KEY; continuation tokens '
+            'will not survive a restart. Never use --dev in production.')
+
+
 @click.command(name='serve')
 @click.option('--port', '-p', type=int, default=5000)
 @click.option('--workers', '-w', type=int, default=1)
-def cli_serve(port, workers):
+@click.option('--dev', is_flag=True,
+              help='Local dev: generate an ephemeral signing key if unset. Insecure; never in production.')
+def cli_serve(port, workers, dev):
     # Fail fast: the server signs continuation tokens, so the signing key must
     # be present at startup. Without this check a missing key only surfaces as a
     # 500 on the first paginated request.
     from .lib import signed_tokens
+    warn = _maybe_dev_signing_key(dev or bool(os.environ.get('BIOINDEX_DEV')))
+    if warn:
+        click.echo(f'WARNING: {warn}', err=True)
     try:
         signed_tokens.signing_key()
     except RuntimeError as e:
         raise SystemExit(
             f'{e}\nThe server requires BIOINDEX_TOKEN_SIGNING_KEY (>=32 bytes; '
-            f'hex/base64url). For local dev: '
+            f'hex/base64url). For local dev pass --dev (ephemeral key), or '
             f'export BIOINDEX_TOKEN_SIGNING_KEY=$(openssl rand -hex 32)'
         )
 
