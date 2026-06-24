@@ -66,8 +66,8 @@ BIOINDEX_TOKEN_SIGNING_KEY  # HMAC key (>=32 bytes; hex/base64url) used to sign 
 
 (*)   - Either BIOINDEX_RDS_SECRET or BIOINDEX_RDS_INSTANCE is required
 (**)  - If BIOINDEX_RDS_INSTANCE is used, then username and password are required
-(***) - Required to run `serve` (the server signs continuation tokens, which lets any
-        worker resume a query). Generate one for local dev: openssl rand -hex 32
+(***) - Used by `serve` to sign continuation tokens. Required in production; for local
+        dev pass `serve --dev` to auto-generate an ephemeral key (or: openssl rand -hex 32)
 ```
 
 Additionally, one can set a single environment variable (`BIOINDEX_ENVIRONMENT`), which should be the name of an AWS secret. If set, the BioIndex will read that secret as JSON and expects it to contain the rest of the environment setup.
@@ -234,11 +234,35 @@ Once the schema has been saved, you can then start the server.
 
 ## Starting the Server
 
-The server is started using the `serve` command:
+The server serves **multiple portals from one process**. The first URL path
+segment selects a portal, so every API request is `/{portal}/api/bio/...`
+(all the `http://localhost:5000/api/...` URLs below are reached as
+`http://localhost:5000/{portal}/api/...`). Each portal loads its own config
+(DB engines + index cache) at startup from a config directory.
+
+Set two environment variables and run `serve`:
 
 ```bash
-$ bioindex serve --port 5000
+export BIOINDEX_CONFIG_DIR=/etc/bioindex   # default; holds portals/ and envs/
+export BIOINDEX_ENV=qa                      # selects envs/<env>.yaml
+
+bioindex serve --port 5000 --dev
 ```
+
+The config directory is laid out as:
+
+```
+$BIOINDEX_CONFIG_DIR/
+  envs/<env>.yaml        # env-wide BIOINDEX_* defaults (e.g. envs/qa.yaml)
+  portals/<name>.yaml    # one file per portal, with an envs.<env> block
+```
+
+`--dev` auto-generates an ephemeral `BIOINDEX_TOKEN_SIGNING_KEY` if none is
+set, so local dev needs no key (tokens won't survive a restart). In
+production, set `BIOINDEX_TOKEN_SIGNING_KEY` and drop `--dev`. The server
+fails fast with a clear message if `BIOINDEX_ENV` is unset, the config dir is
+missing, or no portals load. See [`examples/`](examples/) for a runnable
+config-dir skeleton.
 
 ## REST Queries
 

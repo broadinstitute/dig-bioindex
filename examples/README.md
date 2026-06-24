@@ -10,14 +10,14 @@ values from your AWS environment, and point the server at the directory.
 export BIOINDEX_CONFIG_DIR=$(pwd)/configs
 export BIOINDEX_ENV=qa
 
-python -m bioindex.main serve --port 5000
+python -m bioindex.main serve --port 5000 --dev
 ```
 
-The Dockerfile ships with a default `BIOINDEX_TOKEN_SIGNING_KEY`. Bioindex
-serves only public data, so a stable in-image key is acceptable: forging a
-token at most yields garbled iteration over already-public data, not an
-authorization bypass. Override at runtime via `-e BIOINDEX_TOKEN_SIGNING_KEY=...`
-if you want unique keys per environment.
+`--dev` auto-generates an ephemeral `BIOINDEX_TOKEN_SIGNING_KEY` if none is set,
+so local dev needs no key (tokens won't survive a restart). In production, set
+`BIOINDEX_TOKEN_SIGNING_KEY` explicitly and drop `--dev`. Bioindex serves only
+public data, so a forged token at most yields garbled iteration over
+already-public data, not an authorization bypass.
 
 Then visit `http://localhost:5000/example/api/bio/indexes`.
 
