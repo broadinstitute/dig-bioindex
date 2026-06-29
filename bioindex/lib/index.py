@@ -85,6 +85,50 @@ class Index:
             conn.commit()
 
     @staticmethod
+    def swap_into(engine, temp_name, canonical_name):
+        """
+        Blue/green cutover: atomically promote a freshly-built temp index so
+        that ``canonical_name`` serves the temp table + schema. Repoints
+        __Keys and __Indexes in ONE transaction (the cutover). Returns the OLD
+        canonical table name for the caller to DROP afterwards (DDL
+        auto-commits in MySQL, so the drop must NOT be in this transaction).
+        """
+        with engine.connect() as conn:
+            temp = conn.execute(text(
+                'SELECT `table`, `prefix`, `schema`, `built`, `compressed` '
+                'FROM `__Indexes` WHERE `name` = :n'), {'n': temp_name}).fetchone()
+            canon = conn.execute(text(
+                'SELECT `table` FROM `__Indexes` WHERE `name` = :n'),
+                {'n': canonical_name}).fetchone()
+
+        if temp is None:
+            raise KeyError(f'No such temp index: {temp_name}')
+        if canon is None:
+            raise KeyError(f'No such canonical index: {canonical_name}')
+        # temp row: (table, prefix, schema, built, compressed)
+        if temp[3] is None:
+            raise ValueError(f'Temp index {temp_name} is not built; refusing to swap')
+
+        old_table = canon[0]
+
+        with engine.begin() as conn:
+            # delete old canonical keys FIRST to avoid the (index,key) unique
+            # collision when the temp keys are renamed to the canonical name
+            conn.execute(text('DELETE FROM `__Keys` WHERE `index` = :n'),
+                         {'n': canonical_name})
+            conn.execute(text('UPDATE `__Keys` SET `index` = :c WHERE `index` = :t'),
+                         {'c': canonical_name, 't': temp_name})
+            conn.execute(text(
+                'UPDATE `__Indexes` SET `table` = :tbl, `prefix` = :pfx, `schema` = :sch, '
+                '`built` = :built, `compressed` = :cmp WHERE `name` = :c'),
+                {'tbl': temp[0], 'pfx': temp[1], 'sch': temp[2],
+                 'built': temp[3], 'cmp': temp[4], 'c': canonical_name})
+            conn.execute(text('DELETE FROM `__Indexes` WHERE `name` = :t'),
+                         {'t': temp_name})
+
+        return old_table
+
+    @staticmethod
     def create(engine, name, rds_table_name, s3_prefix, schema):
         """
         Create a new record in the __Index table and return True if
