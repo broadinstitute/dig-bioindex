@@ -1,7 +1,9 @@
+import re
+
 from sqlalchemy import Column, Index, Integer, BigInteger, MetaData, String, Table, text
 from sqlalchemy.exc import OperationalError
 
-from .locus import parse_locus_builder
+from .locus import Locus, parse_locus_builder
 
 
 class Schema:
@@ -51,6 +53,17 @@ class Schema:
     "annotation,region=region_$chr/$start/$stop"
     "phenotype,chromosome:start-stop"
     "consequence,chromosome,gene|transcript"
+
+    A locus index may carry an optional, reserved trailing modifier that
+    sets the bucket step (default 20000) for that index:
+
+      varId=$chr:$pos;locus_step=250
+      phenotype,chromosome:start-stop;locus_step=500
+
+    The step must be a positive integer and is only valid on a schema that
+    has a locus. Build-time bucketing and query-time stepping both read it
+    from this string, so they can never disagree. Changing it requires a
+    full rebuild (the stored positions are re-bucketed).
     """
 
     def __init__(self, schema_str):
@@ -64,7 +77,25 @@ class Schema:
         than the final position in a compound index!
         """
         self.schema_str = schema_str
-        self.schema_columns = [s.strip() for s in schema_str.split(',')]
+
+        # Optional, reserved trailing ';locus_step=N' sets the locus bucket
+        # size. Stripped before parsing the rest; absent => Locus.LOCUS_STEP.
+        # It contains no comma, so __Indexes arity math is unaffected.
+        self.locus_step = Locus.LOCUS_STEP
+        core = schema_str.strip()
+        m = re.search(r';locus_step=([^;]*)$', core)
+        had_step = m is not None
+        if m:
+            try:
+                step = int(m.group(1))
+            except ValueError:
+                raise ValueError(f'Invalid locus_step (not an integer): {schema_str}')
+            if step <= 0:
+                raise ValueError(f'Invalid locus_step (must be > 0): {schema_str}')
+            self.locus_step = step
+            core = core[:m.start()]
+
+        self.schema_columns = [s.strip() for s in core.split(',')]
         self.index_columns = []
         self.key_columns = []
 
@@ -80,7 +111,7 @@ class Schema:
                 raise ValueError(f'Invalid schema (locus must be last): {self.schema_str}')
 
             # parse the index "column" for a locus class builder and list of columns
-            self.locus_class, self.locus_columns = parse_locus_builder(column)
+            self.locus_class, self.locus_columns = parse_locus_builder(column, step=self.locus_step)
 
             # append either locus or value columns
             if self.locus_class:
@@ -95,6 +126,10 @@ class Schema:
         # ensure a valid schema exists
         if len(self.key_columns) == 0 and self.locus_class is None:
             raise ValueError(f'Invalid schema (no keys or locus specified)')
+
+        # a locus_step is only meaningful when the schema actually has a locus
+        if had_step and self.locus_class is None:
+            raise ValueError(f'locus_step set but schema has no locus: {schema_str}')
 
         # index building helpers
         self.index_keys = _index_keys(self.key_columns)

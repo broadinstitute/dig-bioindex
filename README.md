@@ -131,6 +131,19 @@ The rules of indexing are as follows:
 * Locus must be last.
 * Locus must be a position (`chr:pos`), region (`chr:start-stop`), or field template (`varId=$chr:$pos`) where the field can be parsed as a position/region, but is matched exactly by the field value as if it were a key column.
 
+#### Locus step (bucket size)
+
+A locus index buckets positions into `LOCUS_STEP` (20000 bp) windows. Append
+`;locus_step=N` to a locus schema to override the bucket size for that index
+(default 20000):
+
+    varId=$chr:$pos;locus_step=250
+
+A smaller step reduces over-read on point/region queries (fewer bytes
+decompressed per query) at the cost of more index rows. The step is part of
+the schema string, so changing it requires a full `index --rebuild`. It only
+affects the index whose schema string carries it.
+
 ## Preparing S3 Objects
 
 Once everything is setup, you can begin creating or preparing the objects in [S3][s3] to be indexed. Each objects is expected to be in [JSON-lines][json-lines] format, and _must be sorted in order they are to be indexed!_ The only exception to this would be if the index is always a 1:1 mapping with a single record (e.g. indexing by ID).
