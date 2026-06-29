@@ -14,7 +14,7 @@ def _engine():
         )
         c.exec_driver_sql(
             "CREATE TABLE `__Keys` (id INTEGER PRIMARY KEY, `index` TEXT, `key` TEXT, "
-            "version TEXT, built TEXT)"
+            "version TEXT, built TEXT, UNIQUE(`index`, `key`))"
         )
     return e
 
