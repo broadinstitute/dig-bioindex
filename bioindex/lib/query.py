@@ -195,8 +195,9 @@ def _run_query(config, engine, index, q, restricted, start_source_index=0, start
             chromosome, start, stop = parse_region_string(q[-1], config)
 
         # positions are stepped, and need to be between stepped ranges
-        step_start = (start // Locus.LOCUS_STEP) * Locus.LOCUS_STEP
-        step_stop = (stop // Locus.LOCUS_STEP) * Locus.LOCUS_STEP
+        step = index.schema.locus_step
+        step_start = (start // step) * step
+        step_stop = (stop // step) * step
 
         # replace the last query parameter with the locus
         query_params = dict(zip(escaped_column_names, q[:-1]))
