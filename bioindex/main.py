@@ -3,6 +3,8 @@ import functools
 import time
 from enum import Enum
 
+import sqlalchemy
+
 import click
 import dotenv
 import graphql.utilities
@@ -400,6 +402,21 @@ def update_compressed_status(cfg, index_name, prefix, compressed):
     index.Index.set_compressed(migrate.migrate(cfg), index_name, prefix, compressed)
 
 
+@click.command(name='swap')
+@click.argument('temp_name')
+@click.argument('canonical_name')
+@click.confirmation_option(prompt='Swap temp index into canonical name (drops the old table)?')
+@with_config
+def cli_swap(cfg, temp_name, canonical_name):
+    """Blue/green cutover: promote a built temp index into CANONICAL_NAME."""
+    engine = migrate.migrate(cfg)
+    old_table = index.Index.swap_into(engine, temp_name, canonical_name)
+    logging.info('Swapped %s -> %s; dropping old table %s', temp_name, canonical_name, old_table)
+    with engine.begin() as conn:
+        conn.execute(sqlalchemy.text(f'DROP TABLE IF EXISTS `{old_table}`'))
+    logging.info('Done')
+
+
 @click.command(name='query')
 @click.argument('index_name')
 @click.argument('q', nargs=-1)
@@ -508,6 +525,7 @@ cli.add_command(update_compressed_status)
 cli.add_command(cli_decompress)
 cli.add_command(cli_remove_uncompressed_files)
 cli.add_command(cli_bulk_compression_management)
+cli.add_command(cli_swap)
 
 
 def main():
