@@ -3,7 +3,7 @@ import re
 
 from sqlalchemy import text
 
-from .locus import Locus, parse_region_string
+from .locus import parse_region_string
 from .reader import MultiRecordReader, RecordReader, RecordSource
 from .s3 import list_objects
 
