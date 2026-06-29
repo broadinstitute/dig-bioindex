@@ -107,6 +107,7 @@ class RecordReader:
         self.bytes_total = 0
         self.bytes_read = 0
         self.count = 0
+        self.filtered_count = 0
         self.restricted_count = 0
         self.limit = None
         self._source_index = start_source_index
@@ -130,13 +131,11 @@ class RecordReader:
                 length = max(0, length - start_byte_offset)
             self.bytes_total += length
 
-        # start reading the records on-demand
+        # start reading the records on-demand. _readall already applies
+        # record_filter inline (and now tallies rejects in filtered_count),
+        # so no second filter() pass is needed.
         self.record_filter = record_filter
         self.records = self._readall()
-
-        # if there's a filter, apply it now
-        if record_filter is not None:
-            self.records = filter(record_filter, self.records)
 
     def _readall(self):
         """
@@ -220,6 +219,8 @@ class RecordReader:
                             if self.record_filter is None or self.record_filter(record):
                                 self.count += 1
                                 yield record
+                            else:
+                                self.filtered_count += 1
 
                         proc.wait()
                         if proc.returncode != 0:
@@ -252,10 +253,12 @@ class RecordReader:
                             self.restricted_count += 1
                             continue
 
-                        # optionally filter; and tally filtered records
+                        # optionally filter; tally kept and rejected records
                         if self.record_filter is None or self.record_filter(record):
                             self.count += 1
                             yield record
+                        else:
+                            self.filtered_count += 1
 
             # handle database out of sync with S3
             except botocore.exceptions.ClientError:
@@ -352,6 +355,13 @@ class MultiRecordReader:
         Total number of restricted records read.
         """
         return sum(r.restricted_count for r in self.readers)
+
+    @property
+    def filtered_count(self):
+        """
+        Total number of records decompressed then dropped by the filter.
+        """
+        return sum(r.filtered_count for r in self.readers)
 
     @property
     def at_end(self):
