@@ -145,7 +145,7 @@ class Index:
             '   `table` = VALUES(`table`), '
             '   `prefix` = VALUES(`prefix`), '
             '   `schema` = VALUES(`schema`), '
-            '   `built` = 0 '
+            '   `built` = NULL '
         )
 
         with engine.begin() as conn:
