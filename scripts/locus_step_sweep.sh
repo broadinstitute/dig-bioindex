@@ -24,8 +24,10 @@ mkdir -p "$OUT"
 for STEP in ${STEPS[@]}; do
   SCHEMA="varId=\$chr:\$pos;locus_step=${STEP}"
   echo "==> [step ${STEP}] create + rebuild ${INDEX} over ${PREFIX}"
-  yes | python -m bioindex.main create "$INDEX" "$TABLE" "$PREFIX" "$SCHEMA"
-  yes | python -m bioindex.main index "$INDEX" --rebuild
+  python -m bioindex.main create "$INDEX" "$TABLE" "$PREFIX" "$SCHEMA" --yes
+  # Mark as bgzip-compressed so the reader can bgzip-seek the variant data.
+  python -m bioindex.main update-compressed-status "$INDEX" "$PREFIX" -c
+  python -m bioindex.main index "$INDEX" --rebuild --yes
   echo "==> [step ${STEP}] replay -> ${OUT}/step-${STEP}.csv"
   python scripts/bench_locus_step.py "$INDEX" "$VARIDS" > "${OUT}/step-${STEP}.csv"
 done

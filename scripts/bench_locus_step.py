@@ -13,8 +13,12 @@ Usage:
 Output (stdout, CSV):
   index,locus_step,varId,bytes_read,kept,filtered,latency_ms
 """
-import csv
+import os
 import sys
+# Bootstrap repo root so `import bioindex` works when run as a script (dev).
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import csv
 import time
 
 import dotenv
