@@ -52,6 +52,19 @@ Resources:
         # 4h headroom: fanout indexes a single large file per job (falcon variant_files
         # are ~6.6 GB). Was 3600 (1h); a big file can brush that ceiling.
         AttemptDurationSeconds: 14400
+      RetryStrategy:
+        # Retry ONLY infra failures that happened before the container ran — e.g. the
+        # CannotPullContainerError ECR-pull timeouts that silently dropped 4 files on
+        # 2026-07-01 when many tasks pulled the image at once. A job that produced an exit
+        # code actually ran and may have partially inserted records; re-running it would
+        # DUPLICATE rows (the indexer workers are not idempotent — insert only appends),
+        # so it EXITs and is surfaced by the orchestrator's per-child status check instead.
+        Attempts: 5
+        EvaluateOnExit:
+          - Action: EXIT       # container ran (has an exit code) -> do not retry (dup risk)
+            OnExitCode: '*'
+          - Action: RETRY      # never ran (pull/init failure, no exit code) -> retry
+            OnStatusReason: '*'
       ContainerProperties:
         Image: !Sub '${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/batch-indexer-repo'
         Command:
@@ -99,6 +112,19 @@ Resources:
         - 'FARGATE'
       Timeout:
         AttemptDurationSeconds: 14400
+      RetryStrategy:
+        # Retry ONLY infra failures that happened before the container ran — e.g. the
+        # CannotPullContainerError ECR-pull timeouts that silently dropped 4 files on
+        # 2026-07-01 when many tasks pulled the image at once. A job that produced an exit
+        # code actually ran and may have partially inserted records; re-running it would
+        # DUPLICATE rows (the indexer workers are not idempotent — insert only appends),
+        # so it EXITs and is surfaced by the orchestrator's per-child status check instead.
+        Attempts: 5
+        EvaluateOnExit:
+          - Action: EXIT       # container ran (has an exit code) -> do not retry (dup risk)
+            OnExitCode: '*'
+          - Action: RETRY      # never ran (pull/init failure, no exit code) -> retry
+            OnStatusReason: '*'
       ContainerProperties:
         Image: !Sub '${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/batch-indexer-repo'
         Command:
