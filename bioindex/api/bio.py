@@ -740,6 +740,23 @@ def _match_keys(ctx, i, qs, limit, *, after=None, page=1, generation):
     }
 
 
+def _take_page(reader, response_limit):
+    """Yield one page of records, bounded by bytes RETURNED, not bytes READ.
+
+    Bounding on reader.bytes_read stops a heavily-filtered (over-reading) query
+    after ~1 record, because bytes_read includes the non-matching records the
+    filter discards. Bounding on reader.matched_bytes fills the page with up to
+    `response_limit` bytes of actual returned records (or exhausts the source),
+    so over-read point queries return a full page instead of a near-empty one —
+    while fat-key queries stay bounded to ~response_limit exactly as before.
+    """
+    limit = reader.matched_bytes + response_limit
+    for r in reader.records:
+        yield r
+        if reader.matched_bytes > limit:
+            break
+
+
 def _fetch_records(ctx, reader, index, qs, fmt, *, restricted=None, cont_type='fetch', page=1, generation, query_s=None):
     """
     Reads up to response_limit bytes from a RecordReader, format them,
@@ -747,24 +764,16 @@ def _fetch_records(ctx, reader, index, qs, fmt, *, restricted=None, cont_type='f
     """
     response_limit = ctx.config.response_limit
     response_limit_max = ctx.config.response_limit_max
-    bytes_limit = reader.bytes_read + response_limit
     restricted_count = reader.restricted_count
-
-    # similar to itertools.takewhile, but keeps the final record
-    def take():
-        for r in reader.records:
-            yield r
-
-            # stop if the byte limit was reached
-            if reader.bytes_read > bytes_limit:
-                break
 
     # validate query parameters
     if fmt not in ['r', 'row', 'c', 'col', 'column']:
         raise ValueError('Invalid output format')
 
-    # profile how long it takes to fetch the records from s3
-    fetched_records, fetch_s = profile(list, take())
+    # profile how long it takes to fetch the records from s3. _take_page bounds the
+    # page by bytes RETURNED (matched records), not bytes read, so an over-reading
+    # query returns a full page instead of ~1 record + a continuation.
+    fetched_records, fetch_s = profile(list, _take_page(reader, response_limit))
     count = len(fetched_records)
 
     # did the reader exceed the configured, maximum number of bytes to read?

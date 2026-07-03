@@ -107,6 +107,7 @@ class RecordReader:
         self.bytes_total = 0
         self.bytes_read = 0
         self.count = 0
+        self.matched_bytes = 0
         self.filtered_count = 0
         self.restricted_count = 0
         self.limit = None
@@ -218,6 +219,7 @@ class RecordReader:
 
                             if self.record_filter is None or self.record_filter(record):
                                 self.count += 1
+                                self.matched_bytes += line_bytes
                                 yield record
                             else:
                                 self.filtered_count += 1
@@ -256,6 +258,7 @@ class RecordReader:
                         # optionally filter; tally kept and rejected records
                         if self.record_filter is None or self.record_filter(record):
                             self.count += 1
+                            self.matched_bytes += line_bytes
                             yield record
                         else:
                             self.filtered_count += 1
