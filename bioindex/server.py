@@ -1,7 +1,7 @@
 import fastapi
 import pymysql
 
-from .api import bio
+from .api import bio, enrichr
 from .api import portal
 from .api import raw
 
@@ -17,6 +17,8 @@ app = fastapi.FastAPI(title='BioIndex', redoc_url=None)
 app.include_router(bio.router, prefix='/api/bio', tags=['bio'])
 app.include_router(portal.router, prefix='/api/portal', tags=['portal'])
 app.include_router(raw.router, prefix='/api/raw', tags=['raw'])
+
+app.include_router(enrichr.router, prefix='/api/enrichr', tags=['enrichr'])
 
 # enable cross-origin resource sharing
 app.add_middleware(
