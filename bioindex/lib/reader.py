@@ -1,5 +1,7 @@
 import os
+import random
 import subprocess
+import time
 
 import boto3
 import botocore.exceptions
@@ -10,6 +12,16 @@ import orjson
 
 from .auth import verify_record
 from .s3 import read_lined_object
+
+
+# Bounded retry (exponential backoff + full jitter) around the bgzip S3 read.
+# Transient S3/bgzip read failures (bgzip exits non-zero, e.g. a 503 SlowDown)
+# used to bubble straight up as HTTP 500s; instead we retry a few times,
+# resuming from the current byte offset so no already-yielded records are
+# duplicated. Env-overridable so ops can tune without a code change.
+BGZIP_MAX_RETRIES = int(os.environ.get("BIOINDEX_BGZIP_MAX_RETRIES", "3"))
+BGZIP_BACKOFF_BASE_S = float(os.environ.get("BIOINDEX_BGZIP_BACKOFF_BASE_S", "0.2"))
+BGZIP_BACKOFF_CAP_S = float(os.environ.get("BIOINDEX_BGZIP_BACKOFF_CAP_S", "5.0"))
 
 
 # One session reused across requests; boto3 caches and refreshes
@@ -183,51 +195,107 @@ class RecordReader:
             try:
                 compression_on = self.index.compressed
                 if compression_on:
-                    # For bounded sources (SQL-derived), pass -s to limit bgzip
-                    # to the known uncompressed range. For unbounded sources
-                    # (from S3 listing, /all path), source.end is the COMPRESSED
-                    # size — passing it as -s would truncate uncompressed output
-                    # at ~compressed_size bytes (mid-record). Omit -s so bgzip
-                    # reads to actual EOF.
                     s3_url = f"s3://{self.config.s3_bucket}/{source.key}{'' if source.key.endswith('.gz') else '.gz'}"
-                    if source.bounded:
-                        command = ['bgzip', '-b', f"{seek_start}", '-s', f"{seek_length}", s3_url]
-                    else:
-                        command = ['bgzip', '-b', f"{seek_start}", s3_url]
-                    # Read bgzip output in BINARY (no text=True). Binary line
-                    # iteration splits only on b'\n' with NO universal-newline
-                    # translation, so len(line) is the true uncompressed byte
-                    # count (including the newline) even for CRLF-terminated or
-                    # multi-byte records. text=True would collapse '\r\n' -> '\n'
-                    # and count characters, under-counting such a line by a byte
-                    # and landing the next resume's bgzip -b on a stranded
-                    # newline (orjson then fails with "input data is empty").
-                    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                          env=_aws_env_for_htslib()) as proc:
-                        for line in proc.stdout:
-                            line_bytes = len(line)
-                            self.bytes_read += line_bytes
-                            self._source_byte_offset += line_bytes
 
-                            # parse the record (orjson.loads accepts bytes)
-                            record = orjson.loads(line)
+                    # Bounded retry with exponential backoff + full jitter around
+                    # the bgzip read. Each attempt recomputes the seek from the
+                    # CURRENT self._source_byte_offset so a retry RESUMES where
+                    # the failed stream left off — already-yielded records are
+                    # never re-read (bgzip -b lands past them). retry_attempt is
+                    # 0 for the initial try and increments per retry.
+                    retry_attempt = 0
+                    while True:
+                        # Recompute the seek from the current offset every attempt
+                        # so a retry RESUMES where the failed stream left off.
+                        #
+                        # UNIT MISMATCH: self._source_byte_offset (and thus
+                        # cur_seek_start) counts UNCOMPRESSED bytes. For BOUNDED
+                        # (SQL-derived) sources source.end is ALSO an uncompressed
+                        # offset, so source.end - cur_seek_start is a valid remaining
+                        # length — safe to pass to bgzip's -s (uncompressed bytes) and
+                        # to early-break on once it hits 0. For UNBOUNDED (/all)
+                        # sources source.end is the object's COMPRESSED size, a
+                        # DIFFERENT unit, so it is NOT an uncompressed boundary: after
+                        # a mid-stream failure cur_seek_start (uncompressed) routinely
+                        # already exceeds the compressed end, which would make a
+                        # source.end-derived length go <= 0 and silently drop the rest
+                        # of the stream on retry. So for unbounded sources we must NOT
+                        # compute a length from source.end, must NOT pass -s, and must
+                        # NOT early-break on it. Unbounded termination is the clean
+                        # returncode==0 break below (bgzip streamed to real EOF) or the
+                        # give-up raise after BGZIP_MAX_RETRIES — bounded either way.
+                        cur_seek_start = source.start + self._source_byte_offset
 
-                            # Check for restrictions and filters, then yield records
-                            if not verify_record(record, self.restricted):
-                                self.restricted_count += 1
-                                continue
+                        if source.bounded:
+                            cur_seek_length = source.end - cur_seek_start
+                            if cur_seek_length <= 0:
+                                # Fully consumed already (e.g. a prior attempt streamed
+                                # everything before failing at EOF) — nothing left.
+                                break
+                            command = ['bgzip', '-b', f"{cur_seek_start}", '-s', f"{cur_seek_length}", s3_url]
+                        else:
+                            command = ['bgzip', '-b', f"{cur_seek_start}", s3_url]
 
-                            if self.record_filter is None or self.record_filter(record):
-                                self.count += 1
-                                self.matched_bytes += line_bytes
-                                yield record
-                            else:
-                                self.filtered_count += 1
+                        try:
+                            # Read bgzip output in BINARY (no text=True). Binary line
+                            # iteration splits only on b'\n' with NO universal-newline
+                            # translation, so len(line) is the true uncompressed byte
+                            # count (including the newline) even for CRLF-terminated or
+                            # multi-byte records. text=True would collapse '\r\n' -> '\n'
+                            # and count characters, under-counting such a line by a byte
+                            # and landing the next resume's bgzip -b on a stranded
+                            # newline (orjson then fails with "input data is empty").
+                            with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                                  env=_aws_env_for_htslib()) as proc:
+                                for line in proc.stdout:
+                                    line_bytes = len(line)
+                                    self.bytes_read += line_bytes
+                                    self._source_byte_offset += line_bytes
 
-                        proc.wait()
-                        if proc.returncode != 0:
-                            stderr = proc.stderr.read().decode(errors="replace")
-                            raise subprocess.CalledProcessError(proc.returncode, command, output=stderr)
+                                    # parse the record (orjson.loads accepts bytes)
+                                    record = orjson.loads(line)
+
+                                    # Check for restrictions and filters, then yield records
+                                    if not verify_record(record, self.restricted):
+                                        self.restricted_count += 1
+                                        continue
+
+                                    if self.record_filter is None or self.record_filter(record):
+                                        self.count += 1
+                                        self.matched_bytes += line_bytes
+                                        yield record
+                                    else:
+                                        self.filtered_count += 1
+
+                                proc.wait()
+                                if proc.returncode != 0:
+                                    stderr = proc.stderr.read().decode(errors="replace")
+                                    raise subprocess.CalledProcessError(proc.returncode, command, output=stderr)
+                        except subprocess.CalledProcessError as e:
+                            # bgzip exited non-zero. Log its stderr (which otherwise
+                            # never reaches CloudWatch) and either retry or give up.
+                            stderr = (e.output or "").strip()
+                            if retry_attempt >= BGZIP_MAX_RETRIES:
+                                logging.error(
+                                    f"bgzip read failed for {source.key} at byte offset "
+                                    f"{self._source_byte_offset} after {retry_attempt + 1} attempts; "
+                                    f"giving up. bgzip stderr: {stderr}"
+                                )
+                                raise
+                            retry_attempt += 1
+                            delay = random.uniform(
+                                0, min(BGZIP_BACKOFF_CAP_S, BGZIP_BACKOFF_BASE_S * (2 ** (retry_attempt - 1)))
+                            )
+                            logging.warning(
+                                f"bgzip read failed for {source.key} at byte offset "
+                                f"{self._source_byte_offset} (attempt {retry_attempt}/{BGZIP_MAX_RETRIES}); "
+                                f"retrying in {delay:.3f}s. bgzip stderr: {stderr}"
+                            )
+                            time.sleep(delay)
+                            continue
+
+                        # returncode == 0 (stream ended cleanly) — done with this source.
+                        break
 
                 else:
                     content = read_lined_object(self.config.s3_bucket, source.key,
