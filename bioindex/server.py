@@ -13,6 +13,7 @@ from .lib.portal_registry import init_registry
 from .middleware.portal import PortalResolveMiddleware
 
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 
@@ -88,3 +89,16 @@ app.add_middleware(
     allow_headers=['*'],
 )
 app.mount('/static', StaticFiles(directory="web/static"), name="static")
+
+
+# PortalResolveMiddleware rewrites /<portal>/ to /, so this one route serves
+# every portal root. The bare server root resolves no portal, and the page's
+# relative API calls would have nothing to query, so it stays a 404.
+@app.get('/')
+def index(request: fastapi.Request):
+    """
+    SPA demonstration page.
+    """
+    if getattr(request.state, "portal_ctx", None) is None:
+        raise fastapi.HTTPException(status_code=404, detail="Not Found")
+    return FileResponse('web/index.html')

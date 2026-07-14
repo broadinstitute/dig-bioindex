@@ -9,7 +9,7 @@ from urllib.parse import parse_qsl, quote
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, RedirectResponse
 from starlette.types import ASGIApp
 
 from ..lib.portal_registry import get_registry
@@ -121,6 +121,22 @@ class PortalResolveMiddleware(BaseHTTPMiddleware):
                 self._log(
                     request, response, start, request_id,
                     portal=None, route=None, path=original_path,
+                )
+                return response
+
+            # /<portal> -> /<portal>/. The index page calls the API with
+            # relative URLs (./api/bio/...), which resolve against the server
+            # root instead of the portal without the trailing slash. Starlette's
+            # own redirect_slashes can't do this: the rewrite below hides the
+            # prefix from the router, which sees a bare "/" either way.
+            if len(segments) == 1:
+                target = "/" + head + "/"
+                if request.url.query:
+                    target += "?" + request.url.query
+                response = RedirectResponse(target, status_code=307)
+                self._log(
+                    request, response, start, request_id,
+                    portal=ctx.name, route=None, path=original_path,
                 )
                 return response
 
