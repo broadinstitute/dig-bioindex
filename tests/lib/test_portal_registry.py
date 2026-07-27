@@ -1,5 +1,3 @@
-import time
-
 import pytest
 
 from bioindex.lib.portal_context import PortalContext
@@ -33,14 +31,6 @@ def test_names_sorted():
 def test_len():
     init_registry([_make_ctx("a"), _make_ctx("b")])
     assert len(get_registry()) == 2
-
-
-def test_touch_updates_timestamp():
-    ctx = _make_ctx("x")
-    before = ctx.last_used
-    time.sleep(0.01)
-    ctx.touch()
-    assert ctx.last_used > before
 
 
 def test_get_registry_raises_before_init(monkeypatch):

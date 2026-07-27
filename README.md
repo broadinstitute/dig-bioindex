@@ -234,35 +234,31 @@ Once the schema has been saved, you can then start the server.
 
 ## Starting the Server
 
-The server serves **multiple portals from one process**. The first URL path
-segment selects a portal, so every API request is `/{portal}/api/bio/...`
-(all the `http://localhost:5000/api/...` URLs below are reached as
-`http://localhost:5000/{portal}/api/...`). Each portal loads its own config
-(DB engines + index cache) at startup from a config directory.
-
-Set two environment variables and run `serve`:
-
-```bash
-export BIOINDEX_CONFIG_DIR=/etc/bioindex   # default; holds portals/ and envs/
-export BIOINDEX_ENV=qa                      # selects envs/<env>.yaml
-
-bioindex serve --port 5000 --dev
-```
-
-The config directory is laid out as:
+One server process serves many portals. The first path segment selects the
+portal, so every URL below is reached as `http://localhost:5000/{portal}/api/...`.
+Each portal gets its own config, database connections and index cache, read
+at startup from a config directory:
 
 ```
 $BIOINDEX_CONFIG_DIR/
-  envs/<env>.yaml        # env-wide BIOINDEX_* defaults (e.g. envs/qa.yaml)
+  envs/<env>.yaml        # BIOINDEX_* defaults shared by every portal
   portals/<name>.yaml    # one file per portal, with an envs.<env> block
 ```
 
-`--dev` auto-generates an ephemeral `BIOINDEX_TOKEN_SIGNING_KEY` if none is
-set, so local dev needs no key (tokens won't survive a restart). In
-production, set `BIOINDEX_TOKEN_SIGNING_KEY` and drop `--dev`. The server
-fails fast with a clear message if `BIOINDEX_ENV` is unset, the config dir is
-missing, or no portals load. See [`examples/`](examples/) for a runnable
-config-dir skeleton.
+The server is started using the `serve` command:
+
+```bash
+export BIOINDEX_CONFIG_DIR=/etc/bioindex   # default; holds portals/ and envs/
+export BIOINDEX_ENV=qa                     # selects envs/<env>.yaml
+
+$ bioindex serve --port 5000 --dev
+```
+
+It refuses to start if `BIOINDEX_ENV` is unset, the config directory is
+missing, or no portals load. `--dev` generates a throwaway
+`BIOINDEX_TOKEN_SIGNING_KEY` so local dev needs no setup; set the key
+explicitly and drop `--dev` in production. See [`examples/`](examples/) for a
+config directory to copy.
 
 ## REST Queries
 

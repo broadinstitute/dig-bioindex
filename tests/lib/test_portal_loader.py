@@ -108,6 +108,8 @@ def test_load_portal_dicts_missing_portals_dir(tmp_path):
 # ── build_portal_contexts ─────────────────────────────────────────────────────
 
 def test_build_portal_contexts_returns_portal_context(tmp_path, monkeypatch):
+    import types
+
     import bioindex.lib.portal_loader as pl
     from bioindex.lib import config as config_mod
 
@@ -123,16 +125,20 @@ def test_build_portal_contexts_returns_portal_context(tmp_path, monkeypatch):
         env_yaml="",
     )
 
-    fake_config = object()
-    fake_bio = object()
-    fake_portal = None
-    fake_indexes = {"idx": object()}
-    fake_gql = None
+    # no portal schema and no graphql schema, so neither is connected/loaded
+    fake_config = types.SimpleNamespace(
+        rds_config={"host": "h"},
+        portal_rds_config={},
+        bio_schema="bio",
+        portal_schema=None,
+        graphql_schema=None,
+    )
+    fake_engine = object()
+    fake_index = types.SimpleNamespace(name="idx", schema=types.SimpleNamespace(arity=1))
 
     monkeypatch.setattr(config_mod.Config, "from_dict", staticmethod(lambda d: fake_config))
-    monkeypatch.setattr(pl, "_build_engines", lambda c: (fake_bio, fake_portal))
-    monkeypatch.setattr(pl, "_load_indexes", lambda e: fake_indexes)
-    monkeypatch.setattr(pl, "_load_gql_schema", lambda c, e: fake_gql)
+    monkeypatch.setattr(pl, "connect_to_db", lambda **kwargs: fake_engine)
+    monkeypatch.setattr(pl.Index, "list_indexes", staticmethod(lambda *a, **k: [fake_index]))
 
     result = pl.build_portal_contexts(cfg_dir, "qa")
 
@@ -141,7 +147,7 @@ def test_build_portal_contexts_returns_portal_context(tmp_path, monkeypatch):
     assert isinstance(ctx, PortalContext)
     assert ctx.name == "mportal"
     assert ctx.config is fake_config
-    assert ctx.engine is fake_bio
-    assert ctx.indexes is fake_indexes
+    assert ctx.engine is fake_engine
+    assert ctx.indexes == {("idx", 1): fake_index}
     assert ctx.portal is None
     assert ctx.gql_schema is None

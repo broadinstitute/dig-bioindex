@@ -147,13 +147,11 @@ async def test_portal_groups_uses_ctx_portal():
     ctx = _make_ctx(portal_engine=mock_portal)
     req = _make_req(ctx)
 
-    import orjson
-    resp = await portal_api.api_portal_groups(req=req)
-    body = orjson.loads(resp.body)
+    body = await portal_api.api_portal_groups(req=req)
 
     assert "data" in body
     assert "nonce" in body
-    assert resp.headers.get("cache-control") == "no-store"
+    mock_portal.connect.assert_called_once()
 
 
 @pytest.mark.asyncio

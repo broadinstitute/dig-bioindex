@@ -1,8 +1,7 @@
-# Running bioindex locally with example configs
+# Example config directory
 
-This directory shows the configs-dir shape the consolidated bioindex
-service expects at runtime. Copy `portals/example.yaml`, fill in real
-values from your AWS environment, and point the server at the directory.
+The shape of the config directory the server reads at startup. Copy
+`portals/example.yaml`, fill in real values, and point `serve` at it.
 
 ## Run
 
@@ -10,40 +9,30 @@ values from your AWS environment, and point the server at the directory.
 export BIOINDEX_CONFIG_DIR=$(pwd)/configs
 export BIOINDEX_ENV=qa
 
-python -m bioindex.main serve --port 5000 --dev
+bioindex serve --port 5000 --dev
 ```
-
-`--dev` auto-generates an ephemeral `BIOINDEX_TOKEN_SIGNING_KEY` if none is set,
-so local dev needs no key (tokens won't survive a restart). In production, set
-`BIOINDEX_TOKEN_SIGNING_KEY` explicitly and drop `--dev`. Bioindex serves only
-public data, so a forged token at most yields garbled iteration over
-already-public data, not an authorization bypass.
 
 Then visit `http://localhost:5000/example/api/bio/indexes`.
 
 ## What lives where
 
-- `envs/qa.yaml`, `envs/prod.yaml` — env-wide defaults merged into every
-  portal's config block for the matching env.
-- `portals/<name>.yaml` — one portal per file. Each portal has independent
-  `envs.qa` and `envs.prod` blocks; any `Config` field is per-env-overridable.
+- `envs/<env>.yaml` — defaults merged into every portal's block for that env.
+- `portals/<name>.yaml` — one portal per file, with an `envs.<env>` block per
+  environment it runs in. Anything settable via `BIOINDEX_*` can go in either,
+  and the portal block wins.
 
-To add more portals, add more files under `portals/`. To skip a portal in
-some env, omit its `envs.<env>` block.
+Add a portal by adding a file under `portals/`. Skip a portal in some
+environment by omitting its `envs.<env>` block.
 
-## Smoke checks (after `serve` is running)
+## Smoke checks
 
 ```bash
-# NOTE: /health and /ready are not yet implemented (deferred); these will 404.
-# curl -fsS http://localhost:5000/health
-# curl -fsS http://localhost:5000/ready | jq .
-
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5000/nope/api/bio/indexes
+# unknown portal -> 404 listing the valid ones
+curl -s http://localhost:5000/nope/api/bio/indexes | jq .
 
 curl -fsS http://localhost:5000/example/api/bio/indexes | jq .
 
-curl -fsS "http://localhost:5000/example/api/bio/query/<index>?q=<q>" | jq .
-
+# paginate: the continuation token is bound to the portal that issued it
 TOKEN=$(curl -fsS "http://localhost:5000/example/api/bio/query/<index>?q=<q>" | jq -r .continuation)
 curl -fsS "http://localhost:5000/example/api/bio/cont?token=$TOKEN" | jq .
 ```

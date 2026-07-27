@@ -1,82 +1,88 @@
 import logging
-import os
 from pathlib import Path
-from typing import Dict, List, Optional, Union
 
 import yaml
 
+from .aws import connect_to_db
 from .config import Config
+from .index import Index
 from .portal_context import PortalContext
+from . import ql
 
 
-def _read_yaml(path: Path) -> Optional[dict]:
+def _read_yaml(path):
+    """
+    Parse a yaml file, or None if it doesn't exist.
+    """
     if not path.exists():
         return None
+
     with open(path) as fp:
         return yaml.safe_load(fp) or {}
 
 
-def load_portal_dicts(config_dir: Union[str, os.PathLike], env: str) -> List[Dict]:
+def load_portal_dicts(config_dir, env):
+    """
+    Read <config_dir>/portals/*.yaml and merge each portal's `envs.<env>`
+    block over the defaults in <config_dir>/envs/<env>.yaml. Portals with
+    no block for this environment are skipped.
+    """
     config_dir = Path(config_dir)
-    env_defaults = _read_yaml(config_dir / "envs" / f"{env}.yaml") or {}
+    env_defaults = _read_yaml(config_dir / 'envs' / f'{env}.yaml') or {}
 
-    portals_dir = config_dir / "portals"
+    portals_dir = config_dir / 'portals'
     if not portals_dir.exists():
         return []
 
-    result = []
-    for portal_yaml in sorted(portals_dir.glob("*.yaml")):
+    portals = []
+    for portal_yaml in sorted(portals_dir.glob('*.yaml')):
         raw = _read_yaml(portal_yaml)
         if not raw:
             continue
-        name = raw.get("name") or portal_yaml.stem
-        env_block = (raw.get("envs") or {}).get(env)
+
+        name = raw.get('name') or portal_yaml.stem
+        env_block = (raw.get('envs') or {}).get(env)
+
         if env_block is None:
             logging.info("portal %s has no '%s' block; skipping in this env", name, env)
             continue
         if not isinstance(env_block, dict):
-            logging.error(
-                "portal %s: 'envs.%s' must be a mapping, got %s (in %s); skipping",
-                name, env, type(env_block).__name__, portal_yaml,
-            )
+            logging.error("portal %s: 'envs.%s' must be a mapping, got %s; skipping",
+                          name, env, type(env_block).__name__)
             continue
-        merged = {**env_defaults, **env_block}
-        result.append({"name": name, "env": merged})
-    return result
+
+        portals.append({'name': name, 'env': {**env_defaults, **env_block}})
+
+    return portals
 
 
-def _build_engines(config):
-    from .aws import connect_to_db
-    bio = connect_to_db(**config.rds_config, schema=config.bio_schema)
-    portal = None
-    if config.portal_schema:
-        portal = connect_to_db(**config.portal_rds_config, schema=config.portal_schema)
-    return bio, portal
-
-
-def _load_indexes(engine):
-    from .index import Index
-    indexes = Index.list_indexes(engine, filter_built=False)
-    return {(i.name, int(i.schema.arity)): i for i in indexes}
-
-
-def _load_gql_schema(config, engine):
-    if not config.graphql_schema:
-        return None
-    from . import ql
-    return ql.load_schema(config, engine, config.graphql_schema)
-
-
-def build_portal_contexts(config_dir: Union[str, os.PathLike], env: str) -> List[PortalContext]:
-    descriptors = load_portal_dicts(config_dir, env)
+def build_portal_contexts(config_dir, env):
+    """
+    Load every portal defined for `env` and connect it to its databases.
+    """
     contexts = []
-    for desc in descriptors:
-        cfg = Config.from_dict(desc["env"])
-        bio_engine, portal_engine = _build_engines(cfg)
-        indexes = _load_indexes(bio_engine)
-        gql = _load_gql_schema(cfg, bio_engine)
+
+    for portal in load_portal_dicts(config_dir, env):
+        config = Config.from_dict(portal['env'])
+
+        # connect to the index schema, and optionally the portal/metadata schema
+        engine = connect_to_db(**config.rds_config, schema=config.bio_schema)
+        portal_engine = None
+        if config.portal_schema:
+            portal_engine = connect_to_db(**config.portal_rds_config, schema=config.portal_schema)
+
+        indexes = Index.list_indexes(engine, filter_built=False)
+        gql_schema = None
+        if config.graphql_schema:
+            gql_schema = ql.load_schema(config, engine, config.graphql_schema)
+
         contexts.append(PortalContext(
-            name=desc["name"], config=cfg, engine=bio_engine,
-            portal=portal_engine, indexes=indexes, gql_schema=gql,
+            name=portal['name'],
+            config=config,
+            engine=engine,
+            indexes=dict(((i.name, int(i.schema.arity)), i) for i in indexes),
+            portal=portal_engine,
+            gql_schema=gql_schema,
         ))
+
     return contexts

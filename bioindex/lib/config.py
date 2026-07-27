@@ -17,10 +17,7 @@ def config_var(type=str, default=None):
     def decorator(f):
         def wrapper(self):
             key = f(self)
-            if self._overrides:
-                val = self._overrides.get(key, default)
-            else:
-                val = os.environ.get(key, default)
+            val = (self._overrides if self._overrides is not None else os.environ).get(key, default)
 
             # cast to the appropriate type
             if type == list:
@@ -41,15 +38,21 @@ class Config:
         """
         Loads the configuration file using environment.
         """
-        self._overrides = _overrides or {}
+        self._overrides = _overrides
         try:
-            if not self._overrides:
+            # settings given explicitly are complete; never fall back to the environment
+            if self._overrides is None:
                 if self.bioindex_env is not None:
                     secret = secret_lookup(self.bioindex_env)
                     assert secret, f'Failed to lookup secret {self.bioindex_env}'
+
+                    # set environment keys if not already set
                     Config.set_default_env(secret)
+
+                # use keyword arguments if environment not yet set
                 Config.set_default_env(kwargs)
 
+            # validate required settings
             assert self.s3_bucket, 'BIOINDEX_S3_BUCKET not set in the environment'
             assert self.rds_config, 'BIOINDEX_RDS_SECRET nor BIOINDEX_RDS_INSTANCE set in the environment'
             assert self.bio_schema, 'BIOINDEX_BIO_SCHEMA not set in the environment'
@@ -58,8 +61,12 @@ class Config:
             sys.exit(-1)
 
     @classmethod
-    def from_dict(cls, env_dict: dict) -> 'Config':
-        return cls(_overrides=dict(env_dict))
+    def from_dict(cls, env):
+        """
+        Build a config from an explicit dict of settings rather than from
+        the process environment, so one process can serve many portals.
+        """
+        return cls(_overrides=dict(env))
 
     @staticmethod
     def set_default_env(env):

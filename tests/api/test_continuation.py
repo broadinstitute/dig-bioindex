@@ -7,7 +7,6 @@ import asyncio
 import types
 from unittest.mock import MagicMock, patch
 
-import orjson
 import pytest
 
 import bioindex.api.bio as bio
@@ -71,8 +70,7 @@ def test_fetch_records_mints_token_when_not_at_end():
         bytes_read=100,
         bytes_total=2000,
     )
-    result = bio._fetch_records(ctx, reader, "myindex", ["q1"], "row",
-                                generation="gen-test-fixed", page=1)
+    result = bio._fetch_records(ctx, reader, "myindex", ["q1"], "row", page=1)
     assert result["continuation"] is not None
     assert result["page"] == 1
     assert result["count"] == 2
@@ -81,8 +79,7 @@ def test_fetch_records_mints_token_when_not_at_end():
 def test_fetch_records_no_token_when_at_end():
     ctx = _make_ctx()
     reader = _make_reader(records=[{"x": 1}], at_end=True)
-    result = bio._fetch_records(ctx, reader, "myindex", ["q1"], "row",
-                                generation="gen-test-fixed")
+    result = bio._fetch_records(ctx, reader, "myindex", ["q1"], "row")
     assert result["continuation"] is None
 
 
@@ -94,8 +91,7 @@ def test_fetch_records_minted_token_carries_generation():
         source_index=0,
         source_byte_offset=128,
     )
-    result = bio._fetch_records(ctx, reader, "myindex", ["q1"], "row",
-                                generation="gen-test-fixed", page=1)
+    result = bio._fetch_records(ctx, reader, "myindex", ["q1"], "row", page=1)
     token = result["continuation"]
     assert token is not None
     state = signed_tokens.decode(token, signed_tokens.signing_key())
@@ -139,8 +135,7 @@ async def test_api_cont_resumes_fetch():
     with patch("bioindex.api.bio.query.fetch", return_value=resume_reader) as mock_fetch:
         result = await bio.api_cont(token=token, req=req)
 
-    body = result.body
-    data = orjson.loads(body)
+    data = result
     assert data["page"] == 2
     assert data["count"] == 1
     assert data["continuation"] is None
@@ -209,8 +204,7 @@ def test_match_keys_mints_token_at_limit():
     fake_index = MagicMock()
     fake_index.name = "myindex"
     with patch("bioindex.api.bio.query.match", return_value=list(range(10))):
-        result = bio._match_keys(ctx, fake_index, ["q1"], None,
-                                 generation="gen-test-fixed", page=1)
+        result = bio._match_keys(ctx, fake_index, ["q1"], None, page=1)
     assert result["continuation"] is not None
     assert result["count"] == 10
     assert result["page"] == 1
@@ -222,8 +216,7 @@ def test_match_keys_no_token_below_limit():
     fake_index = MagicMock()
     fake_index.name = "myindex"
     with patch("bioindex.api.bio.query.match", return_value=["a", "b"]):
-        result = bio._match_keys(ctx, fake_index, ["q1"], None,
-                                 generation="gen-test-fixed", page=1)
+        result = bio._match_keys(ctx, fake_index, ["q1"], None, page=1)
     assert result["continuation"] is None
 
 
@@ -254,7 +247,7 @@ async def test_api_cont_resumes_match_via_keyset_cursor():
     with patch("bioindex.api.bio.query.match", return_value=next_keys) as mock_match:
         result = await bio.api_cont(token=token, req=req)
 
-    data = orjson.loads(result.body)
+    data = result
     # query.match called as (config, engine, index, qs, after, page_size)
     assert mock_match.call_args.args[4] == last_key
     assert data["data"] == ["key_003", "key_004"]
@@ -270,8 +263,7 @@ def test_limit_is_decremented_into_continuation_token():
     ctx = _make_ctx()
     reader = _make_reader(records=[{"x": i} for i in range(4)], at_end=False,
                           limit=10, source_index=0, source_byte_offset=128)
-    result = bio._fetch_records(ctx, reader, "myindex", ["q1"], "row",
-                                generation="gen-test-fixed", page=1)
+    result = bio._fetch_records(ctx, reader, "myindex", ["q1"], "row", page=1)
     token = result["continuation"]
     assert token is not None
     state = signed_tokens.decode(token, signed_tokens.signing_key())
@@ -294,7 +286,7 @@ async def test_match_limit_capped_across_continuation_pages(monkeypatch):
     fake_index.name = "myindex"
 
     # page 1: limit=3 -> page_size=min(2,3)=2 -> ["k00","k01"], remaining=1
-    page1 = bio._match_keys(ctx, fake_index, ["q1"], 3, generation="gen-test-fixed", page=1)
+    page1 = bio._match_keys(ctx, fake_index, ["q1"], 3, page=1)
     assert page1["count"] == 2
     assert page1["data"] == ["k00", "k01"]
     token = page1["continuation"]
@@ -304,8 +296,7 @@ async def test_match_limit_capped_across_continuation_pages(monkeypatch):
     # page 2 via /cont: budget 1, after="k01" -> page_size=min(2,1)=1 -> ["k02"]
     ctx.indexes = {("myindex", 1): fake_index}
     req = _make_req(portal_ctx=ctx)
-    page2_resp = await bio.api_cont(token=token, req=req)
-    page2 = orjson.loads(page2_resp.body)
+    page2 = await bio.api_cont(token=token, req=req)
     assert page2["count"] == 1
     assert page2["data"] == ["k02"]
     assert page2["continuation"] is None
@@ -397,7 +388,7 @@ async def test_match_three_page_resume_of_resume(monkeypatch):
     ctx.indexes = {("myindex", 1): fake_index}
 
     # page 1: limit=5, match_limit=2 -> page_size=2 -> ["k00","k01"], remaining=3
-    page1 = bio._match_keys(ctx, fake_index, ["q1"], 5, generation="gen-test-fixed", page=1)
+    page1 = bio._match_keys(ctx, fake_index, ["q1"], 5, page=1)
     assert page1["count"] == 2
     assert page1["data"] == ["k00", "k01"]
     token1 = page1["continuation"]
@@ -405,8 +396,7 @@ async def test_match_three_page_resume_of_resume(monkeypatch):
 
     # page 2 via api_cont: budget=3, after="k01" -> page_size=min(2,3)=2 -> ["k02","k03"], remaining=1
     req = _make_req(portal_ctx=ctx)
-    page2_resp = await bio.api_cont(token=token1, req=req)
-    page2 = orjson.loads(page2_resp.body)
+    page2 = await bio.api_cont(token=token1, req=req)
     assert page2["count"] == 2
     assert page2["data"] == ["k02", "k03"]
     token2 = page2["continuation"]
@@ -421,8 +411,7 @@ async def test_match_three_page_resume_of_resume(monkeypatch):
     assert state2.limit == 1  # 5 - 2 - 2 = 1 remaining
 
     # page 3 via api_cont: budget=1, after="k03" -> page_size=min(2,1)=1 -> ["k04"]
-    page3_resp = await bio.api_cont(token=token2, req=req)
-    page3 = orjson.loads(page3_resp.body)
+    page3 = await bio.api_cont(token=token2, req=req)
     assert page3["count"] == 1
     assert page3["data"] == ["k04"]
     assert page3["continuation"] is None

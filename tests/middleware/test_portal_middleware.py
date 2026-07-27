@@ -52,3 +52,12 @@ def test_reserved_prefix_bypasses_portal_lookup():
     resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.json() == {"ok": True}
+
+
+def test_redirect_keeps_the_portal_prefix():
+    # routes only ever see the stripped path, so a trailing-slash redirect
+    # would otherwise point at a URL with no portal on it
+    client = TestClient(_app())
+    resp = client.get("/p/echo/", follow_redirects=False)
+    assert resp.status_code == 307
+    assert resp.headers["location"].endswith("/p/echo")

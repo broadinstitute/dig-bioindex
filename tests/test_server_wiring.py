@@ -52,7 +52,7 @@ def _restore_registry():
 
 
 def test_known_portal_indexes_200():
-    with patch("bioindex.api.bio._refresh_indexes", lambda ctx: None):
+    with patch("bioindex.api.bio._load_indexes", lambda ctx: dict(_STUB_INDEXES)):
         resp = client.get("/p/api/bio/indexes")
     assert resp.status_code == 200
     body = resp.json()
