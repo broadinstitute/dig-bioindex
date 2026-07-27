@@ -63,27 +63,21 @@ BIOINDEX_RESPONSE_LIMIT     # Number of bytes to read from S3 per request (defau
 BIOINDEX_RESPONSE_LIMIT_MAX # Total amount of data a call is allowed to read through (default=100MB)
 BIOINDEX_MATCH_LIMIT        # Number of matches to return per request (default=100)
 BIOINDEX_TOKEN_SIGNING_KEY  # HMAC key (>=32 bytes; hex/base64url) used to sign continuation tokens (***)
+BIOINDEX_PORTAL_NAME        # Name the `serve` command gives its portal (default=local) (***)
 
 (*)   - Either BIOINDEX_RDS_SECRET or BIOINDEX_RDS_INSTANCE is required
 (**)  - If BIOINDEX_RDS_INSTANCE is used, then username and password are required
-(***) - Used by `serve` to sign continuation tokens. Required in production; for local
-        dev pass `serve --dev` to auto-generate an ephemeral key (or: openssl rand -hex 32)
+(***) - Only used by `serve`; see "Starting the Server" below
 ```
 
-Additionally, one can set a single environment variable (`BIOINDEX_ENVIRONMENT`), which should be the name of an AWS secret. If set, the BioIndex will read that secret as JSON and expects it to contain the rest of the environment setup.
-
-Likewise, the environment can be overridden. The priority of values is as such:
+The environment can be overridden. The priority of values is as such:
 
 ```
-secret < .bioindex < envrionment
+.bioindex < environment
 ```
 
-For example, consider the following setup:
-
-* `BIOINDEX_ENVIRONMENT` contains "bio-index-secret", which sets `BIOINDEX_S3_BUCKET` to "bio-index"
-* `BIOINDEX_S3_BUCKET` is set in `.bioindex` to "bio-index-dev"
-
-When run, the S3 bucket will be set to "bio-index-dev". Likewise, if the command line is run like so:
+For example, if `BIOINDEX_S3_BUCKET` is set in `.bioindex` to "bio-index-dev" and the command
+line is run like so:
 
 ```bash
 $ BIOINDEX_S3_BUCKET=bio-test python3 -m bioindex.main query gene SLC30A8
@@ -213,7 +207,7 @@ _NOTE: The `count` command is an approximation. It reads the first 500 records a
 
 ## RsId => VariantId Index
 This is an index that will look up variant id that most frequently corresponds to a specified rsid.  We use a dynamo db table for this index.  You can access this index 
-via `/api/bio/varIdLookup/<rsid>` e.g. `curl http://localhost:5000/api/bio/varIdLookup/rs1294894678`  You can find more
+via `/api/bio/varIdLookup/<rsid>` e.g. `curl http://localhost:5000/local/api/bio/varIdLookup/rs1294894678`  You can find more
 info about this index and how it's created [here](s3://dig-analysis-data/scripts/variantIdLookup/README.md).
 
 # The GraphQL REST Server
@@ -234,10 +228,29 @@ Once the schema has been saved, you can then start the server.
 
 ## Starting the Server
 
-One server process serves many portals. The first path segment selects the
-portal, so every URL below is reached as `http://localhost:5000/{portal}/api/...`.
-Each portal gets its own config, database connections and index cache, read
-at startup from a config directory:
+The server serves one or more *portals*, and the first path segment of every
+request selects which one, so the REST URLs below are all reached as
+`http://localhost:5000/{portal}/api/...`. Each portal has its own config,
+database connections and index cache, built once at startup.
+
+### Locally, from an environment file
+
+The `serve` command builds a single portal out of the environment - the same
+`.bioindex` file every other command uses - and names it `local`:
+
+```bash
+$ bioindex --env-file .bioindex serve --port 5000 --dev
+```
+
+Which serves `http://localhost:5000/local/api/bio/indexes`. Set
+`BIOINDEX_PORTAL_NAME` to call it something else. `--dev` generates a throwaway
+`BIOINDEX_TOKEN_SIGNING_KEY` so no key setup is needed; continuation tokens
+won't survive a restart.
+
+### Serving several portals
+
+Point `BIOINDEX_CONFIG_DIR` at a directory of per-portal yaml instead, and
+`serve` builds one portal per file:
 
 ```
 $BIOINDEX_CONFIG_DIR/
@@ -245,24 +258,23 @@ $BIOINDEX_CONFIG_DIR/
   portals/<name>.yaml    # one file per portal, with an envs.<env> block
 ```
 
-The server is started using the `serve` command:
-
 ```bash
-export BIOINDEX_CONFIG_DIR=/etc/bioindex   # default; holds portals/ and envs/
+export BIOINDEX_CONFIG_DIR=/etc/bioindex
 export BIOINDEX_ENV=qa                     # selects envs/<env>.yaml
 
-$ bioindex serve --port 5000 --dev
+$ bioindex serve --port 5000
 ```
 
-It refuses to start if `BIOINDEX_ENV` is unset, the config directory is
-missing, or no portals load. `--dev` generates a throwaway
-`BIOINDEX_TOKEN_SIGNING_KEY` so local dev needs no setup; set the key
-explicitly and drop `--dev` in production. See [`examples/`](examples/) for a
-config directory to copy.
+Each portal's yaml holds the same `BIOINDEX_*` settings listed above, so the
+environment is not consulted for portal config in this mode. The server
+refuses to start if `BIOINDEX_ENV` is unset, the config directory is missing,
+or no portals load. `BIOINDEX_TOKEN_SIGNING_KEY` must be set explicitly - never
+run `--dev` in production. See [`examples/`](examples/) for a config directory
+to copy.
 
 ## REST Queries
 
-The entire REST API can be explored both via the [demo page](http://localhost:5000/) and via the REST API [documentation page](http://localhost:5000/docs).
+The entire REST API can be explored both via the [demo page](http://localhost:5000/) and via the REST API [documentation page](http://localhost:5000/docs). Note that the paths shown on the documentation page are the ones the routers see, without the leading `/{portal}` segment the middleware strips.
 
 Each request results in a JSON response that looks like so:
 

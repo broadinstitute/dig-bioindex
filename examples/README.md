@@ -1,7 +1,13 @@
 # Example config directory
 
-The shape of the config directory the server reads at startup. Copy
-`portals/example.yaml`, fill in real values, and point `serve` at it.
+The shape of the config directory `serve` reads when it is asked to host more
+than one portal. Copy `portals/example.yaml`, fill in real values, and point
+`BIOINDEX_CONFIG_DIR` at the directory.
+
+To run a single portal locally you don't need any of this - leave
+`BIOINDEX_CONFIG_DIR` unset and `serve` builds one portal from your
+`.bioindex` environment file. See "Starting the Server" in the top-level
+[README](../README.md).
 
 ## Run
 

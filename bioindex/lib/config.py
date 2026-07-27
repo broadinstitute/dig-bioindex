@@ -42,13 +42,6 @@ class Config:
         try:
             # settings given explicitly are complete; never fall back to the environment
             if self._overrides is None:
-                if self.bioindex_env is not None:
-                    secret = secret_lookup(self.bioindex_env)
-                    assert secret, f'Failed to lookup secret {self.bioindex_env}'
-
-                    # set environment keys if not already set
-                    Config.set_default_env(secret)
-
                 # use keyword arguments if environment not yet set
                 Config.set_default_env(kwargs)
 
@@ -157,11 +150,6 @@ class Config:
                     genes[symbol.strip().upper()] = region
 
         return genes
-
-    @property
-    @config_var()
-    def bioindex_env(self):
-        return 'BIOINDEX_ENVIRONMENT'
 
     @property
     @config_var()

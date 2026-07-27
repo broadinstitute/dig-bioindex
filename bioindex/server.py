@@ -8,7 +8,8 @@ import pymysql
 from .api import bio
 from .api import portal
 from .api import raw
-from .lib.portal_loader import build_portal_contexts
+from .lib import config
+from .lib.portal_loader import build_portal_context, build_portal_contexts
 from .lib.portal_registry import get_registry, init_registry
 from .middleware.portal import PortalResolveMiddleware
 
@@ -21,22 +22,30 @@ pymysql.install_as_MySQLdb()
 
 def _init_registry_from_env():
     """
-    Load every portal defined for BIOINDEX_ENV out of BIOINDEX_CONFIG_DIR.
+    With BIOINDEX_CONFIG_DIR set, serve every portal defined for BIOINDEX_ENV
+    out of that directory. Without it, serve a single portal configured from
+    the environment - the local `--env-file` workflow - named by
+    BIOINDEX_PORTAL_NAME.
     """
-    config_dir = os.environ.get('BIOINDEX_CONFIG_DIR', '/etc/bioindex')
-    env = os.environ.get('BIOINDEX_ENV')
+    config_dir = os.environ.get('BIOINDEX_CONFIG_DIR')
 
-    if not env:
-        raise RuntimeError('BIOINDEX_ENV is not set; it names the file at '
-                           '<BIOINDEX_CONFIG_DIR>/envs/<env>.yaml (e.g. qa, prod)')
-    if not os.path.isdir(config_dir):
-        raise RuntimeError(f"BIOINDEX_CONFIG_DIR '{config_dir}' is not a directory; it should "
-                           f'contain portals/*.yaml and envs/{env}.yaml')
+    if not config_dir:
+        name = os.environ.get('BIOINDEX_PORTAL_NAME', 'local')
+        contexts = [build_portal_context(config.Config(), name)]
+    else:
+        env = os.environ.get('BIOINDEX_ENV')
 
-    contexts = build_portal_contexts(config_dir, env)
-    if not contexts:
-        raise RuntimeError(f"No portals loaded from '{config_dir}' for env '{env}'; expected at "
-                           f"least one portals/*.yaml with an 'envs.{env}' block")
+        if not env:
+            raise RuntimeError('BIOINDEX_ENV is not set; it names the file at '
+                               '<BIOINDEX_CONFIG_DIR>/envs/<env>.yaml (e.g. qa, prod)')
+        if not os.path.isdir(config_dir):
+            raise RuntimeError(f"BIOINDEX_CONFIG_DIR '{config_dir}' is not a directory; it should "
+                               f'contain portals/*.yaml and envs/{env}.yaml')
+
+        contexts = build_portal_contexts(config_dir, env)
+        if not contexts:
+            raise RuntimeError(f"No portals loaded from '{config_dir}' for env '{env}'; expected at "
+                               f"least one portals/*.yaml with an 'envs.{env}' block")
 
     init_registry(contexts)
     logging.info('Loaded %d portal(s): %s', len(contexts), ', '.join(c.name for c in contexts))

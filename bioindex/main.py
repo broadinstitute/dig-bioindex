@@ -33,8 +33,9 @@ def cli(ctx, env_file):
         logging.info('Loading %s environment variables...', env_file)
         dotenv.load_dotenv(env_file)
 
-    # load the configuration into the click object
-    ctx.obj = config.Config()
+    # load the configuration into the click object; the server is the
+    # exception, as it builds a Config per portal it serves
+    ctx.obj = None if ctx.invoked_subcommand == 'serve' else config.Config()
 
 
 SERVER_LOGGING_CONFIG = {

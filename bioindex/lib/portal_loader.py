@@ -56,33 +56,34 @@ def load_portal_dicts(config_dir, env):
     return portals
 
 
+def build_portal_context(config, name):
+    """
+    Connect a single portal to its databases and cache its indexes.
+    """
+    # connect to the index schema, and optionally the portal/metadata schema
+    engine = connect_to_db(**config.rds_config, schema=config.bio_schema)
+    portal_engine = None
+    if config.portal_schema:
+        portal_engine = connect_to_db(**config.portal_rds_config, schema=config.portal_schema)
+
+    indexes = Index.list_indexes(engine, filter_built=False)
+    gql_schema = None
+    if config.graphql_schema:
+        gql_schema = ql.load_schema(config, engine, config.graphql_schema)
+
+    return PortalContext(
+        name=name,
+        config=config,
+        engine=engine,
+        indexes=dict(((i.name, int(i.schema.arity)), i) for i in indexes),
+        portal=portal_engine,
+        gql_schema=gql_schema,
+    )
+
+
 def build_portal_contexts(config_dir, env):
     """
     Load every portal defined for `env` and connect it to its databases.
     """
-    contexts = []
-
-    for portal in load_portal_dicts(config_dir, env):
-        config = Config.from_dict(portal['env'])
-
-        # connect to the index schema, and optionally the portal/metadata schema
-        engine = connect_to_db(**config.rds_config, schema=config.bio_schema)
-        portal_engine = None
-        if config.portal_schema:
-            portal_engine = connect_to_db(**config.portal_rds_config, schema=config.portal_schema)
-
-        indexes = Index.list_indexes(engine, filter_built=False)
-        gql_schema = None
-        if config.graphql_schema:
-            gql_schema = ql.load_schema(config, engine, config.graphql_schema)
-
-        contexts.append(PortalContext(
-            name=portal['name'],
-            config=config,
-            engine=engine,
-            indexes=dict(((i.name, int(i.schema.arity)), i) for i in indexes),
-            portal=portal_engine,
-            gql_schema=gql_schema,
-        ))
-
-    return contexts
+    return [build_portal_context(Config.from_dict(portal['env']), portal['name'])
+            for portal in load_portal_dicts(config_dir, env)]
