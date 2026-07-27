@@ -1,5 +1,8 @@
+from urllib.parse import urlsplit
+
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
+from starlette.responses import RedirectResponse
 
 from bioindex.middleware.portal import PortalResolveMiddleware
 from bioindex.lib.portal_registry import init_registry
@@ -53,3 +56,30 @@ def test_root_without_portal_returns_404():
     client = TestClient(_make_app())
     r = client.get("/")
     assert r.status_code == 404
+
+
+def test_trailing_slash_redirect_keeps_the_portal_prefix():
+    # the route only sees the stripped path, so Starlette builds the redirect
+    # without the portal on it; following that would 404 as portal 'api'
+    client = TestClient(_make_app())
+    r = client.get("/cfde/api/bio/ping/", follow_redirects=False)
+    assert r.status_code == 307
+    assert urlsplit(r.headers["location"]).path == "/cfde/api/bio/ping"
+
+    assert client.get("/cfde/api/bio/ping/").status_code == 200
+
+
+def test_offsite_redirect_is_left_alone():
+    init_registry([
+        PortalContext(name="cfde", config=object(), engine=object(),
+                      portal=None, indexes={}, gql_schema=None),
+    ])
+    app = FastAPI()
+    app.add_middleware(PortalResolveMiddleware, reserved_prefixes=("health",))
+
+    @app.get("/api/bio/away")
+    def away():
+        return RedirectResponse("https://example.org/elsewhere", status_code=307)
+
+    r = TestClient(app).get("/cfde/api/bio/away", follow_redirects=False)
+    assert r.headers["location"] == "https://example.org/elsewhere"

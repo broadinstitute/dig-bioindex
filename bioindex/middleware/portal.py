@@ -5,7 +5,7 @@ import re
 import time
 import uuid
 from typing import Iterable
-from urllib.parse import parse_qsl, quote
+from urllib.parse import parse_qsl, quote, urlsplit, urlunsplit
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -80,6 +80,23 @@ def _safe_request_id(header_value):
     if header_value and _REQUEST_ID_RE.match(header_value):
         return header_value
     return uuid.uuid4().hex
+
+
+def _restore_portal_prefix(request, response, portal):
+    """
+    Routes only ever see the path with the portal prefix stripped, so any
+    redirect they build - Starlette's trailing-slash redirect, for one -
+    points at a portal-less URL that then 404s as ``Unknown portal 'api'``.
+    Put the prefix back on same-origin redirects, and leave off-site ones
+    alone.
+    """
+    location = response.headers.get("location")
+    if not location:
+        return
+
+    url = urlsplit(location)
+    if url.path.startswith("/") and url.netloc in ("", request.url.netloc):
+        response.headers["location"] = urlunsplit(url._replace(path="/" + portal + url.path))
 
 
 class PortalResolveMiddleware(BaseHTTPMiddleware):
@@ -174,6 +191,9 @@ class PortalResolveMiddleware(BaseHTTPMiddleware):
                 {"detail": "Internal server error", "request_id": request_id},
                 status_code=500,
             )
+
+        if portal_name is not None:
+            _restore_portal_prefix(request, response, head)
 
         self._log(
             request, response, start, request_id,
