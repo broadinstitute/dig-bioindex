@@ -84,18 +84,24 @@ def _safe_request_id(header_value):
 
 def _restore_portal_prefix(request, response, portal):
     """
-    Routes only ever see the path with the portal prefix stripped, so any
-    redirect they build - Starlette's trailing-slash redirect, for one -
-    points at a portal-less URL that then 404s as ``Unknown portal 'api'``.
-    Put the prefix back on same-origin redirects, and leave off-site ones
-    alone.
+    The router only ever sees the path with the portal prefix stripped, so
+    its trailing-slash redirect points at a portal-less URL that then 404s
+    as ``Unknown portal 'api'``. Put the prefix back on that one redirect.
+
+    Only a Location matching the stripped path is rewritten: anything a
+    handler built already knows its portal, and prefixing it again would
+    produce ``/cfde/cfde/...``. Testing for an existing prefix instead would
+    misfire for a portal named after a real path segment ("api", "bio"),
+    where an unprefixed path already looks prefixed.
     """
     location = response.headers.get("location")
     if not location:
         return
 
     url = urlsplit(location)
-    if url.path.startswith("/") and url.netloc in ("", request.url.netloc):
+    stripped = request.scope["path"]
+    if (url.netloc in ("", request.url.netloc)
+            and url.path in (stripped.rstrip("/"), stripped + "/")):
         response.headers["location"] = urlunsplit(url._replace(path="/" + portal + url.path))
 
 

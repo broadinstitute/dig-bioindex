@@ -70,12 +70,7 @@ def test_trailing_slash_redirect_keeps_the_portal_prefix():
 
 
 def test_offsite_redirect_is_left_alone():
-    init_registry([
-        PortalContext(name="cfde", config=object(), engine=object(),
-                      portal=None, indexes={}, gql_schema=None),
-    ])
-    app = FastAPI()
-    app.add_middleware(PortalResolveMiddleware, reserved_prefixes=("health",))
+    app = _make_app()
 
     @app.get("/api/bio/away")
     def away():
@@ -83,3 +78,15 @@ def test_offsite_redirect_is_left_alone():
 
     r = TestClient(app).get("/cfde/api/bio/away", follow_redirects=False)
     assert r.headers["location"] == "https://example.org/elsewhere"
+
+
+def test_handler_redirect_is_not_double_prefixed():
+    # a handler builds its own Location and already knows its portal
+    app = _make_app()
+
+    @app.get("/api/bio/go")
+    def go():
+        return RedirectResponse("/cfde/api/bio/ping", status_code=307)
+
+    r = TestClient(app).get("/cfde/api/bio/go", follow_redirects=False)
+    assert r.headers["location"] == "/cfde/api/bio/ping"
