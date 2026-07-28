@@ -76,7 +76,9 @@ def read_gff(uri):
 
     Score, strand, and frame are ignored as they are not needed.
     """
-    with smart_open.smart_open(uri, mode='rb', encoding='utf-8') as fp:
+    # smart_open.open, not the smart_open.smart_open alias: the alias is gone
+    # from current releases, and csv wants text anyway
+    with smart_open.open(uri, mode='r', encoding='utf-8') as fp:
         r = csv.reader(fp, dialect='excel', delimiter='\t')
 
         # read each record, split it into columns
