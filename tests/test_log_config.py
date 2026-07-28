@@ -4,7 +4,7 @@ import logging.config
 
 import pytest
 
-from bioindex.log_config import LOGGING_CONFIG, JsonFormatter
+from bioindex.log_config import ACCESS_FIELDS, LOGGING_CONFIG, JsonFormatter
 
 
 def _format(exc_info=None, **extra):
@@ -37,8 +37,13 @@ def test_access_fields_are_carried_through():
     assert out["response_bytes"] == 41
 
 
-def test_unset_access_fields_are_omitted_rather_than_nulled():
-    assert "portal" not in _format()
+def test_ordinary_log_lines_carry_no_access_fields():
+    assert not set(ACCESS_FIELDS) & _format().keys()
+
+
+def test_a_null_field_is_kept_so_the_access_schema_is_fixed():
+    # null means nothing applied, not that the field went unrecorded
+    assert _format(portal=None)["portal"] is None
 
 
 def test_traceback_is_folded_into_the_object():

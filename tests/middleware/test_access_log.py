@@ -3,10 +3,12 @@ import re
 
 import pytest
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
 
 from bioindex.lib.portal_context import PortalContext
 from bioindex.lib.portal_registry import init_registry
+from bioindex.log_config import ACCESS_FIELDS
 from bioindex.middleware.portal import PortalResolveMiddleware
 
 
@@ -33,6 +35,10 @@ def _app():
     def health():
         return {"ok": True}
 
+    @app.get("/api/bio/stream")
+    def stream():
+        return StreamingResponse(iter(["chunk"] * 5), media_type="text/plain")
+
     @app.get("/api/bio/boom")
     def boom():
         raise RuntimeError("kaboom")
@@ -58,6 +64,27 @@ def test_record_describes_the_request(records):
     assert rec.response_bytes > 0
     assert rec.latency_ms >= 0
     assert rec.request_id
+
+
+def test_every_record_carries_the_whole_field_set(records):
+    # a reserved path resolves no portal and matches no bio route, and the
+    # test client's peer is unparseable - all three are logged as null
+    # rather than left off, so the access schema is the same every time
+    assert _get("/health").status_code == 200
+
+    (rec,) = records()
+    assert not [f for f in ACCESS_FIELDS if not hasattr(rec, f)]
+    assert (rec.portal, rec.client_ip) == (None, None)
+
+
+def test_length_is_null_when_the_response_did_not_declare_one(records):
+    # a chunked body of unknown size is not an empty one
+    assert _get("/p/api/bio/stream").status_code == 200
+    assert records()[0].response_bytes is None
+
+    # whereas a redirect really does send nothing
+    _get("/p/api/bio/query/gene/", follow_redirects=False)
+    assert records()[-1].response_bytes == 0
 
 
 def test_reserved_path_is_logged_without_a_portal(records):

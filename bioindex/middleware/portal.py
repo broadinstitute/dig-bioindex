@@ -137,7 +137,9 @@ class PortalResolveMiddleware(BaseHTTPMiddleware):
                 'path': request.scope['path'],
                 'query': _query(request.url.query),
                 'status': 500 if failed else response.status_code,
-                'response_bytes': int(length) if length and length.isdigit() else 0,
+                # null, not 0, when the response did not declare a length:
+                # a chunked body of unknown size is not an empty one
+                'response_bytes': int(length) if length and length.isdigit() else None,
                 'latency_ms': int((time.monotonic() - start) * 1000),
                 'worker_pid': os.getpid(),
                 'client_ip': _client_ip(request),

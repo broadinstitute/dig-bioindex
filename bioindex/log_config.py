@@ -1,8 +1,10 @@
 import json
 import logging
 
-# fields the access middleware attaches to its records; anything else the
-# app logs still comes through, just without them
+# Fields the access middleware attaches to its records. It sets every one of
+# them on every request, so a null here means "nothing applied" - no portal
+# resolved, no route matched - and not "not recorded". Anything else the app
+# logs carries none of them.
 ACCESS_FIELDS = (
     'portal',
     'request_id',
