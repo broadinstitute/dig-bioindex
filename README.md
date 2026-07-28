@@ -279,7 +279,7 @@ balancers to poll:
 
 ```
 GET /health   # liveness; 200 as long as the process is answering
-GET /ready    # readiness; queries every portal's index schema
+GET /ready    # readiness; round-trips a query against each portal's database
 ```
 
 `/ready` reports each portal individually and returns 503 only when they have

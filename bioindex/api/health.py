@@ -20,16 +20,17 @@ async def api_health():
 @router.get('/ready', response_class=fastapi.responses.ORJSONResponse)
 async def api_ready(response: fastapi.Response):
     """
-    Readiness. Query every portal's index schema, and report per portal.
-    A single unreachable portal leaves the task in rotation - the others
-    are still servable - so this only fails when they all do.
+    Readiness. Round-trip a query against each portal's database - which
+    connecting alone does not prove - and report per portal. A single
+    unreachable portal leaves the task in rotation, as the others are
+    still servable, so this only fails when they all do.
     """
     portals = {}
 
     for ctx in get_registry():
         try:
             with ctx.engine.connect() as conn:
-                conn.execute(text('SELECT 1'))
+                conn.execute(text('SELECT 1')).scalar_one()
             portals[ctx.name] = 'ok'
         except Exception as e:
             logging.warning('ready check failed for portal %s: %s', ctx.name, e)
