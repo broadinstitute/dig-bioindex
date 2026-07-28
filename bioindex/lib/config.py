@@ -19,9 +19,12 @@ def config_var(type=str, default=None):
             key = f(self)
             val = (self._overrides if self._overrides is not None else os.environ).get(key, default)
 
-            # cast to the appropriate type
+            # cast to the appropriate type; a setting read from yaml rather
+            # than the environment may already be a list
             if type == list:
-                return val.split(',') if val else []
+                if not val:
+                    return []
+                return val.split(',') if isinstance(val, str) else list(val)
             else:
                 return val and type(val)
 

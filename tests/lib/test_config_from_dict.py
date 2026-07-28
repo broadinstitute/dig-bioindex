@@ -64,3 +64,20 @@ def test_from_dict_omitted_key_does_not_bleed_env(monkeypatch):
     with patch('bioindex.lib.config.describe_rds_instance', return_value={'host': 'h', 'port': 3306, 'name': 'test-instance'}):
         cfg = Config.from_dict(d)
     assert cfg.bio_schema == 'bio'
+
+
+# a list setting arrives comma-separated from the environment, but yaml can
+# spell it either way
+
+def test_list_setting_from_yaml_sequence():
+    cfg = _make({'BIOINDEX_COMPRESSED_INDICES': ['variants', 'genes']})
+    assert cfg.compressed_indices == ['variants', 'genes']
+
+
+def test_list_setting_from_comma_separated_string():
+    cfg = _make({'BIOINDEX_COMPRESSED_INDICES': 'variants,genes'})
+    assert cfg.compressed_indices == ['variants', 'genes']
+
+
+def test_list_setting_absent():
+    assert _make().compressed_indices == []
