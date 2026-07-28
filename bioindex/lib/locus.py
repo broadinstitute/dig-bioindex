@@ -1,4 +1,5 @@
 import abc
+import functools
 import itertools
 import re
 import string
@@ -25,11 +26,13 @@ class Locus(abc.ABC):
 
     LOCUS_STEP = 20000
 
-    def __init__(self, chromosome):
+    def __init__(self, chromosome, step=None):
         """
-        Ensure a valid chromosome.
+        Ensure a valid chromosome. `step` is the bucket size this locus is
+        placed into; None means the LOCUS_STEP default.
         """
         self.chromosome = parse_chromosome(chromosome)
+        self.step = step if step is not None else self.LOCUS_STEP
 
     @abc.abstractmethod
     def __str__(self):
@@ -57,7 +60,7 @@ class Locus(abc.ABC):
         """
         Returns a position as a stepped position.
         """
-        return (pos // self.LOCUS_STEP) * self.LOCUS_STEP
+        return (pos // self.step) * self.step
 
 
 class SNPLocus(Locus):
@@ -65,8 +68,8 @@ class SNPLocus(Locus):
     Locus for a single SNP (base pair) at an exact position.
     """
 
-    def __init__(self, chromosome, position):
-        super().__init__(chromosome)
+    def __init__(self, chromosome, position, step=None):
+        super().__init__(chromosome, step=step)
 
         # ensure integer position
         self.position = int(position)
@@ -102,8 +105,8 @@ class RegionLocus(Locus):
     Locus for a region on a chromosome.
     """
 
-    def __init__(self, chromosome, start, stop):
-        super().__init__(chromosome)
+    def __init__(self, chromosome, start, stop, step=None):
+        super().__init__(chromosome, step=step)
 
         # ensure integer range
         self.start = int(start)
@@ -125,11 +128,11 @@ class RegionLocus(Locus):
         """
         A generator of record loci.
         """
-        start = self.start // self.LOCUS_STEP
-        stop = self.stop // self.LOCUS_STEP
+        start = self.start // self.step
+        stop = self.stop // self.step
 
         for position in range(start, stop + 1):
-            yield self.chromosome, position * self.LOCUS_STEP
+            yield self.chromosome, position * self.step
 
     def overlaps(self, chromosome, start, stop):
         """
@@ -147,9 +150,10 @@ def chromosomes():
 
 def parse_chromosome(s):
     """
-    Parse and normalize a chromosome string, which may be prefixed with 'chr'.
+    Parse and normalize a chromosome, which may be prefixed with 'chr'. Cast
+    first, as a numeric JSON column yields an int rather than a string.
     """
-    match = re.fullmatch(r'(?:chr)?([1-9]|1\d|2[0-2]|x|y|xy|mt?)', s, re.IGNORECASE)
+    match = re.fullmatch(r'(?:chr)?([1-9]|1\d|2[0-2]|x|y|xy|mt?)', str(s), re.IGNORECASE)
 
     if not match:
         raise ValueError(f'Failed to match chromosome against {s}')
@@ -157,13 +161,13 @@ def parse_chromosome(s):
     return match.group(1).upper()
 
 
-def parse_locus_builder(s):
+def parse_locus_builder(s, step=None):
     """
     Parse a locus string and return a function that - when passed a list
     of column values - returns an instance of Locus. It also returns a
     list of column names as a tuple that should be used as the inputs to
     the locus creation function. If not a valid locus string, this returns
-    None, None.
+    None, None. `step` is baked into whatever the builder constructs.
     """
     match = re.fullmatch(r'([^=]+)=(.+)', s)
 
@@ -193,9 +197,9 @@ def parse_locus_builder(s):
             # if there are 2 matched groups, then assume SNPLocus
             groups = match.groups()
             if len(groups) == 2:
-                return SNPLocus(match.group('chr'), match.group('pos'))
+                return SNPLocus(match.group('chr'), match.group('pos'), step=step)
             elif len(groups) == 3:
-                return RegionLocus(match.group('chr'), match.group('start'), match.group('stop'))
+                return RegionLocus(match.group('chr'), match.group('start'), match.group('stop'), step=step)
             else:
                 raise ValueError(f'Invalid locus: {value}')
 
@@ -211,8 +215,10 @@ def parse_locus_builder(s):
 
     chromosome, start, stop = match.groups()
 
-    # return the class and columns parsed
-    return (RegionLocus if stop else SNPLocus), (chromosome, start, stop)
+    # bind the step in, so the caller constructs these the same way it does
+    # a templated locus - with no idea either carries one
+    cls = RegionLocus if stop else SNPLocus
+    return functools.partial(cls, step=step), (chromosome, start, stop)
 
 
 def parse_region_string(s, config):
