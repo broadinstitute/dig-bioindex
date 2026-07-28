@@ -1,6 +1,9 @@
+import contextlib
 import json
 import logging
 import logging.config
+import os
+import time
 
 import pytest
 
@@ -18,12 +21,29 @@ def _format(exc_info=None, **extra):
     return json.loads(JsonFormatter().format(record))
 
 
+@contextlib.contextmanager
+def _host_clock(tz):
+    os.environ["TZ"] = tz
+    time.tzset()
+    try:
+        yield
+    finally:
+        os.environ.pop("TZ", None)
+        time.tzset()
+
+
 def test_base_fields_are_always_present():
     out = _format()
     assert out["level"] == "INFO"
     assert out["logger"] == "bioindex.access"
     assert out["msg"] == "request"
     assert out["time"]
+
+
+def test_time_is_utc_and_says_so_whatever_the_host_clock_is_set_to():
+    # a bare local timestamp is not interpretable once it leaves the box
+    with _host_clock("America/New_York"):
+        assert _format(created=1751000000.0)["time"] == "2025-06-27T04:53:20Z"
 
 
 def test_access_fields_are_carried_through():

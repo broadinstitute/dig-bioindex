@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 
 # Fields the access middleware attaches to its records. It sets every one of
 # them on every request, so a null here means "nothing applied" - no portal
@@ -26,9 +27,13 @@ class JsonFormatter(logging.Formatter):
     One JSON object per line, which is what CloudWatch wants to see.
     """
 
+    # log in UTC whatever the host is set to, and say so, rather than
+    # emitting a bare local timestamp nothing can interpret later
+    converter = time.gmtime
+
     def format(self, record):
         payload = {
-            'time': self.formatTime(record, '%Y-%m-%dT%H:%M:%S'),
+            'time': self.formatTime(record, '%Y-%m-%dT%H:%M:%SZ'),
             'level': record.levelname,
             'logger': record.name,
             'msg': record.getMessage(),
