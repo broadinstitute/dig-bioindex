@@ -23,12 +23,16 @@ def _format(exc_info=None, **extra):
 
 @contextlib.contextmanager
 def _host_clock(tz):
+    was = os.environ.get("TZ")
     os.environ["TZ"] = tz
     time.tzset()
     try:
         yield
     finally:
-        os.environ.pop("TZ", None)
+        if was is None:
+            os.environ.pop("TZ")
+        else:
+            os.environ["TZ"] = was
         time.tzset()
 
 
