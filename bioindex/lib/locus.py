@@ -1,8 +1,20 @@
 import abc
 import itertools
-import locale
 import re
 import string
+
+
+def _atoi(s):
+    """
+    Parse an integer written with thousands-separator commas.
+
+    This replaced locale.atoi. Reading it needed the process locale set to
+    en_US.UTF8, which the slim base image does not carry - so every region
+    query raised 'unsupported locale setting' there - and setlocale is
+    process-global, so doing it per request is not safe under the threaded
+    server anyway.
+    """
+    return int(s.replace(',', ''))
 
 
 class Locus(abc.ABC):
@@ -217,33 +229,24 @@ def parse_region_string(s, config):
         return region.chromosome.upper(), region.start, region.stop
 
     chromosome, start, adjust, end = match.groups()
-    cur_locale = locale.getlocale()
 
-    try:
-        # parse thousands-separator commas
-        locale.setlocale(locale.LC_ALL, 'en_US.UTF8')
+    # parse the start position
+    start = _atoi(start)
 
-        # parse the start position
-        start = locale.atoi(start)
+    # if the adjustment is a + then end is a length, otherwise a position
+    if adjust == '+':
+        end = start + _atoi(end)
+    elif adjust == '/':
+        shift = _atoi(end)
+        start, end = start - shift, start + shift + 1
+    else:
+        end = _atoi(end) if end else start + 1
 
-        # if the adjustment is a + then end is a length, otherwise a position
-        if adjust == '+':
-            end = start + locale.atoi(end)
-        elif adjust == '/':
-            shift = locale.atoi(end)
-            start, end = start - shift, start + shift + 1
-        else:
-            end = locale.atoi(end) if end else start + 1
+    # stop position must be > start
+    if end <= start:
+        raise ValueError(f'Stop ({end}) must be > start ({start})')
 
-        # stop position must be > start
-        if end <= start:
-            raise ValueError(f'Stop ({end}) must be > start ({start})')
-
-        return chromosome.upper(), start, end
-
-    finally:
-        # restore the original locale
-        locale.setlocale(locale.LC_ALL, cur_locale)
+    return chromosome.upper(), start, end
 
 
 def build_region_str(gene=None, chromosome=None, position=None, start=None, end=None):
