@@ -1,4 +1,6 @@
-FROM --platform=linux/amd64 python:3.8-slim as build
+# Bounded on both sides: orjson 3.11.6 publishes no wheel below 3.10, and
+# botocore 1.20 installs on 3.12 but dies importing botocore.vendored.six.moves.
+FROM --platform=linux/amd64 python:3.11-slim AS build
 
 RUN apt-get update && \
     apt-get install -y default-libmysqlclient-dev pkg-config build-essential
