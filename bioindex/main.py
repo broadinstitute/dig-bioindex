@@ -54,10 +54,12 @@ def _maybe_dev_signing_key(dev):
 
 @click.command(name='serve')
 @click.option('--port', '-p', type=int, default=5000)
-@click.option('--workers', '-w', type=int, default=1)
+@click.option('--workers', '-w', type=int, default=None)
+@click.option('--limit-concurrency', type=int, default=None,
+              help='Per-worker cap on in-flight requests; past it uvicorn answers 503.')
 @click.option('--dev', is_flag=True,
               help='Local dev: generate an ephemeral signing key if unset. Never in production.')
-def cli_serve(port, workers, dev):
+def cli_serve(port, workers, limit_concurrency, dev):
     # Fail fast: the server signs continuation tokens, so the signing key must
     # be present at startup. Without this check a missing key only surfaces as a
     # 500 on the first paginated request.
@@ -76,14 +78,27 @@ def cli_serve(port, workers, dev):
             f'export BIOINDEX_TOKEN_SIGNING_KEY=$(openssl rand -hex 32)'
         )
 
-    uvicorn.run(
-        'bioindex.server:app',
-        host='0.0.0.0',
-        port=port,
-        workers=workers,
-        log_config=LOGGING_CONFIG,
-        access_log=False,   # the portal middleware emits the canonical one
-    )
+    # the deployment sets these in the container environment; a flag wins
+    if workers is None:
+        workers = int(os.environ.get('BIOINDEX_WORKERS', '1'))
+    if limit_concurrency is None:
+        limit_concurrency = int(os.environ.get('BIOINDEX_LIMIT_CONCURRENCY', '0'))
+
+    options = {
+        'host': '0.0.0.0',
+        'port': port,
+        'workers': workers,
+        'log_config': LOGGING_CONFIG,
+        'access_log': False,   # the portal middleware emits the canonical one
+        # let in-flight reads finish when a task is replaced
+        'timeout_graceful_shutdown': 30,
+    }
+
+    # uvicorn has no "unlimited" value for this, so only pass it when set
+    if limit_concurrency > 0:
+        options['limit_concurrency'] = limit_concurrency
+
+    uvicorn.run('bioindex.server:app', **options)
 
 
 @click.command(name='create')
