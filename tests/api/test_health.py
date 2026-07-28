@@ -29,8 +29,10 @@ def client():
     return TestClient(server.app)
 
 
-def test_health_is_up_without_touching_the_registry(client):
-    init_registry([])
+def test_health_is_up_without_touching_the_registry(client, monkeypatch):
+    # liveness must answer even with no registry at all: the question it
+    # answers is whether the process is running, not whether it can serve
+    monkeypatch.setattr('bioindex.lib.portal_registry._registry', None)
     resp = client.get('/health')
     assert resp.status_code == 200
     assert resp.json() == {'status': 'ok'}
