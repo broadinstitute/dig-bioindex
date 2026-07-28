@@ -272,6 +272,20 @@ or no portals load. `BIOINDEX_TOKEN_SIGNING_KEY` must be set explicitly - never
 run `--dev` in production. See [`examples/`](examples/) for a config directory
 to copy.
 
+### Health checks
+
+Two endpoints answer at the server root rather than under a portal, for load
+balancers to poll:
+
+```
+GET /health   # liveness; 200 as long as the process is answering
+GET /ready    # readiness; round-trips a query against each portal's database
+```
+
+`/ready` reports each portal individually and returns 503 only when they have
+*all* failed - one unreachable database shouldn't pull a task out of rotation
+while its other portals are still servable.
+
 ## REST Queries
 
 The entire REST API can be explored both via the [demo page](http://localhost:5000/) and via the REST API [documentation page](http://localhost:5000/docs). Note that the paths shown on the documentation page are the ones the routers see, without the leading `/{portal}` segment the middleware strips.

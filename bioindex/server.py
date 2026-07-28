@@ -6,6 +6,7 @@ import fastapi
 import pymysql
 
 from .api import bio
+from .api import health
 from .api import portal
 from .api import raw
 from .lib import config
@@ -69,13 +70,19 @@ async def lifespan(app):
 # create web server
 app = fastapi.FastAPI(title='BioIndex', redoc_url=None, lifespan=lifespan)
 
+# paths served by the process itself rather than by one of its portals
+RESERVED = ('health', 'ready', 'static', 'docs', 'openapi.json')
+
 # the leading path segment selects the portal for every api route
-app.add_middleware(PortalResolveMiddleware, reserved_prefixes=('static', 'docs', 'openapi.json'))
+app.add_middleware(PortalResolveMiddleware, reserved_prefixes=RESERVED)
 
 # all the various routers for each api
 app.include_router(bio.router, prefix='/api/bio', tags=['bio'])
 app.include_router(portal.router, prefix='/api/portal', tags=['portal'])
 app.include_router(raw.router, prefix='/api/raw', tags=['raw'])
+
+# load balancer probes; not portal-scoped
+app.include_router(health.router, tags=['health'])
 
 # enable cross-origin resource sharing
 app.add_middleware(
