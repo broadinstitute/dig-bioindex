@@ -20,6 +20,7 @@ from .lib import index
 from .lib import migrate
 from .lib import ql
 from .lib import query
+from .log_config import LOGGING_CONFIG
 
 # create the global console
 console = rich.console.Console(markup=True, emoji=False)
@@ -36,34 +37,6 @@ def cli(ctx, env_file):
     # load the configuration into the click object; the server is the
     # exception, as it builds a Config per portal it serves
     ctx.obj = None if ctx.invoked_subcommand == 'serve' else config.Config()
-
-
-SERVER_LOGGING_CONFIG = {
-    "version": 1,
-    "disable_existing_loggers": True,
-    "handlers": {
-        "file": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": "access.log",
-            "maxBytes": 1024 * 1024 * 100,  # 100 MB
-            "backupCount": 3,  # keep 3 backup files
-        }
-    },
-    "root": {"level": "INFO", "handlers": ["file"]},
-    "loggers": {
-        "uvicorn.access": {
-            "level": "INFO",
-            "handlers": ["file"],
-            "propagate": False,
-            "formatter": "apache",
-        },
-    },
-    "formatters": {
-        "apache": {
-            "format": '%(asctime)s %(message)s "%(status)d" %(bytes)d',
-        },
-    },
-}
 
 
 def _maybe_dev_signing_key(dev):
@@ -108,8 +81,8 @@ def cli_serve(port, workers, dev):
         host='0.0.0.0',
         port=port,
         workers=workers,
-        log_level='info',
-        log_config=SERVER_LOGGING_CONFIG
+        log_config=LOGGING_CONFIG,
+        access_log=False,   # the portal middleware emits the canonical one
     )
 
 
