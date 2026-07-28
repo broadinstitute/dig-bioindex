@@ -1,5 +1,9 @@
+import os
+import random
 import subprocess
+import time
 
+import boto3
 import botocore.exceptions
 import dataclasses
 import itertools
@@ -8,6 +12,37 @@ import orjson
 
 from .auth import verify_record
 from .s3 import read_lined_object
+
+
+# a bgzip read fails transiently often enough to be worth retrying: an S3 503
+# SlowDown, a dropped connection. Exponential backoff with full jitter, tunable
+# from the environment so a noisy deployment can be adjusted without a release.
+BGZIP_MAX_RETRIES = int(os.environ.get('BIOINDEX_BGZIP_MAX_RETRIES', '3'))
+BGZIP_BACKOFF_BASE_S = float(os.environ.get('BIOINDEX_BGZIP_BACKOFF_BASE_S', '0.2'))
+BGZIP_BACKOFF_CAP_S = float(os.environ.get('BIOINDEX_BGZIP_BACKOFF_CAP_S', '5.0'))
+
+# one session per process; boto3 caches the credentials and refreshes them
+_session = boto3.Session()
+
+
+def _bgzip_env():
+    """
+    The environment for a bgzip subprocess, carrying whatever credentials
+    boto3 can resolve. htslib reads AWS credentials from the environment or
+    ~/.aws/credentials and never from the container metadata endpoint a task
+    role is delivered through, so it cannot find them on its own.
+    """
+    env = os.environ.copy()
+    credentials = _session.get_credentials()
+
+    if credentials is not None:
+        frozen = credentials.get_frozen_credentials()
+        env['AWS_ACCESS_KEY_ID'] = frozen.access_key
+        env['AWS_SECRET_ACCESS_KEY'] = frozen.secret_key
+        if frozen.token:
+            env['AWS_SESSION_TOKEN'] = frozen.token
+
+    return env
 
 
 @dataclasses.dataclass(frozen=True)
@@ -77,6 +112,8 @@ class RecordReader:
         self.bytes_total = 0
         self.bytes_read = 0
         self.count = 0
+        self.matched_bytes = 0
+        self.filtered_count = 0
         self.restricted_count = 0
         self.limit = None
         self._source_index = start_source_index
@@ -100,13 +137,10 @@ class RecordReader:
                 length = max(0, length - start_byte_offset)
             self.bytes_total += length
 
-        # start reading the records on-demand
+        # start reading the records on-demand; _readall applies record_filter
+        # inline as it counts, so there is no second pass over the records
         self.record_filter = record_filter
         self.records = self._readall()
-
-        # if there's a filter, apply it now
-        if record_filter is not None:
-            self.records = filter(record_filter, self.records)
 
     def _readall(self):
         """
@@ -156,47 +190,7 @@ class RecordReader:
             try:
                 compression_on = self.index.compressed
                 if compression_on:
-                    # For bounded sources (SQL-derived), pass -s to limit bgzip
-                    # to the known uncompressed range. For unbounded sources
-                    # (from S3 listing, /all path), source.end is the COMPRESSED
-                    # size — passing it as -s would truncate uncompressed output
-                    # at ~compressed_size bytes (mid-record). Omit -s so bgzip
-                    # reads to actual EOF.
-                    s3_url = f"s3://{self.config.s3_bucket}/{source.key}{'' if source.key.endswith('.gz') else '.gz'}"
-                    if source.bounded:
-                        command = ['bgzip', '-b', f"{seek_start}", '-s', f"{seek_length}", s3_url]
-                    else:
-                        command = ['bgzip', '-b', f"{seek_start}", s3_url]
-                    # Read bgzip output in BINARY (no text=True). Binary line
-                    # iteration splits only on b'\n' with NO universal-newline
-                    # translation, so len(line) is the true uncompressed byte
-                    # count (including the newline) even for CRLF-terminated or
-                    # multi-byte records. text=True would collapse '\r\n' -> '\n'
-                    # and count characters, under-counting such a line by a byte
-                    # and landing the next resume's bgzip -b on a stranded
-                    # newline (orjson then fails with "input data is empty").
-                    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as proc:
-                        for line in proc.stdout:
-                            line_bytes = len(line)
-                            self.bytes_read += line_bytes
-                            self._source_byte_offset += line_bytes
-
-                            # parse the record (orjson.loads accepts bytes)
-                            record = orjson.loads(line)
-
-                            # Check for restrictions and filters, then yield records
-                            if not verify_record(record, self.restricted):
-                                self.restricted_count += 1
-                                continue
-
-                            if self.record_filter is None or self.record_filter(record):
-                                self.count += 1
-                                yield record
-
-                        proc.wait()
-                        if proc.returncode != 0:
-                            stderr = proc.stderr.read().decode(errors="replace")
-                            raise subprocess.CalledProcessError(proc.returncode, command, output=stderr)
+                    yield from self._read_compressed(source)
 
                 else:
                     content = read_lined_object(self.config.s3_bucket, source.key,
@@ -212,22 +206,7 @@ class RecordReader:
                         # matches the byte offsets stored in __Keys, which index.py
                         # writes as len(line.encode('utf-8')) + 1. Plain len(line)
                         # under-counts multi-byte chars and desyncs resume.
-                        line_bytes = len(line.encode('utf-8')) + 1  # eol byte
-                        self.bytes_read += line_bytes
-                        self._source_byte_offset += line_bytes
-
-                        # parse the record
-                        record = orjson.loads(line)
-
-                        # are there any restrictions on this record?
-                        if not verify_record(record, self.restricted):
-                            self.restricted_count += 1
-                            continue
-
-                        # optionally filter; and tally filtered records
-                        if self.record_filter is None or self.record_filter(record):
-                            self.count += 1
-                            yield record
+                        yield from self._consume(line, len(line.encode('utf-8')) + 1)
 
             # handle database out of sync with S3
             except botocore.exceptions.ClientError:
@@ -237,6 +216,95 @@ class RecordReader:
 
         # outer source-loop completed normally — every source fully consumed
         self._exhausted = True
+
+    def _read_compressed(self, source):
+        """
+        Yield the records of one bgzip source, retrying a failed read.
+
+        Every attempt recomputes the seek from the current byte offset, so a
+        retry picks up where the broken stream stopped and no record is
+        yielded twice.
+        """
+        suffix = '' if source.key.endswith('.gz') else '.gz'
+        s3_url = f's3://{self.config.s3_bucket}/{source.key}{suffix}'
+
+        for attempt in range(BGZIP_MAX_RETRIES + 1):
+            seek_start = source.start + self._source_byte_offset
+
+            # bgzip's -s counts uncompressed bytes, so only a bounded source
+            # can be limited with it: an unbounded source's end is the
+            # COMPRESSED size, which would truncate the output mid-record,
+            # and subtracting from it goes negative once the uncompressed
+            # offset passes it, dropping the rest of the stream. An unbounded
+            # read instead ends at real EOF, when bgzip exits 0.
+            if source.bounded:
+                seek_length = source.end - seek_start
+                if seek_length <= 0:
+                    return
+                command = ['bgzip', '-b', f'{seek_start}', '-s', f'{seek_length}', s3_url]
+            else:
+                command = ['bgzip', '-b', f'{seek_start}', s3_url]
+
+            try:
+                yield from self._run_bgzip(command)
+                return
+            except subprocess.CalledProcessError as e:
+                stderr = (e.output or '').strip()
+                if attempt == BGZIP_MAX_RETRIES:
+                    logging.error('bgzip failed on %s at byte %d after %d attempts, giving up: %s',
+                                  source.key, self._source_byte_offset, attempt + 1, stderr)
+                    raise
+
+                delay = random.uniform(0, min(BGZIP_BACKOFF_CAP_S, BGZIP_BACKOFF_BASE_S * 2 ** attempt))
+                logging.warning('bgzip failed on %s at byte %d (attempt %d of %d), retrying in %.3fs: %s',
+                                source.key, self._source_byte_offset, attempt + 1,
+                                BGZIP_MAX_RETRIES + 1, delay, stderr)
+                time.sleep(delay)
+
+    def _run_bgzip(self, command):
+        """
+        Yield the records of a single bgzip invocation.
+
+        Read in binary: line iteration then splits only on b'\\n' with no
+        universal-newline translation, so len(line) is the true uncompressed
+        byte count even for a CRLF-terminated or multi-byte record. Decoded,
+        '\\r\\n' would collapse to '\\n' and the count would be characters,
+        under-counting the line and landing the next resume's -b on a
+        stranded newline that orjson then rejects as empty input.
+        """
+        with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              env=_bgzip_env()) as proc:
+            for line in proc.stdout:
+                yield from self._consume(line, len(line))
+
+            proc.wait()
+            if proc.returncode != 0:
+                raise subprocess.CalledProcessError(
+                    proc.returncode, command,
+                    output=proc.stderr.read().decode(errors='replace'),
+                )
+
+    def _consume(self, line, line_bytes):
+        """
+        Account for one raw line and yield its record, unless the record is
+        restricted or the filter rejects it.
+        """
+        self.bytes_read += line_bytes
+        self._source_byte_offset += line_bytes
+
+        # orjson.loads takes either bytes or str
+        record = orjson.loads(line)
+
+        if not verify_record(record, self.restricted):
+            self.restricted_count += 1
+            return
+
+        if self.record_filter is None or self.record_filter(record):
+            self.count += 1
+            self.matched_bytes += line_bytes
+            yield record
+        else:
+            self.filtered_count += 1
 
     @property
     def at_end(self):
@@ -319,11 +387,25 @@ class MultiRecordReader:
         return sum(r.count for r in self.readers)
 
     @property
+    def matched_bytes(self):
+        """
+        Total bytes of the records actually returned.
+        """
+        return sum(r.matched_bytes for r in self.readers)
+
+    @property
     def restricted_count(self):
         """
         Total number of restricted records read.
         """
         return sum(r.restricted_count for r in self.readers)
+
+    @property
+    def filtered_count(self):
+        """
+        Total number of records read and then dropped by the filter.
+        """
+        return sum(r.filtered_count for r in self.readers)
 
     @property
     def at_end(self):
