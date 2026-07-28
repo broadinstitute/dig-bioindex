@@ -436,29 +436,36 @@ def _match_keys(ctx, i, qs, limit, after=None, page=1):
     }
 
 
+def _take_page(reader, response_limit):
+    """
+    One page of records, bounded by the bytes returned rather than the bytes
+    read. Bounding on bytes read ends the page after about one record when a
+    filter is discarding most of what the reader decompresses, since those
+    discards count too. A fat key still fills a page at the same size.
+    """
+    limit = reader.matched_bytes + response_limit
+
+    for record in reader.records:
+        yield record
+
+        if reader.matched_bytes > limit:
+            break
+
+
 def _fetch_records(ctx, reader, index, qs, fmt, page=1, query_s=None):
     """
     Reads up to the portal's response limit of bytes from a RecordReader,
     format them, and then return a JSON response object with the records.
     """
-    bytes_limit = reader.bytes_read + ctx.config.response_limit
     restricted_count = reader.restricted_count
-
-    # similar to itertools.takewhile, but keeps the final record
-    def take():
-        for r in reader.records:
-            yield r
-
-            # stop if the byte limit was reached
-            if reader.bytes_read > bytes_limit:
-                break
+    filtered_count = reader.filtered_count
 
     # validate query parameters
     if fmt not in ['r', 'row', 'c', 'col', 'column']:
         raise ValueError('Invalid output format')
 
     # profile how long it takes to fetch the records from s3
-    fetched_records, fetch_s = profile(list, take())
+    fetched_records, fetch_s = profile(list, _take_page(reader, ctx.config.response_limit))
     count = len(fetched_records)
 
     # did the reader exceed the configured, maximum number of bytes to read?
@@ -512,6 +519,9 @@ def _fetch_records(ctx, reader, index, qs, fmt, page=1, query_s=None):
         'progress': {
             'bytes_read': reader.bytes_read,
             'bytes_total': reader.bytes_total,
+            # records decompressed for this page and then dropped by the
+            # filter; a large number means the index is bucketed too coarsely
+            'filtered': reader.filtered_count - filtered_count,
         },
         'page': page,
         'limit': reader.limit,

@@ -35,7 +35,8 @@ def _make_ctx(name="testportal", indexes=None):
 
 
 def _make_reader(records, at_end=True, source_index=0, source_byte_offset=0,
-                 bytes_read=0, bytes_total=1000, limit=None, restricted_count=0):
+                 bytes_read=0, bytes_total=1000, limit=None, restricted_count=0,
+                 matched_bytes=0, filtered_count=0):
     r = MagicMock()
     r.records = iter(records)
     r.at_end = at_end
@@ -45,6 +46,10 @@ def _make_reader(records, at_end=True, source_index=0, source_byte_offset=0,
     r.bytes_total = bytes_total
     r.limit = limit
     r.restricted_count = restricted_count
+    # held constant, so _take_page never trips its bound and these tests see
+    # every record; the page bound itself is covered in tests/api/test_paging
+    r.matched_bytes = matched_bytes
+    r.filtered_count = filtered_count
     r.index.schema.arity = 1
     return r
 
