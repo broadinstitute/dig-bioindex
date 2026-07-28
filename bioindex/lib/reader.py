@@ -39,6 +39,10 @@ def _bgzip_env():
         frozen = credentials.get_frozen_credentials()
         env['AWS_ACCESS_KEY_ID'] = frozen.access_key
         env['AWS_SECRET_ACCESS_KEY'] = frozen.secret_key
+
+        # all three come from one source or none do; leaving an inherited
+        # token next to keys resolved elsewhere fails the signature
+        env.pop('AWS_SESSION_TOKEN', None)
         if frozen.token:
             env['AWS_SESSION_TOKEN'] = frozen.token
 

@@ -132,13 +132,32 @@ def test_credentials_are_handed_to_the_subprocess(monkeypatch):
     assert env["AWS_SESSION_TOKEN"] == "tok"
 
 
-def test_a_session_token_is_omitted_when_there_is_none(monkeypatch):
+def test_an_inherited_session_token_is_dropped_with_token_free_credentials(monkeypatch):
+    # keys resolved from a profile next to a token inherited from some earlier
+    # assume-role is a credential set that cannot sign
+    monkeypatch.setenv("AWS_SESSION_TOKEN", "stale-from-an-expired-assume-role")
     frozen = types.SimpleNamespace(access_key="AKIA", secret_key="shh", token=None)
     monkeypatch.setattr(reader_mod._session, "get_credentials",
                         lambda: types.SimpleNamespace(get_frozen_credentials=lambda: frozen))
-    monkeypatch.delenv("AWS_SESSION_TOKEN", raising=False)
 
     assert "AWS_SESSION_TOKEN" not in reader_mod._bgzip_env()
+
+
+def test_an_inherited_session_token_is_replaced_not_merged(monkeypatch):
+    monkeypatch.setenv("AWS_SESSION_TOKEN", "stale-from-an-expired-assume-role")
+    frozen = types.SimpleNamespace(access_key="AKIA", secret_key="shh", token="fresh")
+    monkeypatch.setattr(reader_mod._session, "get_credentials",
+                        lambda: types.SimpleNamespace(get_frozen_credentials=lambda: frozen))
+
+    assert reader_mod._bgzip_env()["AWS_SESSION_TOKEN"] == "fresh"
+
+
+def test_the_environment_is_left_alone_when_boto3_resolves_nothing(monkeypatch):
+    # nothing to be consistent with, so do not strip what the caller set up
+    monkeypatch.setenv("AWS_SESSION_TOKEN", "inherited")
+    monkeypatch.setattr(reader_mod._session, "get_credentials", lambda: None)
+
+    assert reader_mod._bgzip_env()["AWS_SESSION_TOKEN"] == "inherited"
 
 
 def test_the_ambient_environment_survives_when_boto3_has_no_credentials(monkeypatch):
