@@ -6,14 +6,14 @@ The Bio-Index has two entry points: a CLI used for basic CRUD operations and a s
 
 ## Prerequisites
 
-### Python 3.8+
+### Python 3.10 or 3.11
 
-```bash
-$ sudo amazon-linux-extras install python3.8
-```
+Not 3.9 or below - `orjson` publishes no wheel there - and not 3.12, where the
+pinned `botocore` fails to import. The container image builds on 3.11.
+
 Make sure `python3` and `pip3` are on the path.  You may need to do something like:
 ```bash
-$ sudo ln -s `which python3.8` /usr/bin/python3
+$ sudo ln -s `which python3.11` /usr/bin/python3
 $ sudo ln -s /usr/local/bin/pip3 /usr/bin/pip3
 ```
 

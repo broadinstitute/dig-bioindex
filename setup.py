@@ -13,6 +13,9 @@ setup(
         'bioindex.main',
         'bioindex.server',
     ],
+    # >=3.10: orjson publishes no wheel below it
+    # <3.12:  botocore 1.20 imports botocore.vendored.six.moves, gone in 3.12
+    python_requires='>=3.10,<3.12',
     install_requires=[
         'aiofiles>=0.6',
         'botocore>=1.20',
@@ -20,12 +23,12 @@ setup(
         'click>=7.0',
         'fastapi>=0.60',
         'graphql-core>=3.0',
-        'orjson>=3.5',
-        'pydantic>=1.4',
-        'pymysql>=0.10',
-        'python-dotenv>=0.15',
+        'orjson>=3.11.6',
+        'pydantic>=1.10.26,<2',
+        'pymysql>=1.1.1',
+        'python-dotenv>=1.2.2',
         'pyyaml>=6.0',
-        'requests>=2.25',
+        'requests>=2.33.0',
         'rich>=10.0',
         'smart_open>=5.0',
         'sqlalchemy>=1.4',
