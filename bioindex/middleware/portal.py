@@ -40,12 +40,16 @@ class PortalResolveMiddleware(BaseHTTPMiddleware):
 
         response = await call_next(request)
 
-        # redirects (e.g. trailing slash) are built from the stripped path, so
-        # put the portal back on the front or the client lands on a 404
+        # the router redirects a trailing slash using the stripped path, which
+        # would send the client to a portal-less URL and 404; put the portal
+        # back on. Only that redirect is rewritten - anything a handler builds
+        # already knows which portal it is serving.
         location = response.headers.get('location')
         if location:
             url = urlsplit(location)
-            if url.path.startswith('/') and url.netloc in ('', request.url.netloc):
+            stripped = request.scope['path']
+            if (url.netloc in ('', request.url.netloc)
+                    and url.path in (stripped.rstrip('/'), stripped + '/')):
                 response.headers['location'] = urlunsplit(url._replace(path=prefix + url.path))
 
         return response

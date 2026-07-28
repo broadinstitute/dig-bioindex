@@ -2,6 +2,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.requests import Request
+from starlette.responses import RedirectResponse
 
 from bioindex.lib.portal_context import PortalContext
 from bioindex.lib.portal_registry import init_registry
@@ -61,3 +62,26 @@ def test_redirect_keeps_the_portal_prefix():
     resp = client.get("/p/echo/", follow_redirects=False)
     assert resp.status_code == 307
     assert resp.headers["location"].endswith("/p/echo")
+
+
+def test_handler_redirect_is_not_double_prefixed():
+    # a handler builds its own Location and already knows its portal
+    app = _app()
+
+    @app.get("/jump")
+    def jump():
+        return RedirectResponse("/p/echo", status_code=307)
+
+    resp = TestClient(app).get("/p/jump", follow_redirects=False)
+    assert resp.headers["location"] == "/p/echo"
+
+
+def test_offsite_redirect_is_left_alone():
+    app = _app()
+
+    @app.get("/away")
+    def away():
+        return RedirectResponse("https://example.org/elsewhere", status_code=307)
+
+    resp = TestClient(app).get("/p/away", follow_redirects=False)
+    assert resp.headers["location"] == "https://example.org/elsewhere"
