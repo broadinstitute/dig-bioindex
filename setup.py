@@ -13,9 +13,13 @@ setup(
         'bioindex.main',
         'bioindex.server',
     ],
-    # >=3.10: orjson publishes no wheel below it
-    # <3.12:  botocore 1.20 imports botocore.vendored.six.moves, gone in 3.12
-    python_requires='>=3.10,<3.12',
+    # >=3.10 because orjson publishes no wheel below it. Deliberately no upper
+    # bound: this constrains everything that installs bioindex, and the code
+    # itself has no ceiling - the containerised deployment runs it on 3.12. An
+    # earlier <3.12 came from requirements.txt pinning botocore 1.20, which
+    # cannot import there; that is a property of those pins, not of bioindex,
+    # and install_requires floors resolve to a working botocore on 3.12.
+    python_requires='>=3.10',
     install_requires=[
         'aiofiles>=0.6',
         'botocore>=1.20',
