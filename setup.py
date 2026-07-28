@@ -13,6 +13,9 @@ setup(
         'bioindex.main',
         'bioindex.server',
     ],
+    # >=3.10: orjson publishes no wheel below it
+    # <3.12:  botocore 1.20 imports botocore.vendored.six.moves, gone in 3.12
+    python_requires='>=3.10,<3.12',
     install_requires=[
         'aiofiles>=0.6',
         'botocore>=1.20',
