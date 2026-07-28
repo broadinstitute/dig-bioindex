@@ -32,11 +32,25 @@ def test_generation_ignores_other_indexes_and_unbuilt_keys():
 
 
 def test_generation_ttl_cache_returns_same_value():
-    """Within the TTL window, repeated calls return the cached fingerprint."""
-    e1 = _engine_with_keys([("bio", "a.json", "v1", BUILT_TS)])
-    # First call populates cache with ttl=60
+    """Within the TTL window, repeated calls on the SAME engine return the cached fingerprint."""
+    e1 = _engine_with_keys([("bio-ttl-test", "a.json", "v1", BUILT_TS)])
     g1 = index_generation(e1, "bio-ttl-test", ttl=60)
-    # Second call with a different engine but same index name → must return cached
-    e2 = _engine_with_keys([("bio-ttl-test", "z.json", "v99", BUILT_TS)])
-    g2 = index_generation(e2, "bio-ttl-test", ttl=60)
+    # Second call on the same engine object → must return cached value
+    g2 = index_generation(e1, "bio-ttl-test", ttl=60)
     assert g1 == g2
+
+
+def test_generation_cache_isolated_across_engines():
+    """Two engines with the same index_name must get independent cache entries."""
+    e1 = _engine_with_keys([("shared", "a.json", "v1", BUILT_TS)])
+    e2 = _engine_with_keys([("shared", "a.json", "v2", BUILT_TS)])
+    # ttl=0 bypasses cache; populate cache with ttl=60 on both engines
+    g1 = index_generation(e1, "shared", ttl=60)
+    g2 = index_generation(e2, "shared", ttl=60)
+    assert g1 != g2, "different engines with same index_name must yield different fingerprints"
+    # Cached values must also stay independent
+    g1_cached = index_generation(e1, "shared", ttl=60)
+    g2_cached = index_generation(e2, "shared", ttl=60)
+    assert g1_cached == g1
+    assert g2_cached == g2
+    assert g1_cached != g2_cached

@@ -15,13 +15,16 @@ def config_var(type=str, default=None):
     various places where that value may be set.
     """
     def decorator(f):
-        def wrapper(*args):
-            key = f(*args)
-            val = os.environ.get(key, default)
+        def wrapper(self):
+            key = f(self)
+            val = (self._overrides if self._overrides is not None else os.environ).get(key, default)
 
-            # cast to the appropriate type
+            # cast to the appropriate type; a setting read from yaml rather
+            # than the environment may already be a list
             if type == list:
-                return val.split(',') if val else []
+                if not val:
+                    return []
+                return val.split(',') if isinstance(val, str) else list(val)
             else:
                 return val and type(val)
 
@@ -34,20 +37,16 @@ class Config:
     Configuration file.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, _overrides=None, **kwargs):
         """
         Loads the configuration file using environment.
         """
+        self._overrides = _overrides
         try:
-            if self.bioindex_env is not None:
-                secret = secret_lookup(self.bioindex_env)
-                assert secret, f'Failed to lookup secret {self.bioindex_env}'
-
-                # set environment keys if not already set
-                Config.set_default_env(secret)
-
-            # use keyword arguments if environment not yet set
-            Config.set_default_env(kwargs)
+            # settings given explicitly are complete; never fall back to the environment
+            if self._overrides is None:
+                # use keyword arguments if environment not yet set
+                Config.set_default_env(kwargs)
 
             # validate required settings
             assert self.s3_bucket, 'BIOINDEX_S3_BUCKET not set in the environment'
@@ -56,6 +55,14 @@ class Config:
         except AssertionError as ex:
             logging.error(ex)
             sys.exit(-1)
+
+    @classmethod
+    def from_dict(cls, env):
+        """
+        Build a config from an explicit dict of settings rather than from
+        the process environment, so one process can serve many portals.
+        """
+        return cls(_overrides=dict(env))
 
     @staticmethod
     def set_default_env(env):
@@ -146,11 +153,6 @@ class Config:
                     genes[symbol.strip().upper()] = region
 
         return genes
-
-    @property
-    @config_var()
-    def bioindex_env(self):
-        return 'BIOINDEX_ENVIRONMENT'
 
     @property
     @config_var()

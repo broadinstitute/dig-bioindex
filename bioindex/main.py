@@ -1,4 +1,6 @@
 import concurrent
+import os
+import secrets
 import time
 from enum import Enum
 
@@ -31,8 +33,9 @@ def cli(ctx, env_file):
         logging.info('Loading %s environment variables...', env_file)
         dotenv.load_dotenv(env_file)
 
-    # load the configuration into the click object
-    ctx.obj = config.Config()
+    # load the configuration into the click object; the server is the
+    # exception, as it builds a Config per portal it serves
+    ctx.obj = None if ctx.invoked_subcommand == 'serve' else config.Config()
 
 
 SERVER_LOGGING_CONFIG = {
@@ -63,20 +66,40 @@ SERVER_LOGGING_CONFIG = {
 }
 
 
+def _maybe_dev_signing_key(dev):
+    """
+    Generate a throwaway signing key so local dev needs no setup. Never
+    overrides an existing key. Returns a warning to print, or None.
+    """
+    if not dev or os.environ.get('BIOINDEX_TOKEN_SIGNING_KEY'):
+        return None
+
+    os.environ['BIOINDEX_TOKEN_SIGNING_KEY'] = secrets.token_hex(32)
+    return ('--dev: generated an ephemeral BIOINDEX_TOKEN_SIGNING_KEY; continuation tokens '
+            'will not survive a restart. Never use --dev in production.')
+
+
 @click.command(name='serve')
 @click.option('--port', '-p', type=int, default=5000)
 @click.option('--workers', '-w', type=int, default=1)
-def cli_serve(port, workers):
+@click.option('--dev', is_flag=True,
+              help='Local dev: generate an ephemeral signing key if unset. Never in production.')
+def cli_serve(port, workers, dev):
     # Fail fast: the server signs continuation tokens, so the signing key must
     # be present at startup. Without this check a missing key only surfaces as a
     # 500 on the first paginated request.
     from .lib import signed_tokens
+
+    warn = _maybe_dev_signing_key(dev)
+    if warn:
+        click.echo(f'WARNING: {warn}', err=True)
+
     try:
         signed_tokens.signing_key()
     except RuntimeError as e:
         raise SystemExit(
             f'{e}\nThe server requires BIOINDEX_TOKEN_SIGNING_KEY (>=32 bytes; '
-            f'hex/base64url). For local dev: '
+            f'hex/base64url). For local dev pass --dev (ephemeral key), or '
             f'export BIOINDEX_TOKEN_SIGNING_KEY=$(openssl rand -hex 32)'
         )
 

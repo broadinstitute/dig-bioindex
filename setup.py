@@ -7,6 +7,7 @@ setup(
         'bioindex',
         'bioindex.api',
         'bioindex.lib',
+        'bioindex.middleware',
     ],
     py_modules=[
         'bioindex.main',
@@ -23,6 +24,7 @@ setup(
         'pydantic>=1.4',
         'pymysql>=0.10',
         'python-dotenv>=0.15',
+        'pyyaml>=6.0',
         'requests>=2.25',
         'rich>=10.0',
         'smart_open>=5.0',
