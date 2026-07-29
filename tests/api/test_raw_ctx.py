@@ -51,11 +51,15 @@ async def test_raw_file_uses_ctx_config():
     ctx = _make_ctx()
     req = _make_req(ctx)
     fake_body = b"binary-data"
+    req.headers.get.return_value = None
 
-    with patch("bioindex.api.raw.s3.read_object", return_value=BytesIO(fake_body)) as mock_s3:
+    with patch("bioindex.api.raw.s3.head_object", return_value={"ETag": '"e"'}) as mock_head, \
+         patch("bioindex.api.raw.s3.read_object_with_etag",
+               return_value=(fake_body, '"e"')) as mock_read:
         resp = await raw.api_raw_file(file="some/file.bin", req=req)
 
-    mock_s3.assert_called_once_with("test-bucket", "prefix/raw/some/file.bin")
+    mock_head.assert_called_once_with("test-bucket", "prefix/raw/some/file.bin")
+    mock_read.assert_called_once_with("test-bucket", "prefix/raw/some/file.bin")
     assert resp.body == fake_body
 
 
@@ -63,8 +67,9 @@ async def test_raw_file_uses_ctx_config():
 async def test_raw_file_404_when_s3_returns_none():
     ctx = _make_ctx()
     req = _make_req(ctx)
+    req.headers.get.return_value = None
 
-    with patch("bioindex.api.raw.s3.read_object", return_value=None):
+    with patch("bioindex.api.raw.s3.head_object", return_value=None):
         with pytest.raises(fastapi.HTTPException) as exc_info:
             await raw.api_raw_file(file="missing.png", req=req)
 

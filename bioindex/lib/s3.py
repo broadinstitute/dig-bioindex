@@ -2,6 +2,7 @@ import gzip
 from io import BytesIO
 
 import botocore.errorfactory
+import botocore.exceptions
 import fnmatch
 import os
 import os.path
@@ -145,6 +146,26 @@ def read_object(bucket, path, offset=None, length=None):
         kwargs['Range'] = f'bytes=-{length}'
 
     return s3_client.get_object(**kwargs).get('Body')
+
+
+def head_object(bucket, path):
+    """
+    The object's metadata, or None if it isn't there. Callers want 'ETag',
+    which changes whenever the object does.
+    """
+    try:
+        return s3_client.head_object(Bucket=str(bucket), Key=str(path))
+    except botocore.exceptions.ClientError:
+        return None
+
+
+def read_object_with_etag(bucket, path):
+    """
+    The whole object plus the ETag it was read at, so a caller can tell
+    whether it got the version it asked about.
+    """
+    resp = s3_client.get_object(Bucket=str(bucket), Key=str(path))
+    return resp['Body'].read(), resp['ETag']
 
 
 def read_lined_object(bucket, path, offset=None, length=None):
