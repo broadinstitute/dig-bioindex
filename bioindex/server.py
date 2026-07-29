@@ -2,6 +2,7 @@ import contextlib
 import logging
 import os
 
+import anyio.to_thread
 import fastapi
 import pymysql
 
@@ -52,6 +53,18 @@ def _init_registry_from_env():
     logging.info('Loaded %d portal(s): %s', len(contexts), ', '.join(c.name for c in contexts))
 
 
+def _configure_thread_pool():
+    """
+    Size the pool that runs the sync handlers. Every S3 read and database
+    round-trip occupies one of its threads for the whole call, so the ceiling
+    is really how many slow requests a worker can have in flight. anyio
+    defaults to 40; BIOINDEX_THREAD_POOL moves it per environment.
+    """
+    threads = int(os.environ.get('BIOINDEX_THREAD_POOL', '40'))
+    anyio.to_thread.current_default_thread_limiter().total_tokens = threads
+    logging.info('Thread pool sized to %d', threads)
+
+
 @contextlib.asynccontextmanager
 async def lifespan(app):
     """
@@ -59,6 +72,7 @@ async def lifespan(app):
     pools on the way out.
     """
     _init_registry_from_env()
+    _configure_thread_pool()
     yield
 
     for ctx in get_registry():
