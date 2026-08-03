@@ -290,6 +290,10 @@ class Index:
         # create a job per object
         jobs = [pool.submit(run_function, config, obj) for obj in objects]
 
+        # keys whose job came back without having indexed anything; collected
+        # so one bad file doesn't hide the rest, and reported together at the end
+        failures = []
+
         # as each job finishes, set the built flag for that key
         for job in concurrent.futures.as_completed(jobs):
             if job.exception() is not None:
@@ -307,6 +311,21 @@ class Index:
                 # not an easy way to get the number of records from batch and it's only used for logging
                 record_count = 0
 
+                # Batch returns a job description for FAILED just as it does for
+                # SUCCEEDED - the waiter returns on either - so a failed child
+                # arrives here looking like a finished one. Marking its key built
+                # would record a file that was never indexed as done, and the
+                # build would report success while missing data.
+                if result.get('status') != 'SUCCEEDED':
+                    logging.error('Indexer job for %s did not succeed (%s); not marking it built',
+                                  key, result.get('statusReason'))
+                    failures.append(key)
+
+                    if progress:
+                        progress.advance(overall, advance=size)
+
+                    continue
+
             # the insert was done remotely, simply set the built flag now
             self.set_key_built_flag(engine, key)
 
@@ -316,6 +335,11 @@ class Index:
             # update the overall bar
             if progress:
                 progress.advance(overall, advance=size)
+
+        if failures:
+            raise RuntimeError(
+                f'{len(failures)} indexer job(s) failed and were not indexed: ' + ', '.join(failures)
+            )
 
     def index_objects_local(self, config, engine, pool, objects, progress=None, overall=None):
         """
