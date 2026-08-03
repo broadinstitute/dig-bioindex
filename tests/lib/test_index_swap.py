@@ -8,6 +8,8 @@ cutover itself needs a real database and lives in test_index_swap_mysql.py.
 import datetime
 
 import pytest
+import sqlalchemy.dialects.mysql
+from click.testing import CliRunner
 
 from bioindex.lib.index import Index, _is_built
 
@@ -81,6 +83,18 @@ def test_a_name_that_does_not_exist_is_refused():
 
     with pytest.raises(KeyError):
         Index.swap_into(engine, 'gene-tmp', 'gene')
+
+    assert engine.written == []
+
+
+def test_swapping_a_name_into_itself_is_refused():
+    # every statement in the cutover reads as a no-op against a single name
+    # until the last, which deletes it: the index ends up unpublished, its
+    # keys gone, and its live table returned to the caller to drop
+    engine = _engine(_named(_row(1, 'assoc', 'assoc_live', 'phenotype'), 'assoc'))
+
+    with pytest.raises(ValueError, match='into itself'):
+        Index.swap_into(engine, 'assoc', 'assoc')
 
     assert engine.written == []
 
@@ -197,3 +211,40 @@ def test_the_canonical_keys_go_before_the_temp_keys_are_renamed():
 ])
 def test_is_built(built, expected):
     assert _is_built(built) is expected
+
+
+def test_the_dropped_table_name_is_quoted_by_the_dialect(monkeypatch):
+    """
+    A table name is an identifier, so it cannot be bound as a parameter and
+    has to be interpolated. Anything the dialect would need to escape has to
+    reach the statement escaped, or the drop is malformed - and for a name
+    holding a backtick, malformed in a way that names a different table.
+    """
+    import bioindex.main as main
+
+    dropped = []
+
+    class _Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, statement):
+            dropped.append(str(statement))
+
+    class _Engine:
+        dialect = sqlalchemy.dialects.mysql.dialect()
+
+        def begin(self):
+            return _Conn()
+
+    monkeypatch.setattr(main.migrate, 'migrate', lambda cfg: _Engine())
+    monkeypatch.setattr(main.index.Index, 'swap_into',
+                        staticmethod(lambda *a: 'weird`name'))
+
+    result = CliRunner().invoke(main.cli_swap, ['tmp', 'canonical', '--yes'], obj=None)
+
+    assert result.exit_code == 0, result.output
+    assert dropped == ['DROP TABLE IF EXISTS `weird``name`']

@@ -78,6 +78,15 @@ class Index:
         self.s3_prefix = s3_prefix
         self.compressed = compressed
 
+    @property
+    def is_built(self):
+        """
+        True if this index has actually been built.
+
+        Not the same as a truthy `built`: see ZERO_DATETIME.
+        """
+        return _is_built(self.built)
+
     @staticmethod
     def set_compressed(engine, name, prefix, compressed):
         with engine.connect() as conn:
@@ -129,7 +138,7 @@ class Index:
 
             # remove indexes not built?
             if filter_built:
-                indexes = filter(lambda i: i.built, indexes)
+                indexes = filter(lambda i: i.is_built, indexes)
 
             return indexes
 
@@ -220,6 +229,13 @@ class Index:
         implicitly in MySQL, so a DROP inside the cutover would end the
         transaction early and take the rollback with it.
         """
+        # every statement below reads as a no-op against a single name, right
+        # up to the last one, which deletes it - so the same name twice ends
+        # with the index unpublished, its keys gone, and its live table handed
+        # back to the caller to drop
+        if temp_name == canonical_name:
+            raise ValueError(f'{temp_name} cannot be swapped into itself')
+
         temp = Index._swap_row(engine, temp_name)
         canonical = Index._swap_row(engine, canonical_name)
 

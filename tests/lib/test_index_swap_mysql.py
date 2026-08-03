@@ -147,6 +147,36 @@ def test_nothing_moves_when_the_cutover_fails(engine):
     assert keys(engine) == before_keys
 
 
+def test_swapping_a_name_into_itself_is_refused(engine):
+    add_index(engine, 'assoc', 'assoc_live', 'phenotype')
+    add_key(engine, 'assoc', 'a/1.json')
+
+    before_indexes, before_keys = indexes(engine), keys(engine)
+
+    with pytest.raises(ValueError, match='into itself'):
+        Index.swap_into(engine, 'assoc', 'assoc')
+
+    # unguarded this empties both tables and hands back `assoc_live` - the
+    # table the name is still serving - for the caller to drop
+    assert indexes(engine) == before_indexes
+    assert keys(engine) == before_keys
+
+
+def test_an_index_left_at_the_zero_date_does_not_count_as_built(engine):
+    # the filtered listing feeds GraphQL schema building, which would
+    # otherwise raise a type over a table that was never populated
+    add_index(engine, 'assoc', 'assoc_t', 'phenotype')
+    add_index(engine, 'other', 'other_t', 'phenotype')
+
+    with engine.begin() as conn:
+        conn.execute(text('UPDATE `__Indexes` SET `built` = 0 WHERE `name` = :n'),
+                     {'n': 'assoc'})
+
+    listed = [i.name for i in Index.list_indexes(engine, filter_built=True)]
+
+    assert listed == ['other']
+
+
 def test_a_multi_arity_name_is_refused(engine):
     # both of these are legal rows: __Indexes is unique on (name, arity),
     # not on name

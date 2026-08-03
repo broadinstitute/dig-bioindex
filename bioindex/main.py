@@ -139,8 +139,12 @@ def cli_swap(cfg, temp_name, canonical_name):
     logging.info('Swapped %s into %s; dropping the old table %s',
                  temp_name, canonical_name, old_table)
 
+    # a table name is an identifier, so it cannot be bound as a parameter;
+    # let the dialect quote it rather than assuming it needs no escaping
+    quoted = engine.dialect.identifier_preparer.quote(old_table)
+
     with engine.begin() as conn:
-        conn.execute(sqlalchemy.text(f'DROP TABLE IF EXISTS `{old_table}`'))
+        conn.execute(sqlalchemy.text(f'DROP TABLE IF EXISTS {quoted}'))
 
     logging.info('Done')
 
@@ -158,7 +162,7 @@ def cli_list(cfg):
     table.add_column('Schema')
 
     for i in sorted(indexes, key=lambda i: i.name):
-        built = f'[green]{i.built}[/]' if i.built else '[red]Not built[/]'
+        built = f'[green]{i.built}[/]' if i.is_built else '[red]Not built[/]'
         table.add_row(built, i.name, i.s3_prefix, str(i.schema))
 
     console.print(table)
