@@ -1,6 +1,7 @@
 import gzip
 import types
 
+import botocore.exceptions
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -119,6 +120,29 @@ def test_a_missing_object_is_a_404(s3, client):
 
     assert client.get('/p/api/raw/file/gone.csv').status_code == 404
     assert s3.reads == 0
+
+
+def test_an_object_deleted_between_the_head_and_the_get_is_a_404(s3, client, monkeypatch):
+    # HEAD found it, then it was deleted before we read it. That is a real
+    # race and the honest answer is 404 - not the 500 an unhandled
+    # NoSuchKey would produce.
+    monkeypatch.setattr(raw.s3, 'read_object_with_etag', lambda bucket, path: None)
+
+    assert client.get('/p/api/raw/file/racy.csv').status_code == 404
+
+
+def test_a_read_failure_is_not_disguised_as_a_404(s3, client, monkeypatch):
+    # "we are not allowed to read it" is not "it isn't there". The access
+    # middleware turns the raised error into a 500, which is the point: a
+    # 404 here would read as a data problem and hide a broken deployment.
+    def boom(bucket, path):
+        raise botocore.exceptions.ClientError(
+            {'Error': {'Code': 'AccessDenied'}, 'ResponseMetadata': {'HTTPStatusCode': 403}},
+            'GetObject')
+
+    monkeypatch.setattr(raw.s3, 'read_object_with_etag', boom)
+
+    assert client.get('/p/api/raw/file/denied.csv').status_code == 500
 
 
 @pytest.mark.parametrize('name,content_type', [

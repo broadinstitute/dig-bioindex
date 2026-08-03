@@ -148,6 +148,21 @@ def read_object(bucket, path, offset=None, length=None):
     return s3_client.get_object(**kwargs).get('Body')
 
 
+def _is_missing(error):
+    """
+    True if S3 said the object isn't there, as opposed to refusing to say.
+
+    HEAD and GET report this differently: a HEAD response has no body for
+    botocore to parse an error code out of, so it falls back to the status
+    and reports '404' where GET reports 'NoSuchKey'. Both carry the status,
+    so that is what we key off.
+
+    Anything else - AccessDenied, SlowDown, a bad bucket - is an operational
+    failure, and reporting it as a missing file would hide it.
+    """
+    return error.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404
+
+
 def head_object(bucket, path):
     """
     The object's metadata, or None if it isn't there. Callers want 'ETag',
@@ -155,16 +170,25 @@ def head_object(bucket, path):
     """
     try:
         return s3_client.head_object(Bucket=str(bucket), Key=str(path))
-    except botocore.exceptions.ClientError:
-        return None
+    except botocore.exceptions.ClientError as e:
+        if _is_missing(e):
+            return None
+        raise
 
 
 def read_object_with_etag(bucket, path):
     """
     The whole object plus the ETag it was read at, so a caller can tell
-    whether it got the version it asked about.
+    whether it got the version it asked about. None if the object has gone
+    in the meantime, which is a real race: we HEAD before we GET.
     """
-    resp = s3_client.get_object(Bucket=str(bucket), Key=str(path))
+    try:
+        resp = s3_client.get_object(Bucket=str(bucket), Key=str(path))
+    except botocore.exceptions.ClientError as e:
+        if _is_missing(e):
+            return None
+        raise
+
     return resp['Body'].read(), resp['ETag']
 
 

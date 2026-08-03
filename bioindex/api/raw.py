@@ -40,6 +40,23 @@ def _raw_headers(etag):
     return {'ETag': etag, 'Cache-Control': 'public, no-cache, must-revalidate'}
 
 
+def _raw_plot_response(bucket, path):
+    """
+    Serve a plot image, or 404 if it isn't there.
+
+    A referenced plot that was never generated is an ordinary miss, not a
+    failure: the database names the file whether or not the job that draws
+    it ever ran.
+    """
+    read = s3.read_object_with_etag(bucket, path)
+    if read is None:
+        raise fastapi.HTTPException(status_code=404)
+
+    body, _etag = read
+
+    return fastapi.Response(content=body, media_type='image/png')
+
+
 def _raw_file_response(bucket, path, file, header):
     """
     Serve an S3 object with ETag revalidation, as a 200 or a 304.
@@ -52,8 +69,13 @@ def _raw_file_response(bucket, path, file, header):
         return fastapi.Response(status_code=304, headers=_raw_headers(meta['ETag']))
 
     # read the body and answer with the tag it actually came back at, which
-    # is not necessarily the one HEAD reported a moment ago
-    body, etag = s3.read_object_with_etag(bucket, path)
+    # is not necessarily the one HEAD reported a moment ago - and the object
+    # may be gone entirely by now, which is a 404 rather than a failure
+    read = s3.read_object_with_etag(bucket, path)
+    if read is None:
+        raise fastapi.HTTPException(status_code=404)
+
+    body, etag = read
 
     content_type, encoding = mimetypes.guess_type(file)
     headers = _raw_headers(etag)
@@ -76,12 +98,7 @@ async def api_raw_plot_dataset(dataset: str, file: str, req: fastapi.Request):
     if not verify_permissions(ctx.portal, req, dataset=dataset):
         raise fastapi.HTTPException(status_code=401)
 
-    # load the object from s3
-    content = s3.read_object(ctx.config.s3_bucket, ctx.config.s3_path(f'plot/dataset/{dataset}/{file}'))
-    if content is None:
-        raise fastapi.HTTPException(status_code=404)
-
-    return fastapi.Response(content=content.read(), media_type='image/png')
+    return _raw_plot_response(ctx.config.s3_bucket, ctx.config.s3_path(f'plot/dataset/{dataset}/{file}'))
 
 
 @router.get('/plot/phenotype/{phenotype}/{file:path}')
@@ -93,12 +110,7 @@ async def api_raw_plot_phenotype(phenotype: str, file: str, req: fastapi.Request
     if not verify_permissions(ctx.portal, req, phenotype=phenotype):
         raise fastapi.HTTPException(status_code=401)
 
-    # load the object from s3
-    content = s3.read_object(ctx.config.s3_bucket, ctx.config.s3_path(f'plot/phenotype/{phenotype}/{file}'))
-    if content is None:
-        raise fastapi.HTTPException(status_code=404)
-
-    return fastapi.Response(content=content.read(), media_type='image/png')
+    return _raw_plot_response(ctx.config.s3_bucket, ctx.config.s3_path(f'plot/phenotype/{phenotype}/{file}'))
 
 
 @router.get('/plot/phenotype/{phenotype}/{ancestry}/{file:path}')
@@ -110,12 +122,10 @@ async def api_raw_plot_phenotype_ancestry(phenotype: str, ancestry: str, file: s
     if not verify_permissions(ctx.portal, req, phenotype=phenotype):
         raise fastapi.HTTPException(status_code=401)
 
-    # load the object from s3
-    content = s3.read_object(ctx.config.s3_bucket, ctx.config.s3_path(f'plot/phenotype/{phenotype}/{ancestry}/{file}'))
-    if content is None:
-        raise fastapi.HTTPException(status_code=404)
-
-    return fastapi.Response(content=content.read(), media_type='image/png')
+    return _raw_plot_response(
+        ctx.config.s3_bucket,
+        ctx.config.s3_path(f'plot/phenotype/{phenotype}/{ancestry}/{file}'),
+    )
 
 
 @router.get('/file/{file:path}')

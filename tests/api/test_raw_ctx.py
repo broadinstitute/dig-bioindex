@@ -3,7 +3,6 @@ Tests that raw.py and portal.py handlers resolve ctx via get_portal_ctx
 and serve against it (engine/s3/portal mocked).
 """
 import types
-from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 import fastapi
@@ -95,7 +94,7 @@ async def test_raw_plot_dataset_serves_image():
     fake_body = b"\x89PNG\r\n"
 
     with patch("bioindex.api.raw.verify_permissions", return_value=True), \
-         patch("bioindex.api.raw.s3.read_object", return_value=BytesIO(fake_body)):
+         patch("bioindex.api.raw.s3.read_object_with_etag", return_value=(fake_body, '"e"')):
         resp = await raw.api_raw_plot_dataset(dataset="ds1", file="plot.png", req=req)
 
     assert resp.media_type == "image/png"
