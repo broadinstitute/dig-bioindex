@@ -1,12 +1,22 @@
+import functools
+import os
+
 import fastapi
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import text
 
+from ..lib import http_cache
 from ..lib.auth import restrictions
 from ..lib.utils import nonce, profile
 from ..middleware.portal import get_portal_ctx
 
 # create web server
 router = fastapi.APIRouter()
+
+# How long a client may reuse portal metadata without asking again. These
+# answers change when someone edits the portal database, which is rare, and
+# the same handful of them is served tens of thousands of times a day.
+MAX_AGE = int(os.environ.get('BIOINDEX_PORTAL_MAX_AGE', '300'))
 
 
 def _require_portal(ctx):
@@ -22,7 +32,44 @@ def _require_portal(ctx):
     return ctx.portal
 
 
+def _cache_headers(etag):
+    """
+    Reusable for MAX_AGE seconds, and revalidatable after that. Sent on the
+    304 as well, so a client that revalidates starts a fresh window instead
+    of asking again on the next request.
+    """
+    return {'ETag': etag, 'Cache-Control': f'public, max-age={MAX_AGE}, must-revalidate'}
+
+
+def revalidatable(handler):
+    """
+    Tag a metadata response so clients and any shared cache can reuse it.
+
+    The handler keeps returning a plain dict; this turns it into a response
+    with a validator, and answers 304 when the client already has that
+    version. Only for responses that are the same for everyone - see
+    api_portal_restrictions, which is not.
+    """
+    @functools.wraps(handler)
+    async def wrapper(req, *args, **kwargs):
+        payload = await handler(req, *args, **kwargs)
+
+        # encode first: the envelope holds dates and other types that are not
+        # JSON on their own, and returning a Response skips the encoding
+        # FastAPI would otherwise have done for us
+        content = jsonable_encoder(payload)
+        etag = http_cache.etag_for(content)
+
+        if http_cache.if_none_match(req.headers.get('if-none-match'), etag):
+            return fastapi.Response(status_code=304, headers=_cache_headers(etag))
+
+        return fastapi.responses.ORJSONResponse(content, headers=_cache_headers(etag))
+
+    return wrapper
+
+
 @router.get("/groups", response_class=fastapi.responses.ORJSONResponse)
+@revalidatable
 async def api_portal_groups(req: fastapi.Request):
     """
     Returns the list of portals available.
@@ -58,12 +105,18 @@ async def api_portal_groups(req: fastapi.Request):
 
 
 @router.get("/restrictions", response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_restrictions(req: fastapi.Request):
+async def api_portal_restrictions(req: fastapi.Request, response: fastapi.Response):
     """
     Returns all restrictions for the current user.
     """
     portal = _require_portal(get_portal_ctx(req))
     keyword_restrictions, query_s = profile(restrictions, portal, req)
+
+    # deliberately not @revalidatable: this one is per-user. It reads
+    # x-bioindex-access-token and answers differently depending on who is
+    # asking, so a shared cache holding it would hand one user's
+    # restrictions to another.
+    response.headers['Cache-Control'] = 'private, no-store'
 
     return {
         "profile": {
@@ -100,13 +153,12 @@ def fetch_added_phenotypes(portal, include: list):
         return phenotypes
 
 
-@router.get("/phenotypes", response_class=fastapi.responses.ORJSONResponse)
-async def api_portal_phenotypes(req: fastapi.Request, q: str = None):
+def query_phenotypes(portal, q=None):
     """
-    Returns all available phenotypes or just those for a given
-    disease group.
+    The phenotypes for a disease group, or all of them when no group is
+    given. Returns the list and the time the query took; an unknown group
+    is an empty list and no query at all.
     """
-    portal = _require_portal(get_portal_ctx(req))
     sql = "SELECT `name`, `description`, `group`, `dichotomous` FROM Phenotypes"
 
     # groups to match
@@ -123,14 +175,7 @@ async def api_portal_phenotypes(req: fastapi.Request, q: str = None):
             rows = resp.fetchone()
 
             if rows is None:
-                return {
-                    "profile": {
-                        "query": "",
-                    },
-                    "data": [],
-                    "count": 0,
-                    "nonce": nonce(),
-                }
+                return [], ""
 
             # groups are a comma-separated set
             groups = rows[0].split(",")
@@ -166,17 +211,31 @@ async def api_portal_phenotypes(req: fastapi.Request, q: str = None):
         if include:
             phenotypes.extend(fetch_added_phenotypes(portal, include))
 
-        return {
-            "profile": {
-                "query": query_s,
-            },
-            "data": phenotypes,
-            "count": len(phenotypes),
-            "nonce": nonce(),
-        }
+        return phenotypes, query_s
+
+
+@router.get("/phenotypes", response_class=fastapi.responses.ORJSONResponse)
+@revalidatable
+async def api_portal_phenotypes(req: fastapi.Request, q: str = None):
+    """
+    Returns all available phenotypes or just those for a given
+    disease group.
+    """
+    portal = _require_portal(get_portal_ctx(req))
+    phenotypes, query_s = query_phenotypes(portal, q)
+
+    return {
+        "profile": {
+            "query": query_s,
+        },
+        "data": phenotypes,
+        "count": len(phenotypes),
+        "nonce": nonce(),
+    }
 
 
 @router.get("/complications", response_class=fastapi.responses.ORJSONResponse)
+@revalidatable
 async def api_portal_complications(req: fastapi.Request, q: str = None):
     """
     Returns all available complication phenotype pairs.
@@ -234,16 +293,17 @@ async def api_portal_complications(req: fastapi.Request, q: str = None):
 
 
 @router.get("/datasets", response_class=fastapi.responses.ORJSONResponse)
+@revalidatable
 async def api_portal_datasets(req: fastapi.Request, q: str = None):
     """
     Returns all available datasets for a given disease group.
     """
     portal = _require_portal(get_portal_ctx(req))
-    resp = await api_portal_phenotypes(req, q)
 
-    # map all the phenotypes for this portal group
-    phenotypes = set(p["name"] for p in resp["data"])
-    query_p = resp["profile"]["query"]
+    # map all the phenotypes for this portal group. Goes to the query rather
+    # than to the route handler, which now returns a tagged response.
+    phenotype_rows, query_p = query_phenotypes(portal, q)
+    phenotypes = set(p["name"] for p in phenotype_rows)
 
     # query for datasets
     sql = (
@@ -300,6 +360,7 @@ async def api_portal_datasets(req: fastapi.Request, q: str = None):
 
 
 @router.get("/documentation", response_class=fastapi.responses.ORJSONResponse)
+@revalidatable
 async def api_portal_documentation(req: fastapi.Request, q: str, group: str = None):
     """
     Returns all available phenotypes or just those for a given
@@ -332,6 +393,7 @@ async def api_portal_documentation(req: fastapi.Request, q: str, group: str = No
 
 # Returns all documentations for a given group, and any modification to default group md
 @router.get("/documentations", response_class=fastapi.responses.ORJSONResponse)
+@revalidatable
 async def api_portal_documentations(req: fastapi.Request, q: str):
     portal = _require_portal(get_portal_ctx(req))
     sql = "SELECT `group`, `name`, `content` FROM Documentation "
@@ -362,6 +424,7 @@ async def api_portal_documentations(req: fastapi.Request, q: str):
 
 
 @router.get("/systems", response_class=fastapi.responses.ORJSONResponse)
+@revalidatable
 async def api_portal_systems(req: fastapi.Request):
     """
     Returns system-disease-phenotype for all systems.
@@ -409,6 +472,7 @@ async def api_portal_systems(req: fastapi.Request):
 
 
 @router.get("/links", response_class=fastapi.responses.ORJSONResponse)
+@revalidatable
 async def api_portal_links(req: fastapi.Request, q: str = None, group: str = None):
     """
     Returns one - or all - redirect links.
