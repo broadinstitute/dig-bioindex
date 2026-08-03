@@ -18,6 +18,25 @@ from .s3 import list_objects, read_lined_object, relative_key
 from .schema import Schema
 from .utils import cap_case_str
 
+# MySQL's "Deadlock found when trying to get lock"
+MYSQL_ER_LOCK_DEADLOCK = 1213
+
+
+def _is_deadlock(error):
+    """
+    True if MySQL rejected the statement as a deadlock, which is transient
+    and worth another attempt.
+
+    Not `error.code`: that is SQLAlchemy's own documentation code for the
+    exception class - the string 'e3q8' for OperationalError - and comparing
+    it to a MySQL error number is never true. The database's number is on
+    the DBAPI exception underneath.
+    """
+    orig = getattr(error, 'orig', None)
+    args = getattr(orig, 'args', None)
+
+    return bool(args) and args[0] == MYSQL_ER_LOCK_DEADLOCK
+
 
 class Index:
     """
@@ -356,7 +375,7 @@ class Index:
             key, records = job.result()
 
             # perform the insert serially, so jobs don't block each other
-            self.insert_records(engine, list(records))
+            self.insert_records_iter(engine, records)
 
             # after inserting, set the key as being built
             self.set_key_built_flag(engine, key)
@@ -412,6 +431,37 @@ class Index:
         #       the entire duration of indexing.
         return key, ({**self.schema.column_values(k), **r} for k, r in records.items())
 
+    def _load_csv(self, engine, infile_name, quoted_fieldnames):
+        """
+        Bulk load a CSV into this index's table, retrying on deadlock -
+        parallel builds lock each other out of the same table.
+        """
+        infile = infile_name.replace('\\', '/')
+        fail_ex = None
+
+        sql = (
+            f"LOAD DATA LOCAL INFILE '{infile}' "
+            f"INTO TABLE `{self.table.name}` "
+            f"FIELDS TERMINATED BY ',' "
+            f"LINES TERMINATED BY '\\n' "
+            f"IGNORE 1 ROWS "
+            f"({','.join(quoted_fieldnames)}) "
+        )
+
+        # attempt to bulk load into the database
+        for _ in range(5):
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(sql))
+                return
+            except sqlalchemy.exc.OperationalError as ex:
+                fail_ex = ex
+                if _is_deadlock(ex):  # deadlock; wait and try again
+                    time.sleep(1)
+
+        # failed to insert the rows, die
+        raise fail_ex
+
     def insert_records(self, engine, records):
         """
         Insert all the records into the index table. It does this as fast as
@@ -429,43 +479,68 @@ class Index:
         tmp = tempfile.NamedTemporaryFile(mode='w+t', delete=False)
 
         try:
-            w = csv.DictWriter(tmp, fieldnames)
+            try:
+                w = csv.DictWriter(tmp, fieldnames)
 
-            # write the header and the rows
-            w.writeheader()
-            w.writerows(records)
-        finally:
-            tmp.close()
+                # write the header and the rows
+                w.writeheader()
+                w.writerows(records)
+            finally:
+                tmp.close()
 
-        try:
-            infile = tmp.name.replace('\\', '/')
-            fail_ex = None
-
-            sql = (
-                f"LOAD DATA LOCAL INFILE '{infile}' "
-                f"INTO TABLE `{self.table.name}` "
-                f"FIELDS TERMINATED BY ',' "
-                f"LINES TERMINATED BY '\\n' "
-                f"IGNORE 1 ROWS "
-                f"({','.join(quoted_fieldnames)}) "
-            )
-
-            # attempt to bulk load into the database
-            for _ in range(5):
-                try:
-                    with engine.begin() as conn:
-                        conn.execute(text(sql))
-                    break
-                except sqlalchemy.exc.OperationalError as ex:
-                    fail_ex = ex
-                    if ex.code == 1213:  # deadlock; wait and try again
-                        time.sleep(1)
-            else:
-                # failed to insert the rows, die
-                raise fail_ex
+            self._load_csv(engine, tmp.name, quoted_fieldnames)
 
             # output number of records
             logging.info(f'Wrote {len(records):,} records')
+        finally:
+            # the remove has to cover the write too, or a row that fails to
+            # encode leaves the CSV behind for the life of the container
+            os.remove(tmp.name)
+
+    def insert_records_iter(self, engine, records):
+        """
+        Insert records from an iterator, streaming them to the CSV rather
+        than materializing the whole sequence first.
+
+        index_object yields a freshly merged dict per record, so listing them
+        held every one of those at once: 54 MiB for a 200k-record file, where
+        streaming costs 0.2 MiB. It does not bound total memory - the source
+        dict index_object built stays alive until the iterator is drained -
+        but the second copy is gone.
+        """
+        it = iter(records)
+
+        # the field names come from the first record, so it has to be read
+        # before the writer can be built - and no records means no load
+        try:
+            first = next(it)
+        except StopIteration:
+            return
+
+        fieldnames = list(first.keys())
+        quoted_fieldnames = [f'`{field}`' for field in fieldnames]
+
+        tmp = tempfile.NamedTemporaryFile(mode='w+t', delete=False)
+        count = 0
+
+        try:
+            try:
+                w = csv.DictWriter(tmp, fieldnames)
+
+                w.writeheader()
+                w.writerow(first)
+                count = 1
+
+                for record in it:
+                    w.writerow(record)
+                    count += 1
+            finally:
+                tmp.close()
+
+            self._load_csv(engine, tmp.name, quoted_fieldnames)
+
+            # output number of records
+            logging.info(f'Wrote {count:,} records')
         finally:
             os.remove(tmp.name)
 
