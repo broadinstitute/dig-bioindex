@@ -6,6 +6,7 @@ import types
 from unittest.mock import MagicMock, patch
 
 import fastapi
+import orjson
 import pytest
 
 import bioindex.api.raw as raw
@@ -135,7 +136,7 @@ async def test_portal_restrictions_501_when_no_portal():
     req = _make_req(ctx)
 
     with pytest.raises(fastapi.HTTPException) as exc_info:
-        await portal_api.api_portal_restrictions(req=req)
+        await portal_api.api_portal_restrictions(req=req, response=fastapi.Response())
 
     assert exc_info.value.status_code == 501
 
@@ -151,10 +152,14 @@ async def test_portal_groups_uses_ctx_portal():
     ctx = _make_ctx(portal_engine=mock_portal)
     req = _make_req(ctx)
 
-    body = await portal_api.api_portal_groups(req=req)
+    # the handler is wrapped now, so it answers with a tagged response
+    # rather than the bare dict
+    resp = await portal_api.api_portal_groups(req=req)
+    body = orjson.loads(resp.body)
 
     assert "data" in body
     assert "nonce" in body
+    assert resp.headers["etag"]
     mock_portal.connect.assert_called_once()
 
 
