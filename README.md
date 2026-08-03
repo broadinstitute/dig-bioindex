@@ -6,10 +6,11 @@ The Bio-Index has two entry points: a CLI used for basic CRUD operations and a s
 
 ## Prerequisites
 
-### Python 3.10 or 3.11
+### Python 3.10 or newer
 
-Not 3.9 or below - `orjson` publishes no wheel there - and not 3.12, where the
-pinned `botocore` fails to import. The container image builds on 3.11.
+Not 3.9 or below - `orjson` publishes no wheel there. `setup.py` requires
+3.10 or newer; 3.11 and 3.12 are the two that get exercised, as the container
+image builds on 3.11 and the deployed image runs 3.12.
 
 Make sure `python3` and `pip3` are on the path.  You may need to do something like:
 ```bash
@@ -19,7 +20,7 @@ $ sudo ln -s /usr/local/bin/pip3 /usr/bin/pip3
 
 Upgrade pip, otherwise installing deps later won't work:
 ```bash
-sudo python3 -m pip install --upgrade pip
+python3 -m pip install --upgrade pip
 ```
 
 ## Setup
@@ -30,16 +31,53 @@ First clone the git repository:
 $ git clone https://github.com/broadinstitute/dig-bioindex.git
 ```
 
-Then, `cd` into the directory created and install needed requirements
+Then `cd` into the directory created and install the package, ideally into a
+virtual environment:
 
 ```bash
-$ sudo pip3 install -r requirements.txt
+$ python3 -m venv .venv && source .venv/bin/activate
+$ pip install -e .
 ```
 
-At this point, the BioIndex is installed on your system and you can run it with `python3 -m bioindex.main`:
+This installs the dependencies declared in `setup.py`, which are version
+*floors*, so pip resolves each to a current release.
+
+**Do not install from `requirements.txt`.** Those are exact pins kept for
+reproducing an older environment, and several of them - `botocore==1.20` in
+particular - predate Python 3.12 and fail to import on it:
+
+```
+ModuleNotFoundError: No module named 'botocore.vendored.six.moves'
+```
+
+If you already have an environment built from those pins, `pip install -e .`
+will **not** repair it: `botocore>=1.20` is satisfied by the installed 1.20,
+so pip leaves it alone. Floors resolve to current releases only in a *fresh*
+environment. Either start a new venv, or upgrade explicitly:
 
 ```bash
+$ pip install -U 'boto3>=1.34' 'botocore>=1.34'
+```
+
+The trade-off runs the other way too: because the floors are unpinned, two
+people installing a month apart can resolve different versions. Pin
+deliberately when you need a reproducible build.
+
+Installing also puts a `bioindex` command on the path. That and
+`python3 -m bioindex.main` are equivalent:
+
+```bash
+$ bioindex [--env-file <environment overrides>] <command> [args]
 $ python3 -m bioindex.main [--env-file <environment overrides>] <command> [args]
+```
+
+### Running the tests
+
+The test dependencies are not declared in `setup.py`:
+
+```bash
+$ pip install -e . pytest pytest-asyncio httpx
+$ pytest
 ```
 
 ## Configuring the BioIndex
