@@ -13,6 +13,7 @@ import pymysql
 import rich.console
 import rich.logging
 import rich.table
+import sqlalchemy
 import uvicorn
 
 from .lib import config, aws
@@ -119,6 +120,29 @@ def cli_create(cfg, index_name, rds_table_name, s3_prefix, index_schema):
         logging.info('Done; build with `index %s`', index_name)
     except AssertionError as e:
         logging.error('Failed to create index %s: %s', index_name, e)
+
+
+@click.command(name='swap')
+@click.argument('temp_name')
+@click.argument('canonical_name')
+@click.confirmation_option(prompt='Swap the temp index into the canonical name '
+                                  '(this drops the old table); continue?')
+@click.pass_obj
+def cli_swap(cfg, temp_name, canonical_name):
+    """Blue/green cutover: promote a built temp index into CANONICAL_NAME."""
+    engine = migrate.migrate(cfg)
+
+    old_table = index.Index.swap_into(engine, temp_name, canonical_name)
+
+    # only once the cutover has committed: until then the old table is what
+    # the canonical name still points at
+    logging.info('Swapped %s into %s; dropping the old table %s',
+                 temp_name, canonical_name, old_table)
+
+    with engine.begin() as conn:
+        conn.execute(sqlalchemy.text(f'DROP TABLE IF EXISTS `{old_table}`'))
+
+    logging.info('Done')
 
 
 @click.command(name='list')
@@ -520,6 +544,7 @@ def cli_build_schema(cfg, save, out, indexes):
 # initialize the cli
 cli.add_command(cli_serve)
 cli.add_command(cli_create)
+cli.add_command(cli_swap)
 cli.add_command(cli_list)
 cli.add_command(cli_index)
 cli.add_command(cli_query)
