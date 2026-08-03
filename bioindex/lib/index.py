@@ -18,14 +18,19 @@ from .s3 import list_objects, read_lined_object, relative_key
 from .schema import Schema
 from .utils import cap_case_str
 
-# MySQL's "Deadlock found when trying to get lock"
+# Both mean another builder holds the lock and the statement is worth
+# retrying; 1205's own message says "try restarting transaction".
 MYSQL_ER_LOCK_DEADLOCK = 1213
+MYSQL_ER_LOCK_WAIT_TIMEOUT = 1205
+
+RETRYABLE_MYSQL_ERRORS = frozenset({MYSQL_ER_LOCK_DEADLOCK, MYSQL_ER_LOCK_WAIT_TIMEOUT})
 
 
-def _is_deadlock(error):
+def _is_retryable(error):
     """
-    True if MySQL rejected the statement as a deadlock, which is transient
-    and worth another attempt.
+    True if MySQL rejected the statement over lock contention, which passes.
+    Anything else - a missing table, a bad value - fails the same way five
+    times in a row, so it is raised rather than retried.
 
     Not `error.code`: that is SQLAlchemy's own documentation code for the
     exception class - the string 'e3q8' for OperationalError - and comparing
@@ -35,7 +40,7 @@ def _is_deadlock(error):
     orig = getattr(error, 'orig', None)
     args = getattr(orig, 'args', None)
 
-    return bool(args) and args[0] == MYSQL_ER_LOCK_DEADLOCK
+    return bool(args) and args[0] in RETRYABLE_MYSQL_ERRORS
 
 
 class Index:
@@ -436,8 +441,9 @@ class Index:
         Bulk load a CSV into this index's table, retrying on deadlock -
         parallel builds lock each other out of the same table.
         """
-        infile = infile_name.replace('\\', '/')
-        fail_ex = None
+        # the path goes into a SQL string literal; a quote in TMPDIR would
+        # otherwise produce a statement that will not parse
+        infile = infile_name.replace('\\', '/').replace("'", "''")
 
         sql = (
             f"LOAD DATA LOCAL INFILE '{infile}' "
@@ -449,18 +455,18 @@ class Index:
         )
 
         # attempt to bulk load into the database
-        for _ in range(5):
+        for attempt in range(5):
             try:
                 with engine.begin() as conn:
                     conn.execute(text(sql))
                 return
             except sqlalchemy.exc.OperationalError as ex:
-                fail_ex = ex
-                if _is_deadlock(ex):  # deadlock; wait and try again
-                    time.sleep(1)
+                # only lock contention is worth another go; anything else
+                # would fail identically four more times
+                if not _is_retryable(ex) or attempt == 4:
+                    raise
 
-        # failed to insert the rows, die
-        raise fail_ex
+                time.sleep(1)
 
     def insert_records(self, engine, records):
         """
@@ -476,11 +482,15 @@ class Index:
         quoted_fieldnames = [f'`{field}`' for field in fieldnames]
 
         # create a temporary file to write the CSV to
-        tmp = tempfile.NamedTemporaryFile(mode='w+t', delete=False)
+        tmp = tempfile.NamedTemporaryFile(
+            mode='w+t', delete=False, newline='', encoding='utf-8')
 
         try:
             try:
-                w = csv.DictWriter(tmp, fieldnames)
+                # csv defaults to the excel dialect, whose terminator is '\r\n' -
+                # but LOAD DATA is told LINES TERMINATED BY '\n', so the
+                # stray '\r' lands in the last column of every row
+                w = csv.DictWriter(tmp, fieldnames, lineterminator='\n')
 
                 # write the header and the rows
                 w.writeheader()
@@ -520,12 +530,16 @@ class Index:
         fieldnames = list(first.keys())
         quoted_fieldnames = [f'`{field}`' for field in fieldnames]
 
-        tmp = tempfile.NamedTemporaryFile(mode='w+t', delete=False)
+        tmp = tempfile.NamedTemporaryFile(
+            mode='w+t', delete=False, newline='', encoding='utf-8')
         count = 0
 
         try:
             try:
-                w = csv.DictWriter(tmp, fieldnames)
+                # csv defaults to the excel dialect, whose terminator is '\r\n' -
+                # but LOAD DATA is told LINES TERMINATED BY '\n', so the
+                # stray '\r' lands in the last column of every row
+                w = csv.DictWriter(tmp, fieldnames, lineterminator='\n')
 
                 w.writeheader()
                 w.writerow(first)
