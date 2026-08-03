@@ -7,8 +7,6 @@ file for the same records - a difference here would be a silent data
 difference between the local and the batch build paths.
 """
 import csv
-import glob
-import os
 import re
 import tempfile
 import types
@@ -95,11 +93,18 @@ def index(slept):
 
 
 @pytest.fixture(autouse=True)
-def _no_stray_temp_files():
-    """Any CSV left behind by these tests is a leak."""
-    before = set(glob.glob(os.path.join(tempfile.gettempdir(), 'tmp*')))
+def _no_stray_temp_files(tmp_path, monkeypatch):
+    """
+    Any CSV left behind by these tests is a leak.
+
+    The load path builds its file through tempfile, so pointing tempfile
+    at a directory of our own keeps the check from noticing whatever else
+    on the machine happens to be writing to /tmp, and makes what it does
+    notice unambiguous.
+    """
+    monkeypatch.setattr(tempfile, 'tempdir', str(tmp_path))
     yield
-    leaked = set(glob.glob(os.path.join(tempfile.gettempdir(), 'tmp*'))) - before
+    leaked = list(tmp_path.iterdir())
     assert not leaked, f'temp files left behind: {leaked}'
 
 
