@@ -4,31 +4,12 @@ import fastapi
 
 from ..lib import s3
 from ..lib.auth import verify_permissions
+from ..lib.http_cache import if_none_match
 from ..middleware.portal import get_portal_ctx
 
 
 # create web server
 router = fastapi.APIRouter()
-
-
-def _if_none_match(header, etag):
-    """
-    True if the request already holds this version. The header is a list,
-    may be the wildcard, and may mark its validators weak - which is fine
-    here, as S3 gives us one opaque tag either way.
-    """
-    if not header:
-        return False
-
-    for candidate in (c.strip() for c in header.split(',')):
-        if candidate == '*':
-            return True
-        if candidate.startswith('W/'):
-            candidate = candidate[2:]
-        if candidate == etag:
-            return True
-
-    return False
 
 
 def _raw_headers(etag):
@@ -65,7 +46,7 @@ def _raw_file_response(bucket, path, file, header):
     if meta is None:
         raise fastapi.HTTPException(status_code=404)
 
-    if _if_none_match(header, meta['ETag']):
+    if if_none_match(header, meta['ETag']):
         return fastapi.Response(status_code=304, headers=_raw_headers(meta['ETag']))
 
     # read the body and answer with the tag it actually came back at, which
