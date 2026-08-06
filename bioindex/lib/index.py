@@ -43,6 +43,25 @@ def _is_retryable(error):
     return bool(args) and args[0] in RETRYABLE_MYSQL_ERRORS
 
 
+# `__Indexes` is unique on (name, arity), but arity is derived from the schema
+# string rather than stored. Deriving it the same way the constraint does keeps
+# a lookup from ever disagreeing with it about which row is which.
+ARITY_SQL = "LENGTH(`schema`) - LENGTH(REPLACE(`schema`, ',', '')) + 1"
+
+# MySQL's zero date. `built` is nullable, but rows written while `create` set it
+# to 0 hold this instead of NULL, and it arrives from the driver as a string -
+# neither None nor falsy - so anything asking "was this ever built?" has to name
+# it explicitly or get back yes.
+ZERO_DATETIME = '0000-00-00 00:00:00'
+
+
+def _is_built(built):
+    """
+    True if `built` records a time an index was actually built.
+    """
+    return built is not None and str(built) != ZERO_DATETIME
+
+
 class Index:
     """
     An index definition that can be built or queried.
@@ -58,6 +77,15 @@ class Index:
         self.built = built_date
         self.s3_prefix = s3_prefix
         self.compressed = compressed
+
+    @property
+    def is_built(self):
+        """
+        True if this index has actually been built.
+
+        Not the same as a truthy `built`: see ZERO_DATETIME.
+        """
+        return _is_built(self.built)
 
     @staticmethod
     def set_compressed(engine, name, prefix, compressed):
@@ -88,7 +116,9 @@ class Index:
             '   `table` = VALUES(`table`), '
             '   `prefix` = VALUES(`prefix`), '
             '   `schema` = VALUES(`schema`), '
-            '   `built` = 0 '
+            # NULL, not 0: 0 stores the zero date, which reads back as a
+            # non-null string and makes a re-created index look built
+            '   `built` = NULL '
         )
 
         with engine.begin() as conn:
@@ -108,7 +138,7 @@ class Index:
 
             # remove indexes not built?
             if filter_built:
-                indexes = filter(lambda i: i.built, indexes)
+                indexes = filter(lambda i: i.is_built, indexes)
 
             return indexes
 
@@ -119,9 +149,9 @@ class Index:
         schema, etc.
         """
         sql = (
-            'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` '
-            'FROM `__Indexes` '
-            'WHERE `name` = :name AND LENGTH(`schema`) - LENGTH(REPLACE(`schema`, \',\', \'\')) + 1 = :arity'
+            f'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` '
+            f'FROM `__Indexes` '
+            f'WHERE `name` = :name AND {ARITY_SQL} = :arity'
         )
 
         with engine.connect() as conn:
@@ -152,6 +182,100 @@ class Index:
                 raise KeyError(f'No such index: {name}')
 
             return [Index(*row) for row in rows]
+
+    @staticmethod
+    def _swap_row(conn, name):
+        """
+        The one `__Indexes` row a swap should act on, or an error saying why
+        there isn't one.
+
+        A name may legitimately exist at several arities - `gene` is indexed
+        both by name and by name and build. A swap names no arity, and the
+        statements it runs match on name alone, so against such a name it
+        would read one row arbitrarily and write all of them. Refuse instead.
+
+        Runs on the caller's connection, and locks what it reads: the checks
+        are only worth anything if the rows they passed are still the rows
+        being written when the cutover runs.
+        """
+        sql = (
+            f'SELECT `id`, `table`, `prefix`, `schema`, `built`, `compressed`, '
+            f'{ARITY_SQL} AS `arity` FROM `__Indexes` WHERE `name` = :name FOR UPDATE'
+        )
+
+        rows = conn.execute(text(sql), {'name': name}).mappings().all()
+
+        if not rows:
+            raise KeyError(f'No such index: {name}')
+
+        if len(rows) > 1:
+            arities = ', '.join(str(r['arity']) for r in sorted(rows, key=lambda r: r['arity']))
+            raise ValueError(
+                f'{name} exists at more than one arity ({arities}); a swap cannot tell which '
+                f'one it is meant to replace'
+            )
+
+        return rows[0]
+
+    @staticmethod
+    def swap_into(engine, temp_name, canonical_name):
+        """
+        Blue/green cutover: promote a built temp index into a name that is
+        already being served.
+
+        Repoints `__Keys` and `__Indexes` at the temp index's table in one
+        transaction, so a reader sees either the whole old index or the whole
+        new one, never a mixture of the two.
+
+        Returns the table the canonical name used to point at. Dropping it is
+        the caller's job, and has to happen after this returns: DDL commits
+        implicitly in MySQL, so a DROP inside the cutover would end the
+        transaction early and take the rollback with it.
+        """
+        # every statement below reads as a no-op against a single name, right
+        # up to the last one, which deletes it - so the same name twice ends
+        # with the index unpublished, its keys gone, and its live table handed
+        # back to the caller to drop
+        if temp_name == canonical_name:
+            raise ValueError(f'{temp_name} cannot be swapped into itself')
+
+        # the reads are inside the cutover, and locked, so that what the
+        # checks below approved is what the writes below act on: read outside
+        # it and a concurrent `create` could add a second arity between the
+        # two, leaving the checks to pass on rows the writes never touch
+        with engine.begin() as conn:
+            temp = Index._swap_row(conn, temp_name)
+            canonical = Index._swap_row(conn, canonical_name)
+
+            if not _is_built(temp['built']):
+                raise ValueError(f'{temp_name} has never been built; refusing to swap it in')
+
+            if temp['arity'] != canonical['arity']:
+                raise ValueError(
+                    f'{temp_name} takes {temp["arity"]} query argument(s) but {canonical_name} '
+                    f'takes {canonical["arity"]}; swapping would change what the name accepts'
+                )
+
+            # the canonical name's keys go first: `__Keys` is unique on
+            # (index, key) and the temp index covers the same keys, so
+            # renaming before deleting collides on every one of them
+            conn.execute(text('DELETE FROM `__Keys` WHERE `index` = :name'),
+                         {'name': canonical_name})
+            conn.execute(text('UPDATE `__Keys` SET `index` = :canonical WHERE `index` = :temp'),
+                         {'canonical': canonical_name, 'temp': temp_name})
+
+            # by id, so a row added at another arity between the checks above
+            # and here cannot widen these to rows the checks never saw
+            conn.execute(text(
+                'UPDATE `__Indexes` SET `table` = :table, `prefix` = :prefix, '
+                '`schema` = :schema, `built` = :built, `compressed` = :compressed '
+                'WHERE `id` = :id'),
+                {'table': temp['table'], 'prefix': temp['prefix'], 'schema': temp['schema'],
+                 'built': temp['built'], 'compressed': temp['compressed'],
+                 'id': canonical['id']})
+            conn.execute(text('DELETE FROM `__Indexes` WHERE `id` = :id'), {'id': temp['id']})
+
+        return canonical['table']
 
     def prepare(self, engine, rebuild=False):
         """

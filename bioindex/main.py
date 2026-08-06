@@ -13,6 +13,7 @@ import pymysql
 import rich.console
 import rich.logging
 import rich.table
+import sqlalchemy
 import uvicorn
 
 from .lib import config, aws
@@ -121,6 +122,33 @@ def cli_create(cfg, index_name, rds_table_name, s3_prefix, index_schema):
         logging.error('Failed to create index %s: %s', index_name, e)
 
 
+@click.command(name='swap')
+@click.argument('temp_name')
+@click.argument('canonical_name')
+@click.confirmation_option(prompt='Swap the temp index into the canonical name '
+                                  '(this drops the old table); continue?')
+@click.pass_obj
+def cli_swap(cfg, temp_name, canonical_name):
+    """Blue/green cutover: promote a built temp index into CANONICAL_NAME."""
+    engine = migrate.migrate(cfg)
+
+    old_table = index.Index.swap_into(engine, temp_name, canonical_name)
+
+    # only once the cutover has committed: until then the old table is what
+    # the canonical name still points at
+    logging.info('Swapped %s into %s; dropping the old table %s',
+                 temp_name, canonical_name, old_table)
+
+    # a table name is an identifier, so it cannot be bound as a parameter;
+    # let the dialect quote it rather than assuming it needs no escaping
+    quoted = engine.dialect.identifier_preparer.quote(old_table)
+
+    with engine.begin() as conn:
+        conn.execute(sqlalchemy.text(f'DROP TABLE IF EXISTS {quoted}'))
+
+    logging.info('Done')
+
+
 @click.command(name='list')
 @click.pass_obj
 def cli_list(cfg):
@@ -134,7 +162,7 @@ def cli_list(cfg):
     table.add_column('Schema')
 
     for i in sorted(indexes, key=lambda i: i.name):
-        built = f'[green]{i.built}[/]' if i.built else '[red]Not built[/]'
+        built = f'[green]{i.built}[/]' if i.is_built else '[red]Not built[/]'
         table.add_row(built, i.name, i.s3_prefix, str(i.schema))
 
     console.print(table)
@@ -520,6 +548,7 @@ def cli_build_schema(cfg, save, out, indexes):
 # initialize the cli
 cli.add_command(cli_serve)
 cli.add_command(cli_create)
+cli.add_command(cli_swap)
 cli.add_command(cli_list)
 cli.add_command(cli_index)
 cli.add_command(cli_query)
