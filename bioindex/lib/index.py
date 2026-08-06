@@ -149,9 +149,9 @@ class Index:
         schema, etc.
         """
         sql = (
-            'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` '
-            'FROM `__Indexes` '
-            'WHERE `name` = :name AND LENGTH(`schema`) - LENGTH(REPLACE(`schema`, \',\', \'\')) + 1 = :arity'
+            f'SELECT `name`, `table`, `prefix`, `schema`, `built`, `compressed` '
+            f'FROM `__Indexes` '
+            f'WHERE `name` = :name AND {ARITY_SQL} = :arity'
         )
 
         with engine.connect() as conn:
@@ -184,7 +184,7 @@ class Index:
             return [Index(*row) for row in rows]
 
     @staticmethod
-    def _swap_row(engine, name):
+    def _swap_row(conn, name):
         """
         The one `__Indexes` row a swap should act on, or an error saying why
         there isn't one.
@@ -193,14 +193,17 @@ class Index:
         both by name and by name and build. A swap names no arity, and the
         statements it runs match on name alone, so against such a name it
         would read one row arbitrarily and write all of them. Refuse instead.
+
+        Runs on the caller's connection, and locks what it reads: the checks
+        are only worth anything if the rows they passed are still the rows
+        being written when the cutover runs.
         """
         sql = (
             f'SELECT `id`, `table`, `prefix`, `schema`, `built`, `compressed`, '
-            f'{ARITY_SQL} AS `arity` FROM `__Indexes` WHERE `name` = :name'
+            f'{ARITY_SQL} AS `arity` FROM `__Indexes` WHERE `name` = :name FOR UPDATE'
         )
 
-        with engine.connect() as conn:
-            rows = conn.execute(text(sql), {'name': name}).mappings().all()
+        rows = conn.execute(text(sql), {'name': name}).mappings().all()
 
         if not rows:
             raise KeyError(f'No such index: {name}')
@@ -236,19 +239,23 @@ class Index:
         if temp_name == canonical_name:
             raise ValueError(f'{temp_name} cannot be swapped into itself')
 
-        temp = Index._swap_row(engine, temp_name)
-        canonical = Index._swap_row(engine, canonical_name)
-
-        if not _is_built(temp['built']):
-            raise ValueError(f'{temp_name} has never been built; refusing to swap it in')
-
-        if temp['arity'] != canonical['arity']:
-            raise ValueError(
-                f'{temp_name} takes {temp["arity"]} query argument(s) but {canonical_name} '
-                f'takes {canonical["arity"]}; swapping would change what the name accepts'
-            )
-
+        # the reads are inside the cutover, and locked, so that what the
+        # checks below approved is what the writes below act on: read outside
+        # it and a concurrent `create` could add a second arity between the
+        # two, leaving the checks to pass on rows the writes never touch
         with engine.begin() as conn:
+            temp = Index._swap_row(conn, temp_name)
+            canonical = Index._swap_row(conn, canonical_name)
+
+            if not _is_built(temp['built']):
+                raise ValueError(f'{temp_name} has never been built; refusing to swap it in')
+
+            if temp['arity'] != canonical['arity']:
+                raise ValueError(
+                    f'{temp_name} takes {temp["arity"]} query argument(s) but {canonical_name} '
+                    f'takes {canonical["arity"]}; swapping would change what the name accepts'
+                )
+
             # the canonical name's keys go first: `__Keys` is unique on
             # (index, key) and the temp index covers the same keys, so
             # renaming before deleting collides on every one of them

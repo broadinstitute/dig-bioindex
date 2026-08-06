@@ -177,6 +177,53 @@ def test_an_index_left_at_the_zero_date_does_not_count_as_built(engine):
     assert listed == ['other']
 
 
+def test_a_second_arity_cannot_appear_between_the_check_and_the_cutover(engine, monkeypatch):
+    """
+    The single-arity check is only worth something if the rows that passed it
+    are still the rows the cutover writes.
+
+    Read without a lock, the check sees one row, a concurrent `create` adds a
+    second arity, and the cutover then runs against exactly the name it was
+    written to refuse. Locking the read closes the gap: the other insert has
+    to wait for the cutover to finish, and the swap either completes against
+    what it checked or fails without writing.
+    """
+    add_index(engine, 'gene', 'genes', 'name')
+    add_index(engine, 'gene-tmp', 'genes_tmp', 'name')
+
+    real_swap_row = Index._swap_row
+    raced = []
+
+    def racing_swap_row(conn, name):
+        row = real_swap_row(conn, name)
+
+        # right after the canonical row has been read and checked, another
+        # process creates `gene` at a second arity
+        if name == 'gene' and not raced:
+            raced.append(True)
+            other = sqlalchemy.create_engine(
+                URL, connect_args={'init_command': 'SET innodb_lock_wait_timeout = 2'})
+            with other.begin() as conn2:
+                conn2.execute(text(
+                    'INSERT INTO `__Indexes` (`name`, `table`, `prefix`, `schema`, `built`) '
+                    "VALUES ('gene', 'genes_2', 'gene/', 'name,build', :built)"),
+                    {'built': BUILT})
+
+        return row
+
+    monkeypatch.setattr(Index, '_swap_row', staticmethod(racing_swap_row))
+
+    swapper = sqlalchemy.create_engine(
+        URL, connect_args={'init_command': 'SET innodb_lock_wait_timeout = 2'})
+
+    with pytest.raises(sqlalchemy.exc.OperationalError):
+        Index.swap_into(swapper, 'gene-tmp', 'gene')
+
+    # the cutover wrote nothing, and `gene` still points where it did
+    assert ('gene', 'genes', 'name') in indexes(engine)
+    assert ('gene-tmp', 'genes_tmp', 'name') in indexes(engine)
+
+
 def test_a_multi_arity_name_is_refused(engine):
     # both of these are legal rows: __Indexes is unique on (name, arity),
     # not on name
