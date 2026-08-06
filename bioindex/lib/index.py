@@ -13,10 +13,53 @@ import time
 
 from sqlalchemy import text
 
-from .aws import invoke_lambda, start_and_wait_for_indexer_job
+from .aws import invoke_lambda, start_and_wait_for_group_indexer_job, start_and_wait_for_indexer_job
 from .s3 import list_objects, read_lined_object, relative_key
 from .schema import Schema
 from .utils import cap_case_str
+
+
+def _chunk_objects(objects, max_files, max_bytes):
+    """Partition S3 objects into groups bounded by file count and total bytes (count wins ties)."""
+    groups, cur, cur_bytes = [], [], 0
+    for o in objects:
+        size = o.get('Size', 0)
+        if cur and (len(cur) >= max_files or cur_bytes + size > max_bytes):
+            groups.append(cur)
+            cur, cur_bytes = [], 0
+        cur.append(o)
+        cur_bytes += size
+    if cur:
+        groups.append(cur)
+    return groups
+
+
+def _key_is_current(db_keys, obj):
+    """True if obj's key is already indexed at its current S3 version (ETag)."""
+    k = obj['Key']
+    return k in db_keys and db_keys[k]['version'] == obj['ETag'].strip('"')[:32]
+
+
+def list_index_objects(bucket, s3_path, prefer_compressed):
+    """Deterministic ordered object listing for an index prefix (shared by parent and worker).
+
+    A prefix holds both extensions only mid-compression: the .gz are written first and the
+    .json originals are deleted last, so that a failed verify can still roll back. With
+    prefer_compressed the .gz win and the pending-delete originals are ignored; without it
+    the ambiguity is an error.
+    """
+    json_objects = list(list_objects(bucket, s3_path, only='*.json'))
+    gz_objects = list(list_objects(bucket, s3_path, only='*.json.gz'))
+    if json_objects and gz_objects:
+        if prefer_compressed:
+            logging.info('%s has both .json and .json.gz; preferring .json.gz (%d) and ignoring %d '
+                         'pending-delete .json original(s).', s3_path, len(gz_objects), len(json_objects))
+            json_objects = []
+        else:
+            raise ValueError(
+                f'{s3_path} has both .json and .json.gz; an index must be all one or the other.'
+            )
+    return json_objects + gz_objects
 
 # Both mean another builder holds the lock and the statement is worth
 # retrying; 1205's own message says "try restarting transaction".
@@ -290,23 +333,24 @@ class Index:
         logging.info('Creating %s table...', self.table.name)
         self.table.create(engine, checkfirst=True)
 
-    def build(self, config, engine, use_lambda=False, use_batch=False, workers=3, console=None):
+    def build(self, config, engine, use_lambda=False, use_batch=False, use_grouped=False,
+              group_size=50, group_max_bytes=2 * 1024 ** 3, workers=3,
+              prefer_compressed=False, console=None):
         """
         Builds the index table for objects in S3.
         """
         logging.info('Finding keys in %s...', self.s3_prefix)
-        json_objects = list(list_objects(config.s3_bucket, config.s3_path(self.s3_prefix), only='*.json'))
-        gz_objects = list(list_objects(config.s3_bucket, config.s3_path(self.s3_prefix), only='*.json.gz'))
-        if len(json_objects) > 0 and len(gz_objects) > 0:
-            raise ValueError(f'There are both compressed and uncompressed files in {self.s3_prefix}. '
-                             f'An index needs to be all one or the other.')
-        s3_objects = json_objects + gz_objects
+        s3_objects = list_index_objects(
+            config.s3_bucket, config.s3_path(self.s3_prefix), prefer_compressed
+        )
 
         # delete all stale keys; get the list of objects left to index
         objects = self.delete_stale_keys(config, engine, s3_objects, console=console)
 
-        # calculate the total size of all the objects
-        total_size = functools.reduce(lambda a, b: a + b['Size'], objects, 0)
+        # calculate the total size of all the objects. grouped workers re-derive their chunk
+        # from the full listing, so the bar tracks every object rather than just the stale ones.
+        total_size = functools.reduce(lambda a, b: a + b['Size'],
+                                      s3_objects if use_grouped else objects, 0)
 
         # progress format
         p_fmt = [
@@ -346,6 +390,11 @@ class Index:
                         self.batch_run_function,
                         progress,
                         overall,
+                    )
+                elif use_grouped:
+                    self.index_objects_grouped(
+                        config, engine, s3_objects, prefer_compressed, group_size, group_max_bytes,
+                        progress, overall,
                     )
                 else:
                     self.index_objects_local(
@@ -488,6 +537,39 @@ class Index:
             raise RuntimeError(
                 f'{len(failures)} indexer job(s) failed and were not indexed: ' + ', '.join(failures)
             )
+
+    def index_objects_grouped(self, config, engine, objects, prefer_compressed,
+                              group_size, group_max_bytes, progress=None, overall=None):
+        """Index objects via grouped Batch jobs, one per chunk.
+
+        The parent chunks the full listing and passes each worker only coordinates
+        (prefix, prefer_compressed, chunk_index, chunk_count, group bounds, expected_total);
+        the worker re-lists S3 and re-runs _chunk_objects to recover the same chunk. No S3
+        manifest is written, so the orchestrator needs no s3:PutObject. On SUCCESS the parent
+        sets the per-key built flag for the chunk.
+        """
+        chunks = _chunk_objects(objects, group_size, group_max_bytes)
+        n = len(chunks)
+        expected_total = len(objects)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(n, 16) or 1) as pool:
+            future_to_chunk = {}
+            for i, chunk in enumerate(chunks):
+                fut = pool.submit(
+                    start_and_wait_for_group_indexer_job, self.name, self.schema.arity,
+                    config.s3_bucket, config.rds_secret, config.bio_schema,
+                    config.s3_subdir, self.s3_prefix, prefer_compressed, i, n,
+                    group_size, group_max_bytes, expected_total,
+                )
+                future_to_chunk[fut] = chunk
+            for fut in concurrent.futures.as_completed(future_to_chunk):
+                job = fut.result()
+                if job['status'] != 'SUCCEEDED':
+                    reason = job.get('statusReason', 'grouped indexer job FAILED')
+                    raise RuntimeError(f'grouped indexer job failed for {self.name}: {reason}')
+                for o in future_to_chunk[fut]:
+                    self.set_key_built_flag(engine, o['Key'])
+                    if progress:
+                        progress.advance(overall, advance=o['Size'])
 
     def index_objects_local(self, config, engine, pool, objects, progress=None, overall=None):
         """

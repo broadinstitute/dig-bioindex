@@ -49,7 +49,22 @@ Resources:
       PlatformCapabilities:
         - 'FARGATE'
       Timeout:
-        AttemptDurationSeconds: 3600
+        # 4h headroom: fanout indexes a single large file per job (falcon variant_files
+        # are ~6.6 GB). Was 3600 (1h); a big file can brush that ceiling.
+        AttemptDurationSeconds: 14400
+      RetryStrategy:
+        # Retry ONLY infra failures that happened before the container ran — e.g. the
+        # CannotPullContainerError ECR-pull timeouts that silently dropped 4 files on
+        # 2026-07-01 when many tasks pulled the image at once. A job that produced an exit
+        # code actually ran and may have partially inserted records; re-running it would
+        # DUPLICATE rows (the indexer workers are not idempotent — insert only appends),
+        # so it EXITs and is surfaced by the orchestrator's per-child status check instead.
+        Attempts: 5
+        EvaluateOnExit:
+          - Action: EXIT       # container ran (has an exit code) -> do not retry (dup risk)
+            OnExitCode: '*'
+          - Action: RETRY      # never ran (pull/init failure, no exit code) -> retry
+            OnStatusReason: '*'
       ContainerProperties:
         Image: !Sub '${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/batch-indexer-repo'
         Command:
@@ -73,7 +88,75 @@ Resources:
         ExecutionRoleArn: !GetAtt IndexerRole.Arn
         ResourceRequirements:
           - Type: 'VCPU'
-            Value: '1.0'
+            Value: '2.0'
+          - Type: 'MEMORY'
+            Value: '16384'
+        NetworkConfiguration:
+          AssignPublicIp: 'ENABLED'
+        FargatePlatformConfiguration:
+          PlatformVersion: 'LATEST'
+
+  BatchGroupIndexerJobDefinition:
+    Type: 'AWS::Batch::JobDefinition'
+    Properties:
+      Type: 'container'
+      JobDefinitionName: 'batch-group-indexer-job'
+      # A grouped worker indexes MANY keys per job, so a rerun that re-inserts is far more
+      # costly than in fanout. The EvaluateOnExit rules below are what make retrying safe:
+      # anything that produced an exit code EXITs (the container ran and may have inserted),
+      # and only pre-run infra failures RETRY. Do not relax them to a bare Attempts count —
+      # Batch would rerun this worker directly, bypassing the parent build()'s
+      # delete_stale_keys() cleanup, and double-insert. If you ever need that, add a
+      # delete_key-before-reindex guard in index_group.py first.
+      Parameters:
+        s3-subdir: ''
+      PlatformCapabilities:
+        - 'FARGATE'
+      Timeout:
+        AttemptDurationSeconds: 14400
+      RetryStrategy:
+        Attempts: 5
+        EvaluateOnExit:
+          - Action: EXIT       # container ran (has an exit code) -> do not retry (dup risk)
+            OnExitCode: '*'
+          - Action: RETRY      # never ran (pull/init failure, no exit code) -> retry
+            OnStatusReason: '*'
+      ContainerProperties:
+        Image: !Sub '${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/batch-indexer-repo'
+        Command:
+          - 'python3'
+          - 'index_group.py'
+          - '-i'
+          - 'Ref::index'
+          - '-a'
+          - 'Ref::arity'
+          - '-b'
+          - 'Ref::bucket'
+          - '-r'
+          - 'Ref::rds-secret'
+          - '-s'
+          - 'Ref::rds-schema'
+          - '--s3-subdir'
+          - 'Ref::s3-subdir'
+          - '-p'
+          - 'Ref::prefix'
+          - '--prefer-compressed'
+          - 'Ref::prefer-compressed'
+          - '--chunk-index'
+          - 'Ref::chunk-index'
+          - '--chunk-count'
+          - 'Ref::chunk-count'
+          - '--group-size'
+          - 'Ref::group-size'
+          - '--group-max-bytes'
+          - 'Ref::group-max-bytes'
+          - '--expected-total'
+          - 'Ref::expected-total'
+        JobRoleArn: !GetAtt IndexerRole.Arn
+        ExecutionRoleArn: !GetAtt IndexerRole.Arn
+        ResourceRequirements:
+          - Type: 'VCPU'
+            Value: '2.0'
           - Type: 'MEMORY'
             Value: '8192'
         NetworkConfiguration:

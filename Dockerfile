@@ -11,6 +11,7 @@ RUN apt-get update && \
 COPY requirements.txt .
 COPY bioindex ./bioindex
 COPY batch-index-files/index_files.py .
+COPY batch-index-files/index_group.py .
 RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install mysqlclient
