@@ -1,5 +1,6 @@
 import base64
 import time
+from typing import Optional
 
 import boto3
 import botocore.config
@@ -155,9 +156,14 @@ def invoke_lambda(function_name, payload):
     return payload['body']
 
 
-def look_up_var_id(rs_id: str, dynamo_table) -> dict:
+def look_up_var_id(rs_id: str, dynamo_table) -> Optional[dict]:
+    """
+    The variant for an rsID, or None if the table has no row for it.
+    """
     table = dynamo_client.Table(dynamo_table)
     response = table.query(
         KeyConditionExpression=boto3.dynamodb.conditions.Key('rsid').eq(rs_id)
     )
-    return response['Items'][0]
+    items = response['Items']
+
+    return items[0] if items else None

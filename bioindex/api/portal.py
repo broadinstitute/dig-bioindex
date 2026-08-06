@@ -254,8 +254,21 @@ async def api_portal_complications(req: fastapi.Request, q: str = None):
     with portal.connect() as conn:
         # optionally filter by disease group
         if q and q != "":
-            resp = portal.execute("SELECT `groups` FROM DiseaseGroups WHERE `name` = :name", {"name": q})
-            rows = resp.fetchone() or [""]
+            resp = conn.execute(
+                text("SELECT `groups` FROM DiseaseGroups WHERE `name` = :name"), {"name": q})
+            rows = resp.fetchone()
+
+            # a disease group with no groups behind it - or one that does not
+            # exist at all - matches no phenotypes. Falling through with an
+            # empty group name builds `FIND_IN_SET(:, ...)`, which is not a
+            # bind parameter and not valid SQL.
+            if rows is None or not rows[0]:
+                return {
+                    "profile": {"query": 0},
+                    "data": [],
+                    "count": 0,
+                    "nonce": nonce(),
+                }
 
             # groups are a comma-separated set
             groups = rows[0].split(",")
