@@ -157,6 +157,11 @@ async def api_lookup_variant_for_rs_id(rsid: str, req: fastapi.Request):
 
     dynamodb_table = ctx.config.variant_dynamodb_table
     data, fetch_s = profile(aws.look_up_var_id, rsid, dynamodb_table)
+
+    # an rsID nobody has a variant for is a miss, not a failure
+    if data is None:
+        raise fastapi.HTTPException(status_code=404, detail=f"Unknown rsID '{rsid}'")
+
     return {
         'profile': {
           'dynamo_fetch': fetch_s
