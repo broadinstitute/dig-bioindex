@@ -77,6 +77,51 @@ def start_and_wait_for_indexer_job(file: str, index: str, arity: int, bucket: st
         time.sleep(60)
 
 
+# AWS Batch SubmitJob forbids empty parameter VALUES ("Parameter values must be provided") and
+# silently drops empty parameter DEFAULTS at registration, so s3-subdir can never be '' on the
+# wire. Non-subdir portals send this sentinel instead; index_group.py maps it back to "no subdir".
+GROUP_NO_SUBDIR = '__none__'
+
+
+def start_and_wait_for_group_indexer_job(index: str, arity: int, bucket: str, rds_secret: str,
+                                         rds_schema: str, s3_subdir: str, prefix: str,
+                                         prefer_compressed: bool, chunk_index: int,
+                                         chunk_count: int, group_size: int,
+                                         group_max_bytes: int, expected_total: int):
+    """Submit one grouped indexer job; the worker re-derives its chunk from these coordinates."""
+    batch_client = boto3.client('batch')
+    response = batch_client.submit_job(
+        jobName='batch-group-indexer-job',
+        jobQueue='indexer-job-queue',
+        jobDefinition='batch-group-indexer-job',
+        parameters={
+            'index': index,
+            'arity': str(arity),
+            'bucket': bucket,
+            'rds-secret': rds_secret,
+            'rds-schema': rds_schema,
+            # never '' on the wire (Batch forbids empty values); worker maps the sentinel back.
+            's3-subdir': s3_subdir or GROUP_NO_SUBDIR,
+            'prefix': prefix,
+            'prefer-compressed': '1' if prefer_compressed else '0',
+            'chunk-index': str(chunk_index),
+            'chunk-count': str(chunk_count),
+            'group-size': str(group_size),
+            'group-max-bytes': str(group_max_bytes),
+            'expected-total': str(expected_total),
+        },
+    )
+    job_id = response['jobId']
+    while True:
+        response = batch_client.describe_jobs(jobs=[job_id])
+        job_status = response['jobs'][0]['status']
+
+        if job_status in ['SUCCEEDED', 'FAILED']:
+            return response['jobs'][0]
+
+        time.sleep(60)
+
+
 def secret_lookup(secret_id):
     """
     Return the contents of a secret.
