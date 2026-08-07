@@ -56,7 +56,10 @@ def main(index_name, arity, bucket, rds_secret, rds_schema, s3_subdir, prefix, p
         os.environ['BIOINDEX_S3_SUBDIR'] = s3_subdir
 
     config = Config()
-    print(f'Connecting to {rds_secret}/{rds_schema}...')
+    # the secret's name is deliberately not logged: it is only an identifier, but it
+    # reads as a credential to both scanners and humans, and the schema is what is
+    # actually useful when reading worker logs
+    print(f'Connecting to {rds_schema}...')
     engine = migrate(config)
     assert engine, 'Failed to connect to RDS instance'
 
