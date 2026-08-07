@@ -7,7 +7,7 @@ import uuid
 from urllib.parse import parse_qsl, quote, urlsplit, urlunsplit
 
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, RedirectResponse
 
 from ..lib.portal_registry import get_registry
 
@@ -67,7 +67,8 @@ class PortalResolveMiddleware(BaseHTTPMiddleware):
         start = time.monotonic()
         request.state.request_id = _request_id(request.headers.get('x-request-id'))
 
-        head, _, rest = request.url.path.lstrip('/').partition('/')
+        # sep distinguishes /<portal> from /<portal>/ - rest is '' for both
+        head, sep, rest = request.url.path.lstrip('/').partition('/')
         portal = None
 
         if head and head not in self._reserved:
@@ -82,6 +83,19 @@ class PortalResolveMiddleware(BaseHTTPMiddleware):
 
             request.state.portal_ctx = ctx
             portal = ctx.name
+
+            # /<portal> -> /<portal>/. The index page fetches the API with relative
+            # URLs (./api/bio/...), and those resolve against the server root rather
+            # than the portal unless the path ends in a slash. Starlette's own
+            # redirect_slashes cannot cover this: the strip below hides the prefix, so
+            # the router sees a bare '/' for both forms and has nothing to redirect.
+            if not sep:
+                target = f'/{head}/'
+                if request.url.query:
+                    target += f'?{request.url.query}'
+                response = RedirectResponse(target, status_code=307)
+                self._log(request, start, response, portal=portal)
+                return response
 
             # strip the portal prefix from the path the routers will see
             prefix = f'/{head}'.encode()

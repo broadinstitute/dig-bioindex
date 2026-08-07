@@ -111,8 +111,14 @@ app.mount('/static', StaticFiles(directory="web/static"), name="static")
 
 
 @app.get('/')
-def index():
+def index(request: fastapi.Request):
     """
     SPA demonstration page.
+
+    PortalResolveMiddleware rewrites /<portal>/ to /, so this one route serves
+    every portal root. The bare server root resolves no portal, and the page's
+    relative API calls would have nothing to query, so it stays a 404.
     """
+    if getattr(request.state, 'portal_ctx', None) is None:
+        raise fastapi.HTTPException(status_code=404, detail='Not Found')
     return FileResponse('web/index.html')

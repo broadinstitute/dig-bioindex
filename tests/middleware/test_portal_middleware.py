@@ -85,3 +85,46 @@ def test_offsite_redirect_is_left_alone():
 
     resp = TestClient(app).get("/p/away", follow_redirects=False)
     assert resp.headers["location"] == "https://example.org/elsewhere"
+
+
+def test_portal_root_without_slash_redirects():
+    # the index page fetches ./api/bio/... — without the trailing slash those
+    # resolve against the server root and miss the portal entirely
+    client = TestClient(_app())
+    resp = client.get("/p", follow_redirects=False)
+    assert resp.status_code == 307
+    assert resp.headers["location"] == "/p/"
+
+
+def test_portal_root_redirect_preserves_the_query_string():
+    client = TestClient(_app())
+    resp = client.get("/p?q=SLC30A8&limit=5", follow_redirects=False)
+    assert resp.status_code == 307
+    assert resp.headers["location"] == "/p/?q=SLC30A8&limit=5"
+
+
+def test_portal_root_with_slash_is_served_not_redirected():
+    app = _app()
+
+    @app.get("/")
+    def root():
+        return {"ok": True}
+
+    resp = TestClient(app).get("/p/", follow_redirects=False)
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True}
+
+
+def test_unknown_portal_still_404s_rather_than_redirecting():
+    # the redirect must sit behind the registry lookup, or a typo'd portal
+    # would bounce to itself instead of reporting the valid names
+    client = TestClient(_app())
+    resp = client.get("/nope", follow_redirects=False)
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "Unknown portal 'nope'"
+
+
+def test_reserved_prefix_is_not_redirected():
+    client = TestClient(_app())
+    resp = client.get("/health", follow_redirects=False)
+    assert resp.status_code == 200
