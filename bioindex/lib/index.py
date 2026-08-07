@@ -9,6 +9,7 @@ import os.path
 import rich.progress
 import sqlalchemy
 import tempfile
+import threading
 import time
 
 from sqlalchemy import text
@@ -551,25 +552,46 @@ class Index:
         chunks = _chunk_objects(objects, group_size, group_max_bytes)
         n = len(chunks)
         expected_total = len(objects)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(n, 16) or 1) as pool:
+
+        # One failed chunk fails the build, so the moment we see one there is no reason to
+        # keep waiting on the rest. Left to itself the executor would: sit in as_completed
+        # until every sibling's Batch job reached a terminal state, and then, because a
+        # raise inside `with` still runs shutdown(wait=True) on the way out, block again on
+        # the same threads. On a 20-chunk index that hides the failure for as long as the
+        # slowest sibling runs. So the failure is recorded rather than raised, the event
+        # breaks the siblings out of their poll, and the raise happens after shutdown.
+        abandon = threading.Event()
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=min(n, 16) or 1)
+        failure = None
+        try:
             future_to_chunk = {}
             for i, chunk in enumerate(chunks):
                 fut = pool.submit(
                     start_and_wait_for_group_indexer_job, self.name, self.schema.arity,
                     config.s3_bucket, config.rds_secret, config.bio_schema,
                     config.s3_subdir, self.s3_prefix, prefer_compressed, i, n,
-                    group_size, group_max_bytes, expected_total,
+                    group_size, group_max_bytes, expected_total, abandon,
                 )
-                future_to_chunk[fut] = chunk
+                future_to_chunk[fut] = (i, chunk)
             for fut in concurrent.futures.as_completed(future_to_chunk):
+                i, chunk = future_to_chunk[fut]
                 job = fut.result()
                 if job['status'] != 'SUCCEEDED':
                     reason = job.get('statusReason', 'grouped indexer job FAILED')
-                    raise RuntimeError(f'grouped indexer job failed for {self.name}: {reason}')
-                for o in future_to_chunk[fut]:
+                    failure = f'chunk {i} of {n} ({len(chunk)} files): {reason}'
+                    break
+                for o in chunk:
                     self.set_key_built_flag(engine, o['Key'])
                     if progress:
                         progress.advance(overall, advance=o['Size'])
+        finally:
+            # wake the siblings before dropping the queued chunks; wait=False so an
+            # in-flight poll cannot hold the raise back
+            abandon.set()
+            pool.shutdown(wait=False, cancel_futures=True)
+
+        if failure is not None:
+            raise RuntimeError(f'grouped indexer job failed for {self.name}: {failure}')
 
     def index_objects_local(self, config, engine, pool, objects, progress=None, overall=None):
         """

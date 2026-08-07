@@ -29,10 +29,11 @@ def test_index_objects_grouped_submits_coordinates_and_sets_built_flags(monkeypa
 
     def fake_submit(index, arity, bucket, rds_secret, rds_schema, s3_subdir, prefix,
                     prefer_compressed, chunk_index, chunk_count, group_size,
-                    group_max_bytes, expected_total):
+                    group_max_bytes, expected_total, abandon=None):
         calls.append({'chunk_index': chunk_index, 'chunk_count': chunk_count,
                       'expected_total': expected_total, 'prefix': prefix,
-                      'prefer_compressed': prefer_compressed, 's3_subdir': s3_subdir})
+                      'prefer_compressed': prefer_compressed, 's3_subdir': s3_subdir,
+                      'abandon': abandon})
         return {'status': 'SUCCEEDED'}
 
     monkeypatch.setattr(index_mod, 'start_and_wait_for_group_indexer_job', fake_submit)
@@ -160,3 +161,123 @@ def test_key_is_current_matches_version():
     assert _key_is_current(db_keys, {'Key': 'p/new.json.gz', 'ETag': '"v"'}) is False
     assert _key_is_current({'p/a.json.gz': {'id': 1, 'version': None}},
                            {'Key': 'p/a.json.gz', 'ETag': '"v"'}) is False
+
+
+def _grouped_index():
+    idx = Index.__new__(Index)
+    idx.name = 'i'
+    idx.s3_prefix = 'p/'
+    idx.schema = MagicMock(arity=1)
+    idx.set_key_built_flag = lambda engine, key: None
+    return idx
+
+
+def test_a_failed_chunk_does_not_wait_for_its_siblings(monkeypatch):
+    # the bug: raising inside `with ThreadPoolExecutor(...)` still runs
+    # shutdown(wait=True), so a failure could not surface until every sibling's
+    # Batch job finished. Siblings here block until abandoned, so if the failure
+    # waits on them this test hangs rather than merely failing.
+    import time as _time
+
+    SIBLING_RUNTIME = 10
+
+    def fake_submit(index, arity, bucket, rds_secret, rds_schema, s3_subdir, prefix,
+                    prefer_compressed, chunk_index, chunk_count, group_size,
+                    group_max_bytes, expected_total, abandon=None):
+        if chunk_index == 0:
+            return {'status': 'FAILED', 'statusReason': 'boom'}
+        # a sibling whose own Batch job runs long after the failure. The abandon event
+        # is what releases it early; without one it sits for the full runtime, which is
+        # exactly the delay the old shutdown(wait=True) imposed on the raise.
+        if abandon is not None and abandon.wait(SIBLING_RUNTIME):
+            return {'status': 'ABANDONED'}
+        _time.sleep(SIBLING_RUNTIME)
+        return {'status': 'SUCCEEDED'}
+
+    monkeypatch.setattr(index_mod, 'start_and_wait_for_group_indexer_job', fake_submit)
+
+    idx = _grouped_index()
+    cfg = MagicMock(s3_bucket='b', rds_secret='sec', bio_schema='sch', s3_subdir='sub')
+
+    started = _time.monotonic()
+    with pytest.raises(RuntimeError, match='boom'):
+        idx.index_objects_grouped(cfg, MagicMock(), _objs([10] * 6), prefer_compressed=True,
+                                  group_size=1, group_max_bytes=10 ** 9)
+    elapsed = _time.monotonic() - started
+    assert elapsed < SIBLING_RUNTIME / 2, (
+        f'failure took {elapsed:.1f}s to surface; it waited on the siblings'
+    )
+
+
+def test_failure_message_identifies_the_chunk(monkeypatch):
+    def fake_submit(index, arity, bucket, rds_secret, rds_schema, s3_subdir, prefix,
+                    prefer_compressed, chunk_index, chunk_count, group_size,
+                    group_max_bytes, expected_total, abandon=None):
+        if chunk_index == 1:
+            return {'status': 'FAILED', 'statusReason': 'out of memory'}
+        return {'status': 'SUCCEEDED'}
+
+    monkeypatch.setattr(index_mod, 'start_and_wait_for_group_indexer_job', fake_submit)
+
+    idx = _grouped_index()
+    cfg = MagicMock(s3_bucket='b', rds_secret='sec', bio_schema='sch', s3_subdir='sub')
+
+    with pytest.raises(RuntimeError) as excinfo:
+        idx.index_objects_grouped(cfg, MagicMock(), _objs([10] * 4), prefer_compressed=True,
+                                  group_size=2, group_max_bytes=10 ** 9)
+    msg = str(excinfo.value)
+    assert 'chunk 1 of 2' in msg
+    assert 'out of memory' in msg
+
+
+def test_built_flags_are_not_set_for_an_abandoned_chunk(monkeypatch):
+    # an abandoned chunk's keys must stay version-less so the next build's
+    # delete_stale_keys clears whatever its worker managed to write
+    def fake_submit(index, arity, bucket, rds_secret, rds_schema, s3_subdir, prefix,
+                    prefer_compressed, chunk_index, chunk_count, group_size,
+                    group_max_bytes, expected_total, abandon=None):
+        if chunk_index == 0:
+            return {'status': 'FAILED', 'statusReason': 'boom'}
+        return {'status': 'ABANDONED'}
+
+    monkeypatch.setattr(index_mod, 'start_and_wait_for_group_indexer_job', fake_submit)
+
+    idx = _grouped_index()
+    built = []
+    idx.set_key_built_flag = lambda engine, key: built.append(key)
+    cfg = MagicMock(s3_bucket='b', rds_secret='sec', bio_schema='sch', s3_subdir='sub')
+
+    with pytest.raises(RuntimeError):
+        idx.index_objects_grouped(cfg, MagicMock(), _objs([10] * 4), prefer_compressed=True,
+                                  group_size=1, group_max_bytes=10 ** 9)
+    assert built == []
+
+
+class _PendingBatch(_FakeBatch):
+    """Never reaches a terminal state, so only the abandon event ends the poll."""
+
+    def describe_jobs(self, jobs):
+        return {'jobs': [{'status': 'RUNNING'}]}
+
+
+def test_poll_returns_immediately_when_abandoned(monkeypatch):
+    # without this the poll sleeps 60s at a time waiting on a job whose result
+    # no longer matters, holding the failure back
+    import threading
+    import time as _time
+
+    import bioindex.lib.aws as aws_mod
+
+    monkeypatch.setattr(aws_mod.boto3, 'client', lambda *a, **k: _PendingBatch({}))
+    abandon = threading.Event()
+    abandon.set()
+
+    started = _time.monotonic()
+    job = aws_mod.start_and_wait_for_group_indexer_job(
+        index='i', arity=1, bucket='b', rds_secret='sec', rds_schema='sch',
+        s3_subdir='sub', prefix='p/', prefer_compressed=True, chunk_index=0,
+        chunk_count=1, group_size=2, group_max_bytes=10 ** 9, expected_total=5,
+        abandon=abandon,
+    )
+    assert job['status'] == 'ABANDONED'
+    assert _time.monotonic() - started < 5, 'abandon must not wait out the poll interval'

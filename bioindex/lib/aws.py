@@ -87,8 +87,15 @@ def start_and_wait_for_group_indexer_job(index: str, arity: int, bucket: str, rd
                                          rds_schema: str, s3_subdir: str, prefix: str,
                                          prefer_compressed: bool, chunk_index: int,
                                          chunk_count: int, group_size: int,
-                                         group_max_bytes: int, expected_total: int):
-    """Submit one grouped indexer job; the worker re-derives its chunk from these coordinates."""
+                                         group_max_bytes: int, expected_total: int,
+                                         abandon=None):
+    """Submit one grouped indexer job; the worker re-derives its chunk from these coordinates.
+
+    `abandon` is an optional threading.Event. Once another chunk has failed the whole
+    build is going to be rolled back, so there is nothing to learn from the rest of this
+    job: setting the event breaks the poll immediately instead of leaving this thread
+    asleep for up to a minute at a time until its own job happens to finish.
+    """
     batch_client = boto3.client('batch')
     response = batch_client.submit_job(
         jobName='batch-group-indexer-job',
@@ -119,7 +126,15 @@ def start_and_wait_for_group_indexer_job(index: str, arity: int, bucket: str, rd
         if job_status in ['SUCCEEDED', 'FAILED']:
             return response['jobs'][0]
 
-        time.sleep(60)
+        # the abandoned job is left running: the parent never sets a built flag for its
+        # chunk, so those keys stay version-less and the next build's delete_stale_keys
+        # clears whatever it wrote
+        if abandon is not None:
+            if abandon.wait(60):
+                return {'status': 'ABANDONED', 'jobId': job_id,
+                        'statusReason': 'stopped polling after another chunk failed'}
+        else:
+            time.sleep(60)
 
 
 def secret_lookup(secret_id):
