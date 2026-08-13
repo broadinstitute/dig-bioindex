@@ -7,6 +7,7 @@ import fastapi
 import pymysql
 
 from .api import bio
+from .api import enrichr
 from .api import health
 from .api import portal
 from .api import raw
@@ -94,6 +95,7 @@ app.add_middleware(PortalResolveMiddleware, reserved_prefixes=RESERVED)
 app.include_router(bio.router, prefix='/api/bio', tags=['bio'])
 app.include_router(portal.router, prefix='/api/portal', tags=['portal'])
 app.include_router(raw.router, prefix='/api/raw', tags=['raw'])
+app.include_router(enrichr.router, prefix='/api/enrichr', tags=['enrichr'])
 
 # load balancer probes; not portal-scoped
 app.include_router(health.router, tags=['health'])
