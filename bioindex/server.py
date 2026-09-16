@@ -17,6 +17,7 @@ from .lib.portal_registry import get_registry, init_registry
 from .middleware.portal import PortalResolveMiddleware
 
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -87,6 +88,16 @@ app = fastapi.FastAPI(title='BioIndex', redoc_url=None, lifespan=lifespan)
 
 # paths served by the process itself rather than by one of its portals
 RESERVED = ('health', 'ready', 'static', 'docs', 'openapi.json')
+
+# compress a body worth compressing for any client that asks (Cloudflare
+# does). Level 6 is where gzip stops paying for its CPU; anything already
+# encoded, such as a gzipped S3 object, is passed through untouched.
+#
+# Innermost on purpose: the portal middleware below streams whatever it
+# wraps, and a streamed body has no size, so gzip outside it would chunk
+# every response - health probes included - and never send Content-Length.
+# The cost is that the access log's response_bytes is now the wire size.
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
 # the leading path segment selects the portal for every api route
 app.add_middleware(PortalResolveMiddleware, reserved_prefixes=RESERVED)
