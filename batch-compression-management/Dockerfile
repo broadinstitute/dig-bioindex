@@ -1,4 +1,7 @@
-FROM ubuntu:20.04
+FROM ubuntu:22.04
+
+# 22.04 pulls in tzdata, which prompts for a timezone under an interactive frontend
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && \
     apt-get install -y git build-essential libbz2-dev liblzma-dev libcurl4-gnutls-dev libssl-dev curl wget zlib1g-dev python3-pip
