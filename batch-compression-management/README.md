@@ -2,7 +2,7 @@
 The core logic for this endeavor lives in [Dockerfile](./Dockerfile) and the python files in this directory. Each of the three 
 *_json_files.py file contains the logic for modifying the state of the json files under an s3 path.  `compress_json_files.py` will compress
 all json files recursively under a given s3 path while also leaving the original json files in place.  This means that bioindex code 
-can still operate on the original json files while we're in the process of compressing them. 
+can still operate on the original json files while we're in the process of compressing them. `compress_json_array.py` is the per-file variant of the same job for huge files: each child of a Batch array job compresses every Nth file of the sorted listing, where N is the array size passed as a job parameter.
 Before running the job associated with `delete_json_files.py` you should mark the index as 
 compressed using `python -m bioindex.main update-compressed-status <index_name> <s3_path> -c` or a sql query. 
 This will ensure that the bioindex code will read from the compressed files.  Finally, if you need to backtrack `decompress_json_files.py`
@@ -14,6 +14,7 @@ Useful cli commands:
 2. `python -m bioindex.main update-compressed-status <index_name> <s3_path_for_index> -c` mark index as compressed in the database, server will try to read from compressed files after this command
 3. `python -m bioindex.main remove-uncompressed-files <index_name> <s3_path_for_index> -c` delete json files, only do this after making sure compressed files are in place and index is marked as compressed in the database.
 4. `python -m bioindex.main decompress <index_name> <s3_path_for_index>` restore uncompressed json files from their compressed versions, useful if we find bugs in the compressed code paths.
+5. `python -m bioindex.main compress-array <index_name> <s3_path_for_index>` compress json files for an index whose individual files are far too large for `compress` (10+ GB each). Submits the `bgzip-array-job` AWS Batch array job: one 4 vCPU child per file, multi-threaded bgzip, no per-file timeout, 3 retries per child. Leaves originals in place and skips files that already have `.gz` + `.gzi`, so it can be re-run. Exits non-zero if any child failed; only then run `remove-uncompressed-files` and `update-compressed-status`.
 
 
 ## Infrastructure and deployment

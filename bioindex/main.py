@@ -1,6 +1,7 @@
 import concurrent
 import os
 import secrets
+import sys
 import time
 from enum import Enum
 
@@ -21,6 +22,7 @@ from .lib import index
 from .lib import migrate
 from .lib import ql
 from .lib import query
+from .lib.s3 import list_objects
 from .log_config import LOGGING_CONFIG
 
 # create the global console
@@ -226,6 +228,51 @@ class BgzipJobType(str, Enum):
 @click.pass_obj
 def cli_compress(cfg, index_name, prefix):
     check_index_and_launch_job(cfg, index_name, prefix, BgzipJobType.COMPRESS)
+
+
+@click.command(name='compress-array')
+@click.argument('index_name')
+@click.argument('prefix')
+@click.option('--array-size', '-n', type=click.IntRange(1, aws.BATCH_ARRAY_MAX_SIZE), default=None,
+              help='Number of Batch array children; defaults to the number of .json files '
+                   f'(max {aws.BATCH_ARRAY_MAX_SIZE}). Each child takes every Nth file. '
+                   'Each child must finish its share within the job\'s 2 h attempt timeout '
+                   '(about 10-15 files of 12 GB).')
+@click.option('--threads', '-t', type=click.IntRange(1, 16), default=4, show_default=True,
+              help='bgzip threads per child (the job definition provides 4 vCPU)')
+@click.option('--no-wait', is_flag=True, help='Submit and return without waiting for the job')
+@click.pass_obj
+def cli_compress_array(cfg, index_name, prefix, array_size, threads, no_wait):
+    """
+    Compress an index's .json files with one Batch array child per file.
+
+    This is the opt-in path for indexes whose files are far too large for `compress`
+    (which handles a whole prefix inside one task). Originals are left in place; run
+    `remove-uncompressed-files` and `update-compressed-status` afterwards as usual.
+    """
+    if not is_index_prefix_valid(cfg, index_name, prefix):
+        console.print(f'Could not find unique index with name {index_name} and prefix {prefix}')
+        sys.exit(1)
+
+    s3_path = cfg.s3_path(prefix)
+    n_files = sum(1 for _ in list_objects(cfg.s3_bucket, s3_path, only='*.json'))
+    if n_files == 0:
+        console.print(f'No .json files under s3://{cfg.s3_bucket}/{s3_path}; nothing to do')
+        return
+
+    size = array_size or min(n_files, aws.BATCH_ARRAY_MAX_SIZE)
+    job_id = aws.start_compress_array_job(cfg.s3_bucket, index_name, s3_path, size, threads)
+    console.print(f'{aws.COMPRESS_ARRAY_JOB_DEFINITION} started with id {job_id}: '
+                  f'{size} children for {n_files} json files')
+    if no_wait:
+        return
+
+    status, summary = aws.wait_for_array_job(job_id)
+    console.print(f'{aws.COMPRESS_ARRAY_JOB_DEFINITION} {job_id} {status}; children: {summary}')
+    if status != 'SUCCEEDED':
+        console.print('Re-run the same command to retry only the unfinished files; failed '
+                       'children are listed under the parent job in the Batch console.')
+        sys.exit(1)
 
 
 def validate_job_type(ctx, param, value):
@@ -557,6 +604,7 @@ cli.add_command(cli_count)
 cli.add_command(cli_match)
 cli.add_command(cli_build_schema)
 cli.add_command(cli_compress)
+cli.add_command(cli_compress_array)
 cli.add_command(update_compressed_status)
 cli.add_command(cli_decompress)
 cli.add_command(cli_remove_uncompressed_files)

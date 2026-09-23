@@ -3,7 +3,7 @@ Description:
   --Creates the whole AWS batch infrastructure for indexing and compressing files in the dig-bio-index bucket
   --Assumed inputs is bucket (dig-bio-index)
   --Outputs that will be referenced other places are job queue name (bgzip-job-queue), 
-  --job definition name (bgzip-job), and secret (bgzip-credentials)
+  --job definition names (bgzip-job, bgzip-array-job), and secret (bgzip-credentials)
   --permissions seem redundant because we need the standard method for boto3 but also need to save a secret and pull it
   --inside python for the bgzip command
 Resources:
@@ -73,6 +73,50 @@ Resources:
             Value: '16.0'
           - Type: 'MEMORY'
             Value: '32768'
+        NetworkConfiguration:
+          AssignPublicIp: 'ENABLED'
+        FargatePlatformConfiguration:
+          PlatformVersion: 'LATEST'
+
+  # Opt-in array job for indexes whose individual .json files are far too large for
+  # bgzip-job (e.g. 1,000 x 12 GB): one Fargate child per stride position over the sorted
+  # file list, multi-threaded bgzip, no per-file timeout, Batch retries per child.
+  # Submitted by `python -m bioindex.main compress-array <index> <prefix>`.
+  BlockGzArrayJobDefinition:
+    Type: 'AWS::Batch::JobDefinition'
+    Properties:
+      Type: 'container'
+      JobDefinitionName: 'bgzip-array-job'
+      PlatformCapabilities:
+        - 'FARGATE'
+      Parameters:
+        threads: '4'
+      RetryStrategy:
+        Attempts: 3
+      Timeout:
+        AttemptDurationSeconds: 7200
+      ContainerProperties:
+        Image: !Sub '${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/bgzip-repo'
+        Command:
+          - 'python3'
+          - 'compress_json_array.py'
+          - '-i'
+          - 'Ref::index'
+          - '-b'
+          - 'Ref::bucket'
+          - '-p'
+          - 'Ref::path'
+          - '-n'
+          - 'Ref::array-size'
+          - '-t'
+          - 'Ref::threads'
+        JobRoleArn: !GetAtt BlockGzipRole.Arn
+        ExecutionRoleArn: !GetAtt BlockGzipRole.Arn
+        ResourceRequirements:
+          - Type: 'VCPU'
+            Value: '4.0'
+          - Type: 'MEMORY'
+            Value: '8192'
         NetworkConfiguration:
           AssignPublicIp: 'ENABLED'
         FargatePlatformConfiguration:
