@@ -1,4 +1,5 @@
 import base64
+import re
 import time
 from typing import Optional
 
@@ -54,6 +55,59 @@ def start_batch_job(s3_bucket: str, index_name: str, s3_path: str, job_definitio
         parameters=parameters
     )
     return response['jobId']
+
+
+# Opt-in array job for indexes whose individual .json files are far too large for
+# bgzip-job (which compresses a whole prefix inside one task). One child per stride
+# position over the sorted file list; see batch-compression-management/compress_json_array.py.
+BGZIP_JOB_QUEUE = 'bgzip-job-queue'
+COMPRESS_ARRAY_JOB_DEFINITION = 'bgzip-array-job'
+BATCH_ARRAY_MAX_SIZE = 10000  # AWS Batch: arrayProperties.size must be in [2, 10000]
+
+
+def start_compress_array_job(s3_bucket: str, index_name: str, s3_path: str, array_size: int,
+                             threads: int = 4) -> str:
+    """Submit bgzip-array-job for one index prefix and return the parent job id.
+
+    Batch refuses array sizes below 2, so a single-file prefix is submitted as a plain job;
+    the worker treats a missing AWS_BATCH_JOB_ARRAY_INDEX as child 0 of 1.
+    """
+    assert 1 <= array_size <= BATCH_ARRAY_MAX_SIZE, \
+        f'array size {array_size} outside [1, {BATCH_ARRAY_MAX_SIZE}]'
+    batch_client = boto3.client('batch')
+    safe_name = re.sub(r'[^A-Za-z0-9_-]', '-', index_name)
+    kwargs = {
+        'jobName': f'{COMPRESS_ARRAY_JOB_DEFINITION}-{safe_name}'[:128],
+        'jobQueue': BGZIP_JOB_QUEUE,
+        'jobDefinition': COMPRESS_ARRAY_JOB_DEFINITION,
+        'parameters': {
+            'index': index_name,
+            'bucket': s3_bucket,
+            'path': s3_path,
+            'array-size': str(array_size),
+            'threads': str(threads),
+        },
+    }
+    if array_size >= 2:
+        kwargs['arrayProperties'] = {'size': array_size}
+    return batch_client.submit_job(**kwargs)['jobId']
+
+
+def wait_for_array_job(job_id: str, poll_seconds: int = 30):
+    """Poll until the (parent) job is terminal; return (status, per-status child counts).
+
+    The parent of an array job is SUCCEEDED only when every child succeeded and FAILED as
+    soon as any child exhausted its retries. The summary is arrayProperties.statusSummary,
+    or {} for a plain job. An empty DescribeJobs answer (eventual consistency right after
+    SubmitJob) is treated as "not yet" rather than an error.
+    """
+    batch_client = boto3.client('batch')
+    while True:
+        jobs = batch_client.describe_jobs(jobs=[job_id]).get('jobs', [])
+        if jobs and jobs[0]['status'] in ('SUCCEEDED', 'FAILED'):
+            job = jobs[0]
+            return job['status'], job.get('arrayProperties', {}).get('statusSummary', {})
+        time.sleep(poll_seconds)
 
 
 def start_and_wait_for_indexer_job(file: str, index: str, arity: int, bucket: str, rds_secret: str, rds_schema: str,
